@@ -161,6 +161,11 @@ RUN python -m pip install --no-cache-dir \
     demucs \
     noisereduce
 
+# -- CRITICAL: Re-pin NumPy <2.0 AFTER all other installs --
+# PyTorch 2.1.0 was compiled with NumPy 1.x C API.
+# demucs/librosa may pull NumPy 2.x which crashes torch at import.
+RUN python -m pip install --no-cache-dir "numpy>=1.23.0,<2.0"
+
 
 # ================================================================
 # LAYER 6: RunPod SDK

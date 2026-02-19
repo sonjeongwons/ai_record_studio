@@ -1359,7 +1359,7 @@ def handler(job: dict) -> dict:
     log.info(f"=== Job {job_id} started: task_type={task_type} ===")
     log.info(f"CUDA available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
-        log.info(f"GPU: {torch.cuda.get_device_name(0)}, VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB")
+        log.info(f"GPU: {torch.cuda.get_device_name(0)}, VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
 
     # Ensure work directory exists
     ensure_dir(WORK_DIR)
@@ -1418,7 +1418,7 @@ if __name__ == "__main__":
         log.info(f"CUDA available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():
             log.info(f"GPU: {torch.cuda.get_device_name(0)}")
-            log.info(f"VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB")
+            log.info(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
 
         # 핵심 모듈 import 테스트
         import_tests = [
