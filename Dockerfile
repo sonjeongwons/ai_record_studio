@@ -157,8 +157,10 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
 # ================================================================
 # LAYER 5: Audio ML Tools (Demucs + noisereduce)
 # ================================================================
+# Install demucs from GitHub main branch (v4.1.0a2+) — PyPI v4.0.1
+# does NOT have demucs.api module which our handler requires.
 RUN python -m pip install --no-cache-dir \
-    demucs \
+    "git+https://github.com/adefossez/demucs.git" \
     noisereduce
 
 # -- CRITICAL: Re-pin NumPy <2.0 AFTER all other installs --

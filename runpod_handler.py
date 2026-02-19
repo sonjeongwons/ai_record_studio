@@ -238,37 +238,90 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> list[Path]:
     """
     Run Demucs htdemucs_ft model to separate vocals from accompaniment.
     Returns list of vocal-only WAV paths.
+
+    Supports two backends:
+      1. demucs.api (v4.1.0a2+ / GitHub main) — preferred, clean Python API
+      2. demucs.pretrained + demucs.apply (v4.0.1 / PyPI) — fallback
     """
-    import demucs.api
+    import soundfile as sf
 
     ensure_dir(output_dir)
-    separator = demucs.api.Separator(model="htdemucs_ft", device="cuda" if torch.cuda.is_available() else "cpu")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # --- Try demucs.api first (GitHub v4.1.0a2+) ---
+    try:
+        import demucs.api
+        log.info("Using demucs.api (v4.1+) for vocal separation")
+        separator = demucs.api.Separator(model="htdemucs_ft", device=device)
+
+        vocal_paths: list[Path] = []
+        for audio_path in audio_paths:
+            try:
+                origin, separated = separator.separate_audio_file(str(audio_path))
+                if "vocals" in separated:
+                    vocal_wav = output_dir / f"{audio_path.stem}_vocals.wav"
+                    vocal_np = separated["vocals"].cpu().numpy()
+                    if vocal_np.ndim == 2 and vocal_np.shape[0] > 1:
+                        vocal_np = vocal_np.mean(axis=0)
+                    elif vocal_np.ndim == 2:
+                        vocal_np = vocal_np[0]
+                    sf.write(str(vocal_wav), vocal_np, samplerate=44100, subtype="PCM_16")
+                    vocal_paths.append(vocal_wav)
+                    log.info(f"Demucs vocal separation done: {audio_path.name}")
+                else:
+                    log.warning(f"No 'vocals' source from Demucs for {audio_path.name}, using original")
+                    vocal_paths.append(audio_path)
+            except Exception as e:
+                log.error(f"Demucs failed for {audio_path.name}: {e}")
+                vocal_paths.append(audio_path)
+
+        cleanup_gpu()
+        return vocal_paths
+
+    except ImportError:
+        log.warning("demucs.api not available (PyPI v4.0.1), using fallback with demucs.pretrained + demucs.apply")
+
+    # --- Fallback: demucs.pretrained + demucs.apply (PyPI v4.0.1) ---
+    from demucs.pretrained import get_model
+    from demucs.apply import apply_model
+    from demucs.audio import AudioFile
+
+    model = get_model("htdemucs_ft")
+    model.to(device)
+    # htdemucs_ft sources order: drums, bass, other, vocals
+    source_names = model.sources
+    vocals_idx = source_names.index("vocals") if "vocals" in source_names else -1
 
     vocal_paths: list[Path] = []
     for audio_path in audio_paths:
         try:
-            # Demucs API: separate returns a dict of source names -> tensors
-            origin, separated = separator.separate_audio_file(str(audio_path))
-            # htdemucs_ft sources: drums, bass, other, vocals
-            if "vocals" in separated:
-                import soundfile as sf
-                vocal_wav = output_dir / f"{audio_path.stem}_vocals.wav"
-                # separated["vocals"] is a torch tensor [channels, samples]
-                vocal_np = separated["vocals"].cpu().numpy()
-                # If stereo, convert to mono
+            # Load audio as tensor [channels, samples] at model's samplerate
+            wav = AudioFile(str(audio_path)).read(
+                streams=0, samplerate=model.samplerate, channels=model.audio_channels
+            )
+            ref = wav.mean(0)
+            wav = (wav - ref.mean()) / ref.std()
+            # apply_model expects [batch, channels, samples]
+            sources = apply_model(model, wav[None], device=device)[0]
+            # sources shape: [num_sources, channels, samples]
+            sources = sources * ref.std() + ref.mean()
+
+            if vocals_idx >= 0:
+                vocal_wav_path = output_dir / f"{audio_path.stem}_vocals.wav"
+                vocal_tensor = sources[vocals_idx]
+                vocal_np = vocal_tensor.cpu().numpy()
                 if vocal_np.ndim == 2 and vocal_np.shape[0] > 1:
                     vocal_np = vocal_np.mean(axis=0)
                 elif vocal_np.ndim == 2:
                     vocal_np = vocal_np[0]
-                sf.write(str(vocal_wav), vocal_np, samplerate=44100, subtype="PCM_16")
-                vocal_paths.append(vocal_wav)
-                log.info(f"Demucs vocal separation done: {audio_path.name}")
+                sf.write(str(vocal_wav_path), vocal_np, samplerate=model.samplerate, subtype="PCM_16")
+                vocal_paths.append(vocal_wav_path)
+                log.info(f"Demucs vocal separation done (fallback): {audio_path.name}")
             else:
-                log.warning(f"No 'vocals' source from Demucs for {audio_path.name}, using original")
+                log.warning(f"No 'vocals' source in model for {audio_path.name}, using original")
                 vocal_paths.append(audio_path)
         except Exception as e:
-            log.error(f"Demucs failed for {audio_path.name}: {e}")
-            # Fallback: use original file
+            log.error(f"Demucs fallback failed for {audio_path.name}: {e}")
             vocal_paths.append(audio_path)
 
     cleanup_gpu()
