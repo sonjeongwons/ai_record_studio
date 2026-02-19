@@ -1,0 +1,71 @@
+# ================================================================
+# AI Voice Studio - .dockerignore
+# ================================================================
+# Only runpod_handler.py is COPYed into the image.
+# Everything else is client-side, runtime data, or dev files.
+
+# -- Client-side app (runs locally, NOT in Docker) --
+server.py
+static/
+requirements.txt
+start.bat
+start.sh
+
+# -- Documentation --
+*.md
+
+# -- Runtime data (user uploads, trained models, output) --
+uploads/
+models/
+output/
+workspace/
+
+# -- Database and config (local state) --
+*.db
+*.db-journal
+*.db-wal
+config.json
+
+# -- Python artifacts --
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# -- Virtual environments --
+venv/
+.venv/
+env/
+.env
+
+# -- IDE / editor --
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# -- Git --
+.git/
+.gitignore
+
+# -- Docker (prevent recursive inclusion) --
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# -- Archives --
+*.zip
+*.tar.gz
+*.7z
+
+# -- Logs --
+*.log
+logs/

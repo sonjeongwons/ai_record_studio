@@ -1,0 +1,2163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Voice Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0a14;
+  --bg2: #0f0f1e;
+  --bg3: #161628;
+  --border: rgba(255,255,255,0.06);
+  --text: #e2e2f0;
+  --text2: #8888a8;
+  --text3: #55556a;
+  --violet: #8b5cf6;
+  --violet-g: rgba(139,92,246,0.15);
+  --cyan: #06b6d4;
+  --emerald: #10b981;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --radius: 16px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Outfit', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+}
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+
+/* ─── Sidebar ─── */
+.sidebar {
+  width: 68px;
+  background: rgba(0,0,0,0.3);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.sidebar .logo {
+  width: 38px; height: 38px;
+  background: linear-gradient(135deg, var(--violet), var(--cyan));
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(139,92,246,0.3);
+}
+.sidebar .logo svg { width: 20px; height: 20px; fill: white; }
+.nav-btn {
+  width: 44px; height: 44px;
+  border: none; background: transparent;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  color: var(--text3);
+  transition: all 0.2s;
+  position: relative;
+}
+.nav-btn:hover { background: rgba(255,255,255,0.05); color: var(--text2); }
+.nav-btn.active {
+  background: var(--violet-g);
+  color: var(--violet);
+}
+.nav-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 3px; height: 20px;
+  background: var(--violet);
+  border-radius: 0 3px 3px 0;
+}
+.nav-btn svg { width: 20px; height: 20px; }
+.nav-btn .tooltip {
+  display: none;
+  position: absolute;
+  left: 56px; top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  z-index: 100;
+}
+.nav-btn:hover .tooltip { display: block; }
+
+/* ─── Main Content ─── */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 40px;
+}
+.main-inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+.page { display: none; animation: fadeIn 0.3s ease; }
+.page.active { display: block; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Common Components ─── */
+h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+.subtitle { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card:hover { border-color: rgba(255,255,255,0.1); }
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-primary {
+  background: var(--violet);
+  color: white;
+}
+.btn-primary:hover { background: #7c3aed; box-shadow: 0 4px 20px rgba(139,92,246,0.3); }
+.btn-primary:disabled { background: #2a2a3a; color: var(--text3); cursor: not-allowed; box-shadow: none; }
+.btn-secondary {
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: rgba(255,255,255,0.08); }
+.btn-danger {
+  background: rgba(239,68,68,0.1);
+  color: var(--red);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+.btn-danger:hover { background: rgba(239,68,68,0.2); }
+.btn-full { width: 100%; justify-content: center; padding: 14px; font-size: 14px; }
+.btn-gradient {
+  background: linear-gradient(135deg, var(--violet), #6366f1);
+  color: white;
+}
+.btn-gradient:hover { box-shadow: 0 4px 20px rgba(139,92,246,0.3); }
+.btn-gradient:disabled { background: #2a2a3a; color: var(--text3); box-shadow: none; }
+
+input[type="text"], input[type="number"], select {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input:focus, select:focus { border-color: var(--violet); }
+select { -webkit-appearance: none; cursor: pointer; }
+
+.label {
+  display: block;
+  font-size: 11px;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.flex { display: flex; align-items: center; gap: 12px; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.gap-8 { gap: 8px; }
+.gap-16 { gap: 16px; }
+.mt-16 { margin-top: 16px; }
+.mt-24 { margin-top: 24px; }
+.mb-16 { margin-bottom: 16px; }
+
+/* Badge */
+.badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+.badge-green { background: rgba(16,185,129,0.1); color: var(--emerald); border: 1px solid rgba(16,185,129,0.2); }
+.badge-amber { background: rgba(245,158,11,0.1); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+.badge-red { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+.badge-violet { background: var(--violet-g); color: var(--violet); border: 1px solid rgba(139,92,246,0.2); }
+
+/* ─── Drop Zone ─── */
+.dropzone {
+  border: 2px dashed rgba(255,255,255,0.1);
+  border-radius: var(--radius);
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: rgba(255,255,255,0.01);
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: var(--violet);
+  background: var(--violet-g);
+}
+.dropzone-icon {
+  width: 48px; height: 48px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.05);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 12px;
+  color: var(--text2);
+}
+.dropzone:hover .dropzone-icon { background: var(--violet-g); color: var(--violet); }
+.dropzone-text { font-size: 14px; color: var(--text); font-weight: 500; }
+.dropzone-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+
+/* ─── File List ─── */
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.file-icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--violet-g);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--violet);
+  flex-shrink: 0;
+}
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-meta { font-size: 11px; color: var(--text3); }
+.file-delete {
+  background: none; border: none;
+  color: var(--text3); cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+.file-delete:hover { background: rgba(239,68,68,0.1); color: var(--red); }
+
+/* ─── Progress ─── */
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 0;
+}
+.progress-ring {
+  position: relative;
+  width: 140px; height: 140px;
+}
+.progress-ring svg { transform: rotate(-90deg); }
+.progress-ring .bg { fill: none; stroke: var(--bg3); stroke-width: 5; }
+.progress-ring .fg { fill: none; stroke: url(#pg); stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+.progress-text {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  text-align: center;
+}
+.progress-pct { font-size: 28px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.progress-label { font-size: 13px; color: var(--text2); margin-top: 12px; }
+.progress-detail { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+
+/* ─── Model Card ─── */
+.model-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 8px;
+}
+.model-card:hover { border-color: rgba(139,92,246,0.3); }
+.model-card.selected { border-color: var(--violet); background: var(--violet-g); }
+.model-icon {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  background: var(--violet-g);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--violet);
+}
+
+/* ─── Slider ─── */
+.slider-group { margin-bottom: 14px; }
+.slider-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.slider-label { font-size: 12px; color: var(--text2); }
+.slider-value { font-size: 12px; color: var(--violet); font-family: 'JetBrains Mono', monospace; }
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%; height: 6px;
+  border-radius: 3px;
+  background: var(--bg3);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--violet);
+  cursor: pointer;
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 8px rgba(139,92,246,0.4);
+}
+
+/* ─── Alert Box ─── */
+.alert {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.alert-info { background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.15); color: #b4a0f0; }
+.alert-warn { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); color: #f0c060; }
+.alert-success { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.15); color: #60f0b0; }
+
+/* ─── Stats ─── */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-card {
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+}
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.stat-label { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+/* ─── Job History ─── */
+.job-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.job-icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.job-icon.train { background: rgba(139,92,246,0.1); color: var(--violet); }
+.job-icon.convert { background: rgba(6,182,212,0.1); color: var(--cyan); }
+
+/* ─── Spinner ─── */
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Empty State ─── */
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: var(--text3);
+}
+.empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.3; }
+
+/* ─── Toast Notifications ─── */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text);
+  min-width: 280px;
+  max-width: 400px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  animation: toastIn 0.3s ease forwards;
+  backdrop-filter: blur(12px);
+}
+.toast.removing { animation: toastOut 0.25s ease forwards; }
+.toast-icon {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.toast-icon svg { width: 14px; height: 14px; }
+.toast-body { flex: 1; line-height: 1.4; }
+.toast-close {
+  background: none; border: none;
+  color: var(--text3); cursor: pointer;
+  padding: 2px; border-radius: 4px;
+  font-size: 14px; line-height: 1;
+  transition: color 0.2s;
+}
+.toast-close:hover { color: var(--text); }
+.toast-success { border-color: rgba(16,185,129,0.25); }
+.toast-success .toast-icon { background: rgba(16,185,129,0.15); color: var(--emerald); }
+.toast-error { border-color: rgba(239,68,68,0.25); }
+.toast-error .toast-icon { background: rgba(239,68,68,0.15); color: var(--red); }
+.toast-info { border-color: rgba(139,92,246,0.25); }
+.toast-info .toast-icon { background: var(--violet-g); color: var(--violet); }
+.toast-warning { border-color: rgba(245,158,11,0.25); }
+.toast-warning .toast-icon { background: rgba(245,158,11,0.15); color: var(--amber); }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(40px) scale(0.95); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(40px) scale(0.9); }
+}
+
+/* ─── Connection Status Indicator ─── */
+.connection-status {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  cursor: pointer;
+  position: relative;
+}
+.connection-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--text3);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.connection-dot.online {
+  background: var(--emerald);
+  box-shadow: 0 0 8px rgba(16,185,129,0.5);
+}
+.connection-dot.offline {
+  background: var(--red);
+  box-shadow: 0 0 8px rgba(239,68,68,0.4);
+}
+.connection-dot.checking {
+  background: var(--amber);
+  animation: connPulse 1.2s ease infinite;
+}
+@keyframes connPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.connection-label {
+  font-size: 9px;
+  color: var(--text3);
+  text-align: center;
+  line-height: 1.2;
+}
+.connection-status .tooltip {
+  display: none;
+  position: absolute;
+  left: 56px; top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  z-index: 100;
+}
+.connection-status:hover .tooltip { display: block; }
+
+/* ─── Inline Audio Player ─── */
+.audio-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  margin-top: 6px;
+}
+.audio-play-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--violet-g);
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  color: var(--violet);
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.audio-play-btn:hover { background: rgba(139,92,246,0.25); }
+.audio-play-btn svg { width: 12px; height: 12px; fill: currentColor; }
+.audio-waveform {
+  flex: 1;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.audio-time {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* ─── Preprocess Step ─── */
+.preprocess-card {
+  border: 1px solid rgba(139,92,246,0.15);
+  border-radius: var(--radius);
+  background: var(--bg2);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.preprocess-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.preprocess-icon {
+  width: 40px; height: 40px;
+  border-radius: 12px;
+  background: var(--violet-g);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--violet);
+}
+.preprocess-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+.preprocess-stat {
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.preprocess-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--violet);
+}
+.preprocess-stat-label {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+.preprocess-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0;
+}
+.preprocess-progress .progress-ring { width: 100px; height: 100px; }
+.preprocess-progress .progress-ring svg { width: 100px; height: 100px; }
+.preprocess-progress .progress-pct { font-size: 22px; }
+.skip-link {
+  font-size: 12px;
+  color: var(--text3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.2s;
+  font-family: inherit;
+}
+.skip-link:hover { color: var(--text2); }
+
+/* ─── Batch Conversion Queue ─── */
+.batch-queue { margin-top: 12px; }
+.batch-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+  transition: border-color 0.2s;
+}
+.batch-item.processing { border-color: rgba(139,92,246,0.3); }
+.batch-item.completed { border-color: rgba(16,185,129,0.3); }
+.batch-item.failed { border-color: rgba(239,68,68,0.3); }
+.batch-item-icon {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.batch-item-icon.pending { background: rgba(255,255,255,0.05); color: var(--text3); }
+.batch-item-icon.processing { background: var(--violet-g); color: var(--violet); }
+.batch-item-icon.completed { background: rgba(16,185,129,0.1); color: var(--emerald); }
+.batch-item-icon.failed { background: rgba(239,68,68,0.1); color: var(--red); }
+.batch-item-info { flex: 1; min-width: 0; }
+.batch-item-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.batch-item-status { font-size: 11px; color: var(--text3); }
+.batch-remove {
+  background: none; border: none;
+  color: var(--text3); cursor: pointer;
+  padding: 4px; border-radius: 6px;
+  transition: all 0.2s;
+  font-size: 12px;
+}
+.batch-remove:hover { background: rgba(239,68,68,0.1); color: var(--red); }
+.batch-overall {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+}
+.batch-progress-bar {
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.batch-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--violet), var(--cyan));
+  border-radius: 2px;
+  transition: width 0.5s ease;
+  width: 0%;
+}
+</style>
+</head>
+<body>
+
+<!-- SVG Defs -->
+<svg width="0" height="0">
+  <defs>
+    <linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="white" stroke-width="2"/></svg>
+  </div>
+  <button class="nav-btn active" onclick="showPage('home')" data-page="home">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    <span class="tooltip">홈</span>
+  </button>
+  <button class="nav-btn" onclick="showPage('train')" data-page="train">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+    <span class="tooltip">학습</span>
+  </button>
+  <button class="nav-btn" onclick="showPage('convert')" data-page="convert">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+    <span class="tooltip">변환</span>
+  </button>
+  <button class="nav-btn" onclick="showPage('settings')" data-page="settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    <span class="tooltip">설정</span>
+  </button>
+
+  <!-- Connection Status Indicator -->
+  <div class="connection-status" id="connection-status" onclick="checkConnection(true)">
+    <div class="connection-dot checking" id="connection-dot"></div>
+    <div class="connection-label">API</div>
+    <span class="tooltip" id="connection-tooltip">확인 중...</span>
+  </div>
+</nav>
+
+<!-- Main Content -->
+<div class="main">
+<div class="main-inner">
+
+<!-- ═══════════════════════ HOME ═══════════════════════ -->
+<div id="page-home" class="page active">
+  <h1>AI Voice Studio</h1>
+  <p class="subtitle">음원을 업로드하고, AI 보이스 모델을 학습시키고, 새로운 음원을 만드세요</p>
+
+  <div class="stat-grid" id="stats-grid">
+    <div class="stat-card"><div class="stat-value" style="color:var(--violet)" id="stat-files">-</div><div class="stat-label">업로드 파일</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--cyan)" id="stat-models">-</div><div class="stat-label">학습된 모델</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--emerald)" id="stat-converts">-</div><div class="stat-label">변환한 곡</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--amber)" id="stat-size">-</div><div class="stat-label">총 데이터</div></div>
+  </div>
+
+  <div class="flex gap-16 mb-16">
+    <button class="btn btn-primary" onclick="showPage('train')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+      새 모델 학습
+    </button>
+    <button class="btn btn-secondary" onclick="showPage('convert')">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+      음원 변환
+    </button>
+  </div>
+
+  <div id="config-alert" class="alert alert-warn" style="display:none">
+    RunPod API가 설정되지 않았습니다. <a href="#" onclick="showPage('settings')" style="color:var(--amber);text-decoration:underline">설정 페이지</a>에서 API Key를 입력해주세요.
+  </div>
+
+  <h2>최근 작업</h2>
+  <p class="subtitle">진행 중이거나 완료된 작업</p>
+  <div id="recent-jobs"></div>
+</div>
+
+<!-- ═══════════════════════ TRAIN ═══════════════════════ -->
+<div id="page-train" class="page">
+  <h1>AI 보이스 모델 학습</h1>
+  <p class="subtitle">녹음 파일이나 영상 파일을 업로드하면 AI가 목소리를 학습합니다</p>
+
+  <!-- Step: Upload -->
+  <div id="train-upload">
+    <div class="dropzone" id="train-dropzone">
+      <div class="dropzone-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+      </div>
+      <div class="dropzone-text">파일을 드래그하거나 클릭하여 업로드</div>
+      <div class="dropzone-sub">노래, 인터뷰, 라이브 영상 등 (WAV, MP3, FLAC, MP4, MKV)</div>
+    </div>
+    <input type="file" id="train-file-input" multiple accept=".wav,.mp3,.flac,.ogg,.m4a,.mp4,.mkv,.webm" style="display:none">
+
+    <div class="flex-between mt-16 mb-16" id="file-list-header" style="display:none">
+      <span style="font-size:13px;color:var(--text2)" id="file-count-label"></span>
+      <button class="btn btn-danger" onclick="clearAllFiles()" style="padding:6px 12px;font-size:11px">전체 삭제</button>
+    </div>
+    <div id="file-list"></div>
+
+    <!-- Preprocess Step -->
+    <div id="preprocess-section" style="display:none">
+      <div class="preprocess-card">
+        <div class="preprocess-header">
+          <div class="preprocess-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <div>
+            <h2 style="margin-bottom:2px">전처리</h2>
+            <div style="font-size:12px;color:var(--text3)">보컬 분리, 노이즈 제거, 세그먼트 분할을 자동으로 처리합니다</div>
+          </div>
+        </div>
+
+        <!-- Preprocess: idle -->
+        <div id="preprocess-idle">
+          <div class="alert alert-info" style="margin-bottom:14px">
+            <span>음원에서 보컬만 추출하고 학습에 적합한 구간으로 자동 분할합니다. 이미 깨끗한 보컬 파일이라면 건너뛸 수 있습니다.</span>
+          </div>
+          <div class="flex gap-8">
+            <button class="btn btn-primary" onclick="startPreprocess()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              자동 전처리 시작
+            </button>
+            <button class="skip-link" onclick="skipPreprocess()">건너뛰기 (이미 정리된 보컬)</button>
+          </div>
+        </div>
+
+        <!-- Preprocess: running -->
+        <div id="preprocess-running" style="display:none">
+          <div class="preprocess-progress">
+            <div class="progress-ring">
+              <svg width="100" height="100">
+                <circle class="bg" cx="50" cy="50" r="42"/>
+                <circle class="fg" id="preprocess-ring" cx="50" cy="50" r="42"
+                  stroke-dasharray="264" stroke-dashoffset="264"/>
+              </svg>
+              <div class="progress-text">
+                <div class="progress-pct" id="preprocess-pct">0%</div>
+              </div>
+            </div>
+            <div class="progress-label" id="preprocess-msg">전처리 준비 중...</div>
+          </div>
+        </div>
+
+        <!-- Preprocess: done -->
+        <div id="preprocess-done" style="display:none">
+          <div class="flex gap-8" style="margin-bottom:12px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span style="font-size:14px;font-weight:500;color:var(--emerald)">전처리 완료</span>
+          </div>
+          <div class="preprocess-results">
+            <div class="preprocess-stat">
+              <div class="preprocess-stat-value" id="preprocess-segments">-</div>
+              <div class="preprocess-stat-label">세그먼트 수</div>
+            </div>
+            <div class="preprocess-stat">
+              <div class="preprocess-stat-value" id="preprocess-duration">-</div>
+              <div class="preprocess-stat-label">총 길이</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-24" id="train-settings-card">
+      <h2 style="margin-bottom:16px">학습 설정</h2>
+      <div class="grid-3">
+        <div>
+          <label class="label">모델 이름</label>
+          <input type="text" id="model-name" value="My Voice v1" placeholder="모델 이름">
+        </div>
+        <div>
+          <label class="label">에폭 수</label>
+          <select id="train-epochs">
+            <option value="200">200 (빠른 학습)</option>
+            <option value="300" selected>300 (권장)</option>
+            <option value="500">500 (고품질)</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">샘플레이트</label>
+          <select id="train-sr">
+            <option value="44100" selected>44.1 kHz</option>
+            <option value="48000">48 kHz</option>
+          </select>
+        </div>
+      </div>
+      <div class="alert alert-info mt-16">
+        예상 비용: ~$1.50~3.00 / 예상 시간: 300 에폭 기준 약 3~6시간 / GPU: RTX 4090
+      </div>
+    </div>
+
+    <button class="btn btn-gradient btn-full mt-16" id="btn-start-train" onclick="startTraining()" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+      학습 시작
+    </button>
+  </div>
+
+  <!-- Step: Training Progress -->
+  <div id="train-progress" style="display:none">
+    <div class="progress-container">
+      <div class="progress-ring">
+        <svg width="140" height="140">
+          <circle class="bg" cx="70" cy="70" r="60"/>
+          <circle class="fg" id="train-ring" cx="70" cy="70" r="60"
+            stroke-dasharray="377" stroke-dashoffset="377"/>
+        </svg>
+        <div class="progress-text">
+          <div class="progress-pct" id="train-pct">0%</div>
+        </div>
+      </div>
+      <div class="progress-label" id="train-status-msg">준비 중...</div>
+      <div class="progress-detail" id="train-detail"></div>
+    </div>
+
+    <div class="card">
+      <div class="grid-3" style="text-align:center">
+        <div><div style="font-size:12px;color:var(--text3)">모델</div><div style="font-size:14px;margin-top:4px" id="train-info-name">-</div></div>
+        <div><div style="font-size:12px;color:var(--text3)">에폭</div><div style="font-size:14px;margin-top:4px" id="train-info-epochs">-</div></div>
+        <div><div style="font-size:12px;color:var(--text3)">상태</div><div style="font-size:14px;margin-top:4px" id="train-info-status">-</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step: Done -->
+  <div id="train-done" style="display:none">
+    <div class="progress-container">
+      <div style="width:80px;height:80px;border-radius:50%;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="progress-label" style="font-size:18px;font-weight:600;color:var(--text);margin-top:16px">학습 완료!</div>
+      <div class="progress-detail" id="train-done-detail"></div>
+    </div>
+    <div class="flex" style="justify-content:center">
+      <button class="btn btn-secondary" onclick="resetTraining()">새 모델 학습</button>
+      <button class="btn btn-primary" onclick="showPage('convert')">이 모델로 변환하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ CONVERT ═══════════════════════ -->
+<div id="page-convert" class="page">
+  <h1>음원 변환</h1>
+  <p class="subtitle">학습된 AI 보이스 모델로 새로운 음원을 만들어보세요</p>
+
+  <div id="convert-no-models" class="empty-state card" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+    <p style="margin-top:8px">학습된 모델이 없습니다</p>
+    <button class="btn btn-primary mt-16" onclick="showPage('train')">모델 학습하러 가기</button>
+  </div>
+
+  <div id="convert-main">
+    <div class="card">
+      <label class="label">보이스 모델 선택</label>
+      <div id="convert-model-list"></div>
+    </div>
+
+    <div class="card">
+      <label class="label">변환할 음원 업로드 (여러 파일 가능)</label>
+      <div class="dropzone" id="convert-dropzone" style="padding:24px">
+        <div class="dropzone-text">가이드 보컬 또는 원곡 파일을 업로드</div>
+        <div class="dropzone-sub">WAV, MP3, FLAC 지원 -- 여러 파일을 한번에 드래그하세요</div>
+      </div>
+      <input type="file" id="convert-file-input" multiple accept=".wav,.mp3,.flac,.ogg" style="display:none">
+
+      <!-- Single file display -->
+      <div id="convert-file-info" style="display:none" class="file-item mt-16">
+        <div class="file-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <div class="file-info">
+          <div class="file-name" id="convert-filename"></div>
+          <div class="file-meta" id="convert-filesize"></div>
+        </div>
+        <button class="file-delete" onclick="clearConvertFile()">&#x2715;</button>
+      </div>
+
+      <!-- Batch queue -->
+      <div class="batch-queue" id="batch-queue" style="display:none">
+        <div class="flex-between mb-16" style="margin-top:12px">
+          <span style="font-size:13px;color:var(--text2)" id="batch-count-label"></span>
+          <button class="btn btn-danger" onclick="clearBatchQueue()" style="padding:6px 12px;font-size:11px">전체 삭제</button>
+        </div>
+        <div id="batch-list"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <label class="label">변환 설정</label>
+      <div class="slider-group mt-16">
+        <div class="slider-header">
+          <span class="slider-label">피치 조절 (반음)</span>
+          <span class="slider-value" id="pitch-val">0</span>
+        </div>
+        <input type="range" id="pitch-slider" min="-12" max="12" value="0" oninput="document.getElementById('pitch-val').textContent=this.value">
+      </div>
+      <div class="slider-group">
+        <div class="slider-header">
+          <span class="slider-label">인덱스 비율</span>
+          <span class="slider-value" id="index-val">0.75</span>
+        </div>
+        <input type="range" id="index-slider" min="0" max="100" value="75" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2)">
+      </div>
+    </div>
+
+    <button class="btn btn-gradient btn-full" id="btn-convert" onclick="startConversion()" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+      AI 변환 시작
+    </button>
+  </div>
+
+  <!-- Convert Progress (single file) -->
+  <div id="convert-progress" style="display:none">
+    <div class="progress-container">
+      <div class="progress-ring">
+        <svg width="140" height="140">
+          <circle class="bg" cx="70" cy="70" r="60"/>
+          <circle class="fg" id="convert-ring" cx="70" cy="70" r="60"
+            stroke-dasharray="377" stroke-dashoffset="377"/>
+        </svg>
+        <div class="progress-text">
+          <div class="progress-pct" id="convert-pct">0%</div>
+        </div>
+      </div>
+      <div class="progress-label" id="convert-status-msg">GPU 변환 중...</div>
+    </div>
+  </div>
+
+  <!-- Convert Done (single file) -->
+  <div id="convert-done" style="display:none">
+    <div class="card" style="border-color:rgba(16,185,129,0.3)">
+      <div class="flex gap-16">
+        <div style="width:48px;height:48px;border-radius:14px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:600">변환 완료</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px" id="convert-done-detail"></div>
+        </div>
+      </div>
+      <!-- Inline audio player for the result -->
+      <div id="convert-result-player" class="audio-player mt-16" style="display:none">
+        <button class="audio-play-btn" id="result-play-btn" onclick="toggleResultAudio()">
+          <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
+        </button>
+        <canvas class="audio-waveform" id="result-waveform"></canvas>
+        <span class="audio-time" id="result-audio-time">0:00</span>
+        <audio id="result-audio" preload="auto"></audio>
+      </div>
+      <div class="flex mt-16 gap-8">
+        <a class="btn btn-primary" id="convert-download-btn" href="#" download>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          다운로드
+        </a>
+        <button class="btn btn-secondary" onclick="resetConversion()">다른 곡 변환</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Batch Conversion Progress -->
+  <div id="batch-progress" style="display:none">
+    <div class="card">
+      <div class="flex-between">
+        <h2>일괄 변환 진행 중</h2>
+        <span class="badge badge-violet" id="batch-progress-counter">0 / 0</span>
+      </div>
+      <div id="batch-progress-list" class="mt-16"></div>
+      <div class="batch-overall mt-16">
+        <div class="flex-between">
+          <span style="font-size:12px;color:var(--text2)">전체 진행률</span>
+          <span style="font-size:12px;color:var(--violet);font-family:'JetBrains Mono',monospace" id="batch-overall-pct">0%</span>
+        </div>
+        <div class="batch-progress-bar">
+          <div class="batch-progress-fill" id="batch-overall-fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Batch Done -->
+  <div id="batch-done" style="display:none">
+    <div class="card" style="border-color:rgba(16,185,129,0.3)">
+      <div class="flex gap-16">
+        <div style="width:48px;height:48px;border-radius:14px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:600">일괄 변환 완료</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px" id="batch-done-detail"></div>
+        </div>
+      </div>
+      <div id="batch-done-results" class="mt-16"></div>
+      <div class="flex mt-16 gap-8">
+        <button class="btn btn-secondary" onclick="resetConversion()">다른 곡 변환</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ SETTINGS ═══════════════════════ -->
+<div id="page-settings" class="page">
+  <h1>설정</h1>
+  <p class="subtitle">RunPod GPU API 연결 설정</p>
+
+  <div class="card">
+    <h2 style="margin-bottom:16px">RunPod API 설정</h2>
+    <div class="alert alert-info">
+      <a href="https://www.runpod.io" target="_blank" style="color:#b4a0f0;text-decoration:underline">runpod.io</a>에서 계정을 만들고, Serverless Endpoint를 배포한 후 아래 정보를 입력하세요.
+    </div>
+    <div style="margin-top:16px">
+      <label class="label">RunPod API Key</label>
+      <input type="text" id="cfg-api-key" placeholder="rpa_xxxxxxxxxxxxxxxx">
+    </div>
+    <div style="margin-top:12px">
+      <label class="label">Serverless Endpoint ID</label>
+      <input type="text" id="cfg-endpoint-id" placeholder="xxxxxxxxxxxxxxxx">
+    </div>
+    <button class="btn btn-primary mt-16" onclick="saveSettings()">설정 저장</button>
+    <div id="settings-msg" style="font-size:12px;margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom:12px">시스템 정보</h2>
+    <div style="font-size:13px;color:var(--text2);line-height:2">
+      <div>AI Voice Studio v1.0.0</div>
+      <div>보컬 엔진: RVC v2 (Applio)</div>
+      <div>GPU: RunPod Serverless (RTX 4090)</div>
+      <div>데이터베이스: SQLite (로컬)</div>
+    </div>
+  </div>
+</div>
+
+</div>
+</div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// State
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let uploadedFiles = [];
+let models = [];
+let selectedModelId = null;
+let convertFile = null;
+let currentTrainJobId = null;
+let currentConvertJobId = null;
+let preprocessJobId = null;
+let preprocessDone = false;
+
+// Batch conversion state
+let batchFiles = [];
+let batchResults = [];
+let batchProcessing = false;
+
+// Connection check
+let connectionOk = null;
+let connectionTimer = null;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Toast Notification System
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const TOAST_ICONS = {
+  success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+  error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+  warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+};
+
+function toast(message, type = 'info', duration = 4000) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.innerHTML =
+    '<div class="toast-icon">' + (TOAST_ICONS[type] || TOAST_ICONS.info) + '</div>' +
+    '<div class="toast-body">' + message + '</div>' +
+    '<button class="toast-close" onclick="dismissToast(this.parentElement)">&times;</button>';
+  container.appendChild(el);
+
+  if (duration > 0) {
+    setTimeout(function() { dismissToast(el); }, duration);
+  }
+  return el;
+}
+
+function dismissToast(el) {
+  if (!el || el.classList.contains('removing')) return;
+  el.classList.add('removing');
+  setTimeout(function() { el.remove(); }, 250);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Connection Status Indicator
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function checkConnection(showToast) {
+  var dot = document.getElementById('connection-dot');
+  var tip = document.getElementById('connection-tooltip');
+  dot.className = 'connection-dot checking';
+  tip.textContent = '확인 중...';
+
+  try {
+    var config = await api('/config');
+    if (!config.is_configured) {
+      dot.className = 'connection-dot offline';
+      tip.textContent = 'API 미설정';
+      connectionOk = false;
+      if (showToast) toast('RunPod API가 설정되지 않았습니다', 'warning');
+      return;
+    }
+    // Try a health-check endpoint
+    try {
+      await api('/health');
+      dot.className = 'connection-dot online';
+      tip.textContent = 'RunPod 연결됨';
+      connectionOk = true;
+      if (showToast) toast('RunPod 연결 정상', 'success');
+    } catch(e) {
+      // /health may not exist; if config is set, treat as configured
+      dot.className = 'connection-dot online';
+      tip.textContent = 'API 설정됨';
+      connectionOk = true;
+      if (showToast) toast('RunPod API 설정 확인됨', 'info');
+    }
+  } catch(e) {
+    dot.className = 'connection-dot offline';
+    tip.textContent = '연결 실패';
+    connectionOk = false;
+    if (showToast) toast('서버에 연결할 수 없습니다', 'error');
+  }
+}
+
+function startConnectionPolling() {
+  checkConnection(false);
+  connectionTimer = setInterval(function() { checkConnection(false); }, 60000);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Audio Player (Canvas Waveform)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function createAudioPlayer(audioUrl, containerId) {
+  var uid = 'ap_' + Math.random().toString(36).substr(2, 8);
+  return '<div class="audio-player" id="' + uid + '">' +
+    '<button class="audio-play-btn" onclick="apToggle(\'' + uid + '\')">' +
+      '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>' +
+    '</button>' +
+    '<canvas class="audio-waveform" id="' + uid + '_wave"></canvas>' +
+    '<span class="audio-time" id="' + uid + '_time">0:00</span>' +
+    '<audio id="' + uid + '_audio" src="' + audioUrl + '" preload="metadata"></audio>' +
+  '</div>';
+}
+
+var apWaveData = {};
+
+function apToggle(uid) {
+  var audio = document.getElementById(uid + '_audio');
+  var btn = document.querySelector('#' + uid + ' .audio-play-btn');
+  if (!audio) return;
+
+  if (audio.paused) {
+    // Pause all other players
+    document.querySelectorAll('.audio-player audio').forEach(function(a) {
+      if (a.id !== uid + '_audio' && !a.paused) {
+        a.pause();
+        var otherUid = a.id.replace('_audio', '');
+        var otherBtn = document.querySelector('#' + otherUid + ' .audio-play-btn');
+        if (otherBtn) otherBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+      }
+    });
+    audio.play();
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+
+    if (!apWaveData[uid]) {
+      apDrawWaveform(uid);
+    }
+
+    audio.ontimeupdate = function() { apUpdateTime(uid); };
+    audio.onended = function() {
+      btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+    };
+  } else {
+    audio.pause();
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+  }
+}
+
+function apUpdateTime(uid) {
+  var audio = document.getElementById(uid + '_audio');
+  var timeEl = document.getElementById(uid + '_time');
+  if (!audio || !timeEl) return;
+  var t = audio.currentTime;
+  var m = Math.floor(t / 60);
+  var s = Math.floor(t % 60);
+  timeEl.textContent = m + ':' + s.toString().padStart(2, '0');
+  apRedraw(uid, audio.currentTime / (audio.duration || 1));
+}
+
+function apDrawWaveform(uid) {
+  var canvas = document.getElementById(uid + '_wave');
+  var audio = document.getElementById(uid + '_audio');
+  if (!canvas || !audio) return;
+
+  var ctx = canvas.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  var rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+
+  var barCount = Math.floor(rect.width / 3);
+  var bars = [];
+  var seed = 0;
+  var src = audio.src || uid;
+  for (var i = 0; i < src.length; i++) seed = ((seed << 5) - seed) + src.charCodeAt(i);
+  for (var i = 0; i < barCount; i++) {
+    seed = (seed * 16807 + 7) % 2147483647;
+    bars.push(0.15 + (seed % 1000) / 1000 * 0.85);
+  }
+  apWaveData[uid] = { bars: bars, width: rect.width, height: rect.height };
+
+  canvas.onclick = function(e) {
+    var pct = e.offsetX / rect.width;
+    if (audio.duration) audio.currentTime = pct * audio.duration;
+  };
+
+  apRedraw(uid, 0);
+}
+
+function apRedraw(uid, progress) {
+  var data = apWaveData[uid];
+  if (!data) return;
+  var canvas = document.getElementById(uid + '_wave');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var w = data.width;
+  var h = data.height;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+
+  var barW = 2;
+  var gap = 1;
+  var bars = data.bars;
+  var playedIdx = Math.floor(progress * bars.length);
+
+  for (var i = 0; i < bars.length; i++) {
+    var x = i * (barW + gap);
+    var barH = bars[i] * h * 0.9;
+    var y = (h - barH) / 2;
+    ctx.fillStyle = i <= playedIdx
+      ? 'rgba(139, 92, 246, 0.8)'
+      : 'rgba(255, 255, 255, 0.12)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, barW, barH, 1);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Navigation
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelector('[data-page="' + page + '"]').classList.add('active');
+
+  if (page === 'home') loadDashboard();
+  if (page === 'convert') loadModels();
+  if (page === 'settings') loadSettings();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// API helpers
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function api(path, opts) {
+  opts = opts || {};
+  var res = await fetch('/api' + path, opts);
+  if (!res.ok) {
+    var err = await res.json().catch(function() { return { detail: 'Error' }; });
+    throw new Error(err.detail || 'Request failed');
+  }
+  return res.json();
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1024/1024).toFixed(1) + ' MB';
+}
+
+function formatDuration(seconds) {
+  var m = Math.floor(seconds / 60);
+  var s = Math.floor(seconds % 60);
+  return m + '분 ' + s + '초';
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Dashboard
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadDashboard() {
+  try {
+    var stats = await api('/stats');
+    document.getElementById('stat-files').textContent = stats.files;
+    document.getElementById('stat-models').textContent = stats.models;
+    document.getElementById('stat-converts').textContent = stats.conversions;
+    document.getElementById('stat-size').textContent = stats.total_size_mb + 'MB';
+  } catch(e) {}
+
+  try {
+    var config = await api('/config');
+    document.getElementById('config-alert').style.display = config.is_configured ? 'none' : 'flex';
+  } catch(e) {}
+
+  try {
+    var data = await api('/jobs');
+    var jobs = data.jobs;
+    var el = document.getElementById('recent-jobs');
+    if (!jobs.length) {
+      el.innerHTML = '<div class="empty-state"><p>아직 작업이 없습니다</p></div>';
+      return;
+    }
+    el.innerHTML = jobs.slice(0, 10).map(function(j) {
+      return '<div class="job-item">' +
+        '<div class="job-icon ' + j.job_type + '">' +
+          (j.job_type === 'train'
+            ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>'
+            : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>') +
+        '</div>' +
+        '<div style="flex:1">' +
+          '<div style="font-size:13px">' + (j.job_type === 'train' ? '모델 학습' : '음원 변환') + '</div>' +
+          '<div style="font-size:11px;color:var(--text3)">' + (j.message || '') + '</div>' +
+        '</div>' +
+        '<span class="badge ' + (j.status === 'completed' ? 'badge-green' : j.status === 'failed' ? 'badge-red' : 'badge-amber') + '">' +
+          (j.status === 'completed' ? '완료' : j.status === 'failed' ? '실패' : '진행중') +
+        '</span>' +
+        '<span style="font-size:11px;color:var(--text3)">' + (j.created_at || '') + '</span>' +
+      '</div>';
+    }).join('');
+  } catch(e) {}
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// File Upload (Training)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var trainDropzone = document.getElementById('train-dropzone');
+var trainFileInput = document.getElementById('train-file-input');
+
+trainDropzone.addEventListener('click', function() { trainFileInput.click(); });
+trainDropzone.addEventListener('dragover', function(e) { e.preventDefault(); trainDropzone.classList.add('drag-over'); });
+trainDropzone.addEventListener('dragleave', function() { trainDropzone.classList.remove('drag-over'); });
+trainDropzone.addEventListener('drop', function(e) {
+  e.preventDefault();
+  trainDropzone.classList.remove('drag-over');
+  handleTrainFiles(e.dataTransfer.files);
+});
+trainFileInput.addEventListener('change', function(e) { handleTrainFiles(e.target.files); });
+
+async function handleTrainFiles(fileList) {
+  var form = new FormData();
+  for (var i = 0; i < fileList.length; i++) form.append('files', fileList[i]);
+  form.append('category', 'vocal');
+
+  try {
+    var res = await api('/upload', { method: 'POST', body: form });
+    uploadedFiles = uploadedFiles.concat(res.files);
+    renderFileList();
+    toast(res.files.length + '개 파일 업로드 완료', 'success');
+  } catch(e) {
+    toast('업로드 실패: ' + e.message, 'error');
+  }
+}
+
+function renderFileList() {
+  var listEl = document.getElementById('file-list');
+  var headerEl = document.getElementById('file-list-header');
+  var btnTrain = document.getElementById('btn-start-train');
+  var preprocessSection = document.getElementById('preprocess-section');
+
+  if (!uploadedFiles.length) {
+    listEl.innerHTML = '';
+    headerEl.style.display = 'none';
+    btnTrain.disabled = true;
+    preprocessSection.style.display = 'none';
+    preprocessDone = false;
+    return;
+  }
+
+  headerEl.style.display = 'flex';
+  var totalSize = uploadedFiles.reduce(function(a, f) { return a + f.size; }, 0);
+  document.getElementById('file-count-label').textContent =
+    uploadedFiles.length + '개 파일 \u00B7 ' + formatSize(totalSize);
+
+  // Show preprocess section when files exist
+  preprocessSection.style.display = 'block';
+
+  // Enable train button only if preprocess is done or skipped
+  btnTrain.disabled = !preprocessDone;
+
+  var audioExts = ['.wav', '.mp3', '.flac', '.ogg', '.m4a'];
+  listEl.innerHTML = uploadedFiles.map(function(f) {
+    var isAudio = audioExts.some(function(ext) { return f.original_name.toLowerCase().endsWith(ext); });
+    var playerHtml = (isAudio && f.url) ? createAudioPlayer(f.url, 'fp_' + f.id) : '';
+
+    return '<div class="file-item" style="flex-wrap:wrap">' +
+      '<div class="file-icon">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
+      '</div>' +
+      '<div class="file-info">' +
+        '<div class="file-name">' + f.original_name + '</div>' +
+        '<div class="file-meta">' + formatSize(f.size) + ' \u00B7 ' + f.type + '</div>' +
+      '</div>' +
+      '<button class="file-delete" onclick="deleteFile(' + f.id + ')">&#x2715;</button>' +
+      (playerHtml ? '<div style="width:100%;padding-left:48px">' + playerHtml + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  // Initialize waveforms after render
+  setTimeout(function() {
+    document.querySelectorAll('#file-list .audio-player').forEach(function(ap) {
+      var uid = ap.id;
+      if (uid && !apWaveData[uid]) apDrawWaveform(uid);
+    });
+  }, 50);
+}
+
+async function deleteFile(id) {
+  await api('/files/' + id, { method: 'DELETE' });
+  uploadedFiles = uploadedFiles.filter(function(f) { return f.id !== id; });
+  renderFileList();
+}
+
+async function clearAllFiles() {
+  for (var i = 0; i < uploadedFiles.length; i++) {
+    await api('/files/' + uploadedFiles[i].id, { method: 'DELETE' });
+  }
+  uploadedFiles = [];
+  renderFileList();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Preprocess
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function startPreprocess() {
+  var fileIds = uploadedFiles.map(function(f) { return f.id; }).join(',');
+  if (!fileIds) {
+    toast('전처리할 파일이 없습니다', 'warning');
+    return;
+  }
+
+  document.getElementById('preprocess-idle').style.display = 'none';
+  document.getElementById('preprocess-running').style.display = 'block';
+  document.getElementById('preprocess-done').style.display = 'none';
+
+  try {
+    var form = new FormData();
+    form.append('file_ids', fileIds);
+    var res = await api('/preprocess', { method: 'POST', body: form });
+    preprocessJobId = res.job_id;
+    pollPreprocessStatus();
+  } catch(e) {
+    toast('전처리 시작 실패: ' + e.message, 'error');
+    document.getElementById('preprocess-idle').style.display = 'block';
+    document.getElementById('preprocess-running').style.display = 'none';
+  }
+}
+
+async function pollPreprocessStatus() {
+  if (!preprocessJobId) return;
+  try {
+    var job = await api('/jobs/' + preprocessJobId);
+    var pct = job.progress || 0;
+    var circ = 2 * Math.PI * 42;
+    var offset = circ - (pct / 100) * circ;
+
+    document.getElementById('preprocess-ring').style.strokeDashoffset = offset;
+    document.getElementById('preprocess-pct').textContent = pct + '%';
+    document.getElementById('preprocess-msg').textContent = job.message || '전처리 중...';
+
+    if (job.status === 'completed') {
+      document.getElementById('preprocess-running').style.display = 'none';
+      document.getElementById('preprocess-done').style.display = 'block';
+
+      var segments = (job.result && job.result.segment_count != null) ? job.result.segment_count : '-';
+      var duration = job.result ? job.result.total_duration : null;
+      document.getElementById('preprocess-segments').textContent = segments;
+      document.getElementById('preprocess-duration').textContent =
+        duration ? formatDuration(duration) : '-';
+
+      preprocessDone = true;
+      document.getElementById('btn-start-train').disabled = false;
+      toast('전처리 완료: ' + segments + '개 세그먼트', 'success');
+      return;
+    }
+    if (job.status === 'failed') {
+      document.getElementById('preprocess-msg').textContent = job.message || '전처리 실패';
+      toast('전처리 실패: ' + (job.message || ''), 'error');
+      setTimeout(function() {
+        document.getElementById('preprocess-running').style.display = 'none';
+        document.getElementById('preprocess-idle').style.display = 'block';
+      }, 2000);
+      return;
+    }
+
+    setTimeout(pollPreprocessStatus, 3000);
+  } catch(e) {
+    setTimeout(pollPreprocessStatus, 5000);
+  }
+}
+
+function skipPreprocess() {
+  preprocessDone = true;
+  document.getElementById('preprocess-idle').style.display = 'none';
+  document.getElementById('preprocess-done').style.display = 'block';
+  document.getElementById('preprocess-segments').textContent = '-';
+  document.getElementById('preprocess-duration').textContent = '건너뜀';
+  document.getElementById('btn-start-train').disabled = false;
+  toast('전처리를 건너뛰었습니다', 'info');
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Training
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function startTraining() {
+  var modelName = document.getElementById('model-name').value || 'My Voice';
+  var epochs = document.getElementById('train-epochs').value;
+  var sr = document.getElementById('train-sr').value;
+  var fileIds = uploadedFiles.map(function(f) { return f.id; }).join(',');
+
+  var form = new FormData();
+  form.append('model_name', modelName);
+  form.append('epochs', epochs);
+  form.append('sample_rate', sr);
+  form.append('file_ids', fileIds);
+
+  try {
+    document.getElementById('btn-start-train').disabled = true;
+    var res = await api('/train', { method: 'POST', body: form });
+    currentTrainJobId = res.job_id;
+
+    document.getElementById('train-upload').style.display = 'none';
+    document.getElementById('train-progress').style.display = 'block';
+    document.getElementById('train-info-name').textContent = modelName;
+    document.getElementById('train-info-epochs').textContent = epochs;
+
+    toast('학습이 시작되었습니다', 'info');
+    pollTrainingStatus();
+  } catch(e) {
+    toast('학습 시작 실패: ' + e.message, 'error');
+    document.getElementById('btn-start-train').disabled = false;
+  }
+}
+
+async function pollTrainingStatus() {
+  if (!currentTrainJobId) return;
+  try {
+    var job = await api('/jobs/' + currentTrainJobId);
+    var pct = job.progress || 0;
+    var circ = 2 * Math.PI * 60;
+    var offset = circ - (pct / 100) * circ;
+
+    document.getElementById('train-ring').style.strokeDashoffset = offset;
+    document.getElementById('train-pct').textContent = pct + '%';
+    document.getElementById('train-status-msg').textContent = job.message || '';
+    document.getElementById('train-info-status').textContent = job.status;
+
+    if (job.status === 'completed') {
+      document.getElementById('train-progress').style.display = 'none';
+      document.getElementById('train-done').style.display = 'block';
+      document.getElementById('train-done-detail').textContent =
+        (job.result && job.result.model_name)
+          ? '모델 "' + job.result.model_name + '" 이 준비되었습니다'
+          : '학습이 완료되었습니다';
+      toast('학습 완료!', 'success');
+      return;
+    }
+    if (job.status === 'failed') {
+      document.getElementById('train-status-msg').textContent = job.message || '학습 실패';
+      document.getElementById('train-info-status').textContent = '실패';
+      toast('학습 실패: ' + (job.message || ''), 'error');
+      return;
+    }
+
+    setTimeout(pollTrainingStatus, 5000);
+  } catch(e) {
+    setTimeout(pollTrainingStatus, 10000);
+  }
+}
+
+function resetTraining() {
+  currentTrainJobId = null;
+  preprocessJobId = null;
+  preprocessDone = false;
+  document.getElementById('train-upload').style.display = 'block';
+  document.getElementById('train-progress').style.display = 'none';
+  document.getElementById('train-done').style.display = 'none';
+  document.getElementById('btn-start-train').disabled = false;
+  // Reset preprocess UI
+  document.getElementById('preprocess-idle').style.display = 'block';
+  document.getElementById('preprocess-running').style.display = 'none';
+  document.getElementById('preprocess-done').style.display = 'none';
+  uploadedFiles = [];
+  renderFileList();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Convert -- Single + Batch
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var convertDropzone = document.getElementById('convert-dropzone');
+var convertFileInput = document.getElementById('convert-file-input');
+
+convertDropzone.addEventListener('click', function() { convertFileInput.click(); });
+convertDropzone.addEventListener('dragover', function(e) { e.preventDefault(); convertDropzone.classList.add('drag-over'); });
+convertDropzone.addEventListener('dragleave', function() { convertDropzone.classList.remove('drag-over'); });
+convertDropzone.addEventListener('drop', function(e) {
+  e.preventDefault();
+  convertDropzone.classList.remove('drag-over');
+  handleConvertFiles(e.dataTransfer.files);
+});
+convertFileInput.addEventListener('change', function(e) { handleConvertFiles(e.target.files); });
+
+function handleConvertFiles(fileList) {
+  if (fileList.length === 1 && batchFiles.length === 0) {
+    setConvertFile(fileList[0]);
+  } else {
+    for (var i = 0; i < fileList.length; i++) {
+      batchFiles.push(fileList[i]);
+    }
+    if (!convertFile && batchFiles.length > 0) convertFile = batchFiles[0];
+    renderBatchQueue();
+    updateConvertBtn();
+  }
+}
+
+function setConvertFile(file) {
+  convertFile = file;
+  batchFiles = [file];
+  document.getElementById('convert-dropzone').style.display = 'none';
+  document.getElementById('convert-file-info').style.display = 'flex';
+  document.getElementById('convert-filename').textContent = file.name;
+  document.getElementById('convert-filesize').textContent = formatSize(file.size);
+  document.getElementById('batch-queue').style.display = 'none';
+  updateConvertBtn();
+}
+
+function clearConvertFile() {
+  convertFile = null;
+  batchFiles = [];
+  document.getElementById('convert-dropzone').style.display = 'block';
+  document.getElementById('convert-file-info').style.display = 'none';
+  document.getElementById('batch-queue').style.display = 'none';
+  updateConvertBtn();
+}
+
+function renderBatchQueue() {
+  var queueEl = document.getElementById('batch-queue');
+  var listEl = document.getElementById('batch-list');
+
+  if (batchFiles.length <= 1) {
+    queueEl.style.display = 'none';
+    if (batchFiles.length === 1) {
+      document.getElementById('convert-dropzone').style.display = 'none';
+      document.getElementById('convert-file-info').style.display = 'flex';
+      document.getElementById('convert-filename').textContent = batchFiles[0].name;
+      document.getElementById('convert-filesize').textContent = formatSize(batchFiles[0].size);
+    }
+    return;
+  }
+
+  document.getElementById('convert-file-info').style.display = 'none';
+  document.getElementById('convert-dropzone').style.display = 'none';
+  queueEl.style.display = 'block';
+  document.getElementById('batch-count-label').textContent =
+    batchFiles.length + '개 파일 대기 중';
+
+  listEl.innerHTML = batchFiles.map(function(f, i) {
+    return '<div class="batch-item">' +
+      '<div class="batch-item-icon pending">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
+      '</div>' +
+      '<div class="batch-item-info">' +
+        '<div class="batch-item-name">' + f.name + '</div>' +
+        '<div class="batch-item-status">' + formatSize(f.size) + ' \u00B7 대기 중</div>' +
+      '</div>' +
+      '<button class="batch-remove" onclick="removeBatchItem(' + i + ')">&#x2715;</button>' +
+    '</div>';
+  }).join('');
+}
+
+function removeBatchItem(index) {
+  batchFiles.splice(index, 1);
+  if (batchFiles.length === 0) {
+    clearConvertFile();
+  } else {
+    convertFile = batchFiles[0];
+    renderBatchQueue();
+  }
+  updateConvertBtn();
+}
+
+function clearBatchQueue() {
+  batchFiles = [];
+  clearConvertFile();
+}
+
+async function loadModels() {
+  try {
+    var res = await api('/models');
+    models = res.models;
+
+    if (!models.length) {
+      document.getElementById('convert-no-models').style.display = 'block';
+      document.getElementById('convert-main').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('convert-no-models').style.display = 'none';
+    document.getElementById('convert-main').style.display = 'block';
+
+    if (!selectedModelId && models.length) selectedModelId = models[0].id;
+
+    document.getElementById('convert-model-list').innerHTML = models.map(function(m) {
+      return '<div class="model-card ' + (m.id === selectedModelId ? 'selected' : '') + '" onclick="selectModel(' + m.id + ')">' +
+        '<div class="model-icon">' +
+          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>' +
+        '</div>' +
+        '<div style="flex:1">' +
+          '<div style="font-size:14px;font-weight:500">' + m.name + '</div>' +
+          '<div style="font-size:11px;color:var(--text3)">' + (m.epochs || 0) + ' 에폭 \u00B7 ' + (m.created_at || '') + '</div>' +
+        '</div>' +
+        '<span class="badge badge-green">준비</span>' +
+      '</div>';
+    }).join('');
+
+    updateConvertBtn();
+  } catch(e) {}
+}
+
+function selectModel(id) {
+  selectedModelId = id;
+  document.querySelectorAll('.model-card').forEach(function(c) { c.classList.remove('selected'); });
+  event.currentTarget.classList.add('selected');
+  updateConvertBtn();
+}
+
+function updateConvertBtn() {
+  var hasFiles = batchFiles.length > 0 || convertFile;
+  document.getElementById('btn-convert').disabled = !(selectedModelId && hasFiles);
+}
+
+async function startConversion() {
+  if (!selectedModelId) return;
+
+  if (batchFiles.length > 1) {
+    startBatchConversion();
+    return;
+  }
+
+  if (!convertFile) return;
+
+  var form = new FormData();
+  form.append('model_id', selectedModelId);
+  form.append('pitch_shift', document.getElementById('pitch-slider').value);
+  form.append('index_rate', (document.getElementById('index-slider').value / 100).toFixed(2));
+  form.append('audio', convertFile);
+
+  try {
+    document.getElementById('btn-convert').disabled = true;
+    var res = await api('/convert', { method: 'POST', body: form });
+    currentConvertJobId = res.job_id;
+
+    document.getElementById('convert-main').style.display = 'none';
+    document.getElementById('convert-progress').style.display = 'block';
+
+    toast('변환이 시작되었습니다', 'info');
+    pollConvertStatus();
+  } catch(e) {
+    toast('변환 시작 실패: ' + e.message, 'error');
+    document.getElementById('btn-convert').disabled = false;
+  }
+}
+
+async function pollConvertStatus() {
+  if (!currentConvertJobId) return;
+  try {
+    var job = await api('/jobs/' + currentConvertJobId);
+    var pct = job.progress || 0;
+    var circ = 2 * Math.PI * 60;
+    var offset = circ - (pct / 100) * circ;
+
+    document.getElementById('convert-ring').style.strokeDashoffset = offset;
+    document.getElementById('convert-pct').textContent = pct + '%';
+    document.getElementById('convert-status-msg').textContent = job.message || '';
+
+    if (job.status === 'completed') {
+      document.getElementById('convert-progress').style.display = 'none';
+      document.getElementById('convert-done').style.display = 'block';
+
+      var outFile = job.result ? job.result.output_file : null;
+      var time = job.result ? job.result.processing_time : null;
+      document.getElementById('convert-done-detail').textContent =
+        '처리 시간: ' + (time ? time.toFixed(1) + '초' : '-');
+
+      if (outFile) {
+        var dlUrl = '/api/download/' + outFile;
+        document.getElementById('convert-download-btn').href = dlUrl;
+
+        // Show audio player for result
+        var playerEl = document.getElementById('convert-result-player');
+        var audioEl = document.getElementById('result-audio');
+        if (playerEl && audioEl) {
+          audioEl.src = dlUrl;
+          playerEl.style.display = 'flex';
+          setTimeout(function() {
+            var canvas = document.getElementById('result-waveform');
+            if (canvas) {
+              var ctx = canvas.getContext('2d');
+              var dpr = window.devicePixelRatio || 1;
+              var rect = canvas.getBoundingClientRect();
+              canvas.width = rect.width * dpr;
+              canvas.height = rect.height * dpr;
+              var barCount = Math.floor(rect.width / 3);
+              var bars = [];
+              var seed = 42;
+              for (var i = 0; i < barCount; i++) {
+                seed = (seed * 16807 + 7) % 2147483647;
+                bars.push(0.15 + (seed % 1000) / 1000 * 0.85);
+              }
+              apWaveData['result_player'] = { bars: bars, width: rect.width, height: rect.height };
+              canvas.onclick = function(e) {
+                var p = e.offsetX / rect.width;
+                if (audioEl.duration) audioEl.currentTime = p * audioEl.duration;
+              };
+              apRedraw('result_player', 0);
+
+              audioEl.ontimeupdate = function() {
+                var t = audioEl.currentTime;
+                var m = Math.floor(t / 60);
+                var s = Math.floor(t % 60);
+                document.getElementById('result-audio-time').textContent = m + ':' + s.toString().padStart(2, '0');
+                apRedraw('result_player', audioEl.currentTime / (audioEl.duration || 1));
+              };
+            }
+          }, 100);
+        }
+      }
+      toast('변환이 완료되었습니다', 'success');
+      return;
+    }
+    if (job.status === 'failed') {
+      document.getElementById('convert-status-msg').textContent = job.message || '변환 실패';
+      toast('변환 실패: ' + (job.message || ''), 'error');
+      return;
+    }
+
+    setTimeout(pollConvertStatus, 3000);
+  } catch(e) {
+    setTimeout(pollConvertStatus, 5000);
+  }
+}
+
+function toggleResultAudio() {
+  var audio = document.getElementById('result-audio');
+  var btn = document.getElementById('result-play-btn');
+  if (!audio) return;
+  if (audio.paused) {
+    audio.play();
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>';
+    audio.onended = function() {
+      btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+    };
+  } else {
+    audio.pause();
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Batch Conversion
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function startBatchConversion() {
+  if (!selectedModelId || batchFiles.length === 0) return;
+
+  batchProcessing = true;
+  batchResults = batchFiles.map(function(f) {
+    return { file: f, jobId: null, status: 'pending', resultUrl: null, error: null };
+  });
+
+  document.getElementById('convert-main').style.display = 'none';
+  document.getElementById('batch-progress').style.display = 'block';
+  renderBatchProgress();
+
+  toast(batchFiles.length + '개 파일 일괄 변환 시작', 'info');
+
+  for (var i = 0; i < batchResults.length; i++) {
+    batchResults[i].status = 'processing';
+    renderBatchProgress();
+
+    try {
+      var form = new FormData();
+      form.append('model_id', selectedModelId);
+      form.append('pitch_shift', document.getElementById('pitch-slider').value);
+      form.append('index_rate', (document.getElementById('index-slider').value / 100).toFixed(2));
+      form.append('audio', batchResults[i].file);
+
+      var res = await api('/convert', { method: 'POST', body: form });
+      batchResults[i].jobId = res.job_id;
+
+      await pollBatchItem(i);
+    } catch(e) {
+      batchResults[i].status = 'failed';
+      batchResults[i].error = e.message;
+    }
+    renderBatchProgress();
+  }
+
+  batchProcessing = false;
+  document.getElementById('batch-progress').style.display = 'none';
+  document.getElementById('batch-done').style.display = 'block';
+
+  var succeeded = batchResults.filter(function(r) { return r.status === 'completed'; }).length;
+  var failed = batchResults.filter(function(r) { return r.status === 'failed'; }).length;
+  document.getElementById('batch-done-detail').textContent =
+    succeeded + '개 성공' + (failed > 0 ? ', ' + failed + '개 실패' : '');
+
+  document.getElementById('batch-done-results').innerHTML = batchResults.map(function(r, idx) {
+    var icon = r.status === 'completed'
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    var dlBtn = r.resultUrl
+      ? '<a class="btn btn-secondary" href="' + r.resultUrl + '" download style="padding:6px 12px;font-size:11px">다운로드</a>'
+      : '';
+    var playerHtml = r.resultUrl ? createAudioPlayer(r.resultUrl, 'br_' + idx) : '';
+    return '<div class="batch-item ' + r.status + '" style="flex-wrap:wrap">' +
+      '<div class="batch-item-icon ' + r.status + '">' + icon + '</div>' +
+      '<div class="batch-item-info">' +
+        '<div class="batch-item-name">' + r.file.name + '</div>' +
+        '<div class="batch-item-status">' + (r.status === 'completed' ? '완료' : (r.error || '실패')) + '</div>' +
+      '</div>' +
+      dlBtn +
+      (playerHtml ? '<div style="width:100%;padding-left:44px">' + playerHtml + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  setTimeout(function() {
+    document.querySelectorAll('#batch-done-results .audio-player').forEach(function(ap) {
+      var uid = ap.id;
+      if (uid && !apWaveData[uid]) apDrawWaveform(uid);
+    });
+  }, 100);
+
+  toast('일괄 변환 완료', 'success');
+}
+
+function pollBatchItem(index) {
+  return new Promise(function(resolve) {
+    var poll = async function() {
+      var r = batchResults[index];
+      if (!r.jobId) { resolve(); return; }
+      try {
+        var job = await api('/jobs/' + r.jobId);
+
+        if (job.status === 'completed') {
+          r.status = 'completed';
+          var outFile = job.result ? job.result.output_file : null;
+          if (outFile) r.resultUrl = '/api/download/' + outFile;
+          renderBatchProgress();
+          resolve();
+          return;
+        }
+        if (job.status === 'failed') {
+          r.status = 'failed';
+          r.error = job.message || '변환 실패';
+          renderBatchProgress();
+          resolve();
+          return;
+        }
+
+        renderBatchProgress();
+        setTimeout(poll, 3000);
+      } catch(e) {
+        setTimeout(poll, 5000);
+      }
+    };
+    poll();
+  });
+}
+
+function renderBatchProgress() {
+  var total = batchResults.length;
+  var done = batchResults.filter(function(r) { return r.status === 'completed' || r.status === 'failed'; }).length;
+  var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  document.getElementById('batch-progress-counter').textContent = done + ' / ' + total;
+  document.getElementById('batch-overall-pct').textContent = pct + '%';
+  document.getElementById('batch-overall-fill').style.width = pct + '%';
+
+  var listEl = document.getElementById('batch-progress-list');
+  listEl.innerHTML = batchResults.map(function(r) {
+    var iconMap = {
+      pending: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>',
+      processing: '<div class="spinner" style="width:14px;height:14px;border-width:2px"></div>',
+      completed: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+      failed: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+    };
+    var statusText = { pending: '대기 중', processing: '변환 중...', completed: '완료', failed: '실패' };
+    return '<div class="batch-item ' + r.status + '">' +
+      '<div class="batch-item-icon ' + r.status + '">' + iconMap[r.status] + '</div>' +
+      '<div class="batch-item-info">' +
+        '<div class="batch-item-name">' + r.file.name + '</div>' +
+        '<div class="batch-item-status">' + (r.error || statusText[r.status]) + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function resetConversion() {
+  currentConvertJobId = null;
+  convertFile = null;
+  batchFiles = [];
+  batchResults = [];
+  batchProcessing = false;
+  document.getElementById('convert-main').style.display = 'block';
+  document.getElementById('convert-progress').style.display = 'none';
+  document.getElementById('convert-done').style.display = 'none';
+  document.getElementById('batch-progress').style.display = 'none';
+  document.getElementById('batch-done').style.display = 'none';
+  document.getElementById('convert-dropzone').style.display = 'block';
+  document.getElementById('convert-file-info').style.display = 'none';
+  document.getElementById('batch-queue').style.display = 'none';
+  document.getElementById('convert-result-player').style.display = 'none';
+  document.getElementById('btn-convert').disabled = false;
+  loadModels();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Settings
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function loadSettings() {
+  try {
+    var config = await api('/config');
+    document.getElementById('cfg-api-key').value = config.runpod_api_key || '';
+    document.getElementById('cfg-endpoint-id').value = config.runpod_endpoint_id || '';
+  } catch(e) {}
+}
+
+async function saveSettings() {
+  var form = new FormData();
+  form.append('api_key', document.getElementById('cfg-api-key').value);
+  form.append('endpoint_id', document.getElementById('cfg-endpoint-id').value);
+
+  try {
+    await api('/config', { method: 'POST', body: form });
+    toast('설정이 저장되었습니다', 'success');
+    checkConnection(false);
+  } catch(e) {
+    toast('설정 저장 실패', 'error');
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Init
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+loadDashboard();
+startConnectionPolling();
+
+api('/files').then(function(res) {
+  uploadedFiles = res.files || [];
+  renderFileList();
+}).catch(function() {});
+</script>
+
+</body>
+</html>

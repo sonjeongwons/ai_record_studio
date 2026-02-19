@@ -1,0 +1,53 @@
+# ── Runtime data (user-specific, not shared) ──
+uploads/
+models/
+output/
+chunks/
+workspace/
+VoiceStudio_Data/
+
+# ── Database and config (local state) ──
+*.db
+*.db-journal
+*.db-wal
+config.json
+
+# ── Python artifacts ──
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.spec
+
+# ── Virtual environments ──
+venv/
+.venv/
+env/
+.env
+
+# ── IDE / editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── OS ──
+Desktop.ini
+ehthumbs.db
+
+# ── Logs ──
+*.log
+logs/
+
+# ── Archives ──
+*.zip
+*.tar.gz
+*.7z
