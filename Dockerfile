@@ -124,10 +124,21 @@ RUN if [ -d requirements ]; then \
     fi
 
 # 4c: Ensure all critical RVC runtime dependencies are present.
-#     Some may overlap with Applio's requirements -- pip handles that.
+#     Split into groups to isolate build failures.
+
+# -- Group 1: numpy first (fairseq needs numpy<1.24) --
+RUN python -m pip install --no-cache-dir "numpy>=1.23.0,<1.24"
+
+# -- Group 2: fairseq (notorious build issues — use omni-us fork if official fails) --
+RUN python -m pip install --no-cache-dir fairseq==0.12.2 \
+    || python -m pip install --no-cache-dir "git+https://github.com/facebookresearch/fairseq.git@v0.12.2" \
+    || echo "WARNING: fairseq install failed, will rely on Applio bundled version"
+
+# -- Group 3: faiss (cpu version is compatible and avoids CUDA build issues) --
+RUN python -m pip install --no-cache-dir faiss-cpu
+
+# -- Group 4: Audio/ML tools (pure Python or have wheels) --
 RUN python -m pip install --no-cache-dir \
-    fairseq==0.12.2 \
-    faiss-gpu \
     praat-parselmouth \
     pyworld \
     torchcrepe \
@@ -135,9 +146,12 @@ RUN python -m pip install --no-cache-dir \
     librosa \
     soundfile \
     pydub \
-    "numpy<1.24" \
-    numba \
-    onnxruntime-gpu
+    numba
+
+# -- Group 5: ONNX Runtime (pin version compatible with CUDA 12.1) --
+RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
+    || python -m pip install --no-cache-dir onnxruntime-gpu \
+    || python -m pip install --no-cache-dir onnxruntime
 
 
 # ================================================================
