@@ -51,3 +51,7 @@ logs/
 *.zip
 *.tar.gz
 *.7z
+
+# ── Bundled binaries (download separately, too large for git) ──
+tools/ffmpeg.exe
+tools/ffprobe.exe

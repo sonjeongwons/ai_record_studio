@@ -26,6 +26,7 @@ PyInstaller.__main__.run([
     # ── 데이터 파일 번들 ──
     '--add-data=static;static',         # index.html 등 웹 UI
     '--add-data=server.py;.',           # FastAPI 서버 모듈
+    '--add-data=tools/ffmpeg.exe;tools',  # FFmpeg (오디오 분할용, ~95MB)
 
     # ── uvicorn 숨은 의존성 (PyInstaller가 자동 감지 못함) ──
     '--hidden-import=uvicorn',

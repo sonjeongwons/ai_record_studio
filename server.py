@@ -67,40 +67,64 @@ SPLIT_SEGMENT_SECONDS = 180  # 3분 단위 분할
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# FFmpeg 경로 (번들 → 시스템 PATH 순서로 탐색)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _get_ffmpeg_path() -> Optional[str]:
+    """번들된 ffmpeg.exe 우선, 없으면 시스템 PATH 탐색. 없으면 None."""
+    # 1) .exe 번들 내부 (PyInstaller)
+    if FROZEN:
+        bundled = Path(sys._MEIPASS) / "tools" / "ffmpeg.exe"
+        if bundled.exists():
+            return str(bundled)
+
+    # 2) 개발 모드: tools/ 디렉토리
+    dev_path = APP_DIR / "tools" / "ffmpeg.exe"
+    if dev_path.exists():
+        return str(dev_path)
+
+    # 3) 시스템 PATH
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, timeout=5)
+        return "ffmpeg"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+
+    return None
+
+
+FFMPEG_PATH: Optional[str] = None  # 지연 초기화
+
+
+def _get_ffmpeg() -> str:
+    """FFmpeg 경로 반환 (캐시). 없으면 HTTPException."""
+    global FFMPEG_PATH
+    if FFMPEG_PATH is None:
+        FFMPEG_PATH = _get_ffmpeg_path() or ""
+    if not FFMPEG_PATH:
+        raise HTTPException(
+            400, "FFmpeg를 찾을 수 없습니다. tools/ 폴더에 ffmpeg.exe를 넣거나 시스템에 설치하세요.")
+    return FFMPEG_PATH
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 대용량 오디오 분할 (로컬 전처리)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _ffmpeg_available() -> bool:
-    """FFmpeg 설치 여부 확인"""
-    try:
-        subprocess.run(
-            ['ffmpeg', '-version'],
-            capture_output=True, timeout=5
-        )
-        return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
 def split_large_audio(file_path: Path) -> list[Path]:
     """대용량 오디오를 3분 단위 MP3로 분할.
-    7MB 이하 파일은 분할하지 않음. FFmpeg 필요."""
+    7MB 이하 파일은 분할하지 않음. 번들된 FFmpeg 사용."""
 
     if file_path.stat().st_size <= MAX_RUNPOD_AUDIO_BYTES:
         return [file_path]
 
-    if not _ffmpeg_available():
-        raise HTTPException(
-            400,
-            f"파일이 너무 큽니다 ({file_path.stat().st_size // (1024*1024)}MB). "
-            f"대용량 파일 분할을 위해 FFmpeg를 설치하세요: https://ffmpeg.org/download.html"
-        )
+    ffmpeg = _get_ffmpeg()
 
     seg_dir = CHUNK_DIR / f"split_{uuid.uuid4().hex[:8]}"
     seg_dir.mkdir(exist_ok=True)
 
     result = subprocess.run([
-        'ffmpeg', '-i', str(file_path),
+        ffmpeg, '-i', str(file_path),
         '-f', 'segment',
         '-segment_time', str(SPLIT_SEGMENT_SECONDS),
         '-c:a', 'libmp3lame', '-b:a', '128k', '-ac', '1',  # 모노 128kbps MP3
