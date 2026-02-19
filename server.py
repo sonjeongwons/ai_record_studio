@@ -15,6 +15,7 @@ import asyncio
 import threading
 import webbrowser
 import uuid
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from contextlib import contextmanager
@@ -59,6 +60,103 @@ for d in [UPLOAD_DIR, MODEL_DIR, OUTPUT_DIR, CHUNK_DIR]:
 
 # 청크 업로드 상태 추적 (메모리 내)
 chunk_uploads: dict = {}
+
+# RunPod payload 제한: 오디오 데이터 최대 7MB (base64 → ~10MB JSON)
+MAX_RUNPOD_AUDIO_BYTES = 7 * 1024 * 1024
+SPLIT_SEGMENT_SECONDS = 180  # 3분 단위 분할
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 대용량 오디오 분할 (로컬 전처리)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _ffmpeg_available() -> bool:
+    """FFmpeg 설치 여부 확인"""
+    try:
+        subprocess.run(
+            ['ffmpeg', '-version'],
+            capture_output=True, timeout=5
+        )
+        return True
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def split_large_audio(file_path: Path) -> list[Path]:
+    """대용량 오디오를 3분 단위 MP3로 분할.
+    7MB 이하 파일은 분할하지 않음. FFmpeg 필요."""
+
+    if file_path.stat().st_size <= MAX_RUNPOD_AUDIO_BYTES:
+        return [file_path]
+
+    if not _ffmpeg_available():
+        raise HTTPException(
+            400,
+            f"파일이 너무 큽니다 ({file_path.stat().st_size // (1024*1024)}MB). "
+            f"대용량 파일 분할을 위해 FFmpeg를 설치하세요: https://ffmpeg.org/download.html"
+        )
+
+    seg_dir = CHUNK_DIR / f"split_{uuid.uuid4().hex[:8]}"
+    seg_dir.mkdir(exist_ok=True)
+
+    result = subprocess.run([
+        'ffmpeg', '-i', str(file_path),
+        '-f', 'segment',
+        '-segment_time', str(SPLIT_SEGMENT_SECONDS),
+        '-c:a', 'libmp3lame', '-b:a', '128k', '-ac', '1',  # 모노 128kbps MP3
+        '-y', str(seg_dir / 'seg_%04d.mp3')
+    ], capture_output=True, timeout=600)
+
+    if result.returncode != 0:
+        shutil.rmtree(seg_dir, ignore_errors=True)
+        raise HTTPException(500, f"오디오 분할 실패: {result.stderr.decode(errors='replace')[:200]}")
+
+    segments = sorted(seg_dir.glob('seg_*.mp3'))
+    if not segments:
+        shutil.rmtree(seg_dir, ignore_errors=True)
+        return [file_path]
+
+    return segments
+
+
+def prepare_files_for_runpod(file_paths: list[str]) -> list[list[dict]]:
+    """파일들을 RunPod payload 크기에 맞게 분할 + 인코딩.
+    Returns: list of batches, 각 batch는 [{"filename": ..., "data_base64": ...}, ...]"""
+
+    all_segments: list[Path] = []
+    for p in file_paths:
+        path = Path(p)
+        segments = split_large_audio(path)
+        all_segments.extend(segments)
+
+    # 배치 분할: 각 배치의 base64 합계가 MAX_RUNPOD_AUDIO_BYTES 이내
+    batches: list[list[dict]] = []
+    current_batch: list[dict] = []
+    current_size = 0
+
+    for seg_path in all_segments:
+        raw_size = seg_path.stat().st_size
+        b64_size = int(raw_size * 1.37)  # base64 오버헤드
+
+        if current_size + b64_size > MAX_RUNPOD_AUDIO_BYTES and current_batch:
+            batches.append(current_batch)
+            current_batch = []
+            current_size = 0
+
+        with open(seg_path, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+
+        current_batch.append({
+            "filename": seg_path.name,
+            "data_base64": data
+        })
+        current_size += b64_size
+
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 설정 파일 관리
@@ -410,6 +508,84 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
         update_job(job_id, status="failed", message=f"결과 처리 오류: {str(e)}")
 
 
+def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
+    """대용량 파일의 다중 배치 전처리를 순차 실행.
+    각 배치를 별도 RunPod 작업으로 제출하고 완료를 기다린 뒤 다음 배치로 진행."""
+    total_batches = len(batches)
+    all_results = []
+
+    for idx, batch in enumerate(batches, 1):
+        batch_label = f"배치 {idx}/{total_batches}"
+        pct_base = int((idx - 1) / total_batches * 90)
+
+        update_job(job_id, status="running", progress=pct_base + 2,
+                   message=f"{batch_label} 제출 중... ({len(batch)}개 세그먼트)")
+
+        try:
+            runpod_job_id = runpod_client.submit_job({
+                "task_type": "preprocess",
+                "audio_files": batch,
+            })
+        except Exception as e:
+            error_msg = classify_runpod_error(e)
+            update_job(job_id, status="failed",
+                       message=f"{batch_label} 제출 실패: {error_msg}")
+            return
+
+        update_job(job_id, status="running", progress=pct_base + 5,
+                   message=f"{batch_label} GPU 처리 중...",
+                   runpod_job_id=runpod_job_id)
+
+        # 이 배치의 RunPod 작업 완료까지 폴링
+        start_time = time.time()
+        while True:
+            time.sleep(5)
+            try:
+                result = runpod_client.check_status(runpod_job_id)
+                status = result.get("status", "UNKNOWN")
+                elapsed = int(time.time() - start_time)
+
+                if status == "COMPLETED":
+                    output = result.get("output", {})
+                    all_results.append(output)
+                    pct = pct_base + int(90 / total_batches)
+                    update_job(job_id, status="running", progress=pct,
+                               message=f"{batch_label} 완료! (다음 배치 준비 중...)")
+                    break
+
+                elif status == "FAILED":
+                    error = result.get("error", "알 수 없는 오류")
+                    update_job(job_id, status="failed",
+                               message=f"{batch_label} 실패: {error}")
+                    return
+
+                elif status in ("IN_QUEUE", "IN_PROGRESS"):
+                    pct = pct_base + min(int(90 / total_batches) - 2, int(elapsed / 3))
+                    state_msg = "GPU 대기 중..." if status == "IN_QUEUE" else "전처리 중..."
+                    update_job(job_id, status="running", progress=pct,
+                               message=f"{batch_label} {state_msg} ({elapsed}초)")
+
+                if elapsed > 3600:  # 배치당 1시간 타임아웃
+                    update_job(job_id, status="failed",
+                               message=f"{batch_label} 시간 초과 (1시간)")
+                    return
+
+            except Exception:
+                update_job(job_id, status="running",
+                           message=f"{batch_label} 상태 확인 중... (재시도)")
+                time.sleep(10)
+
+    # 모든 배치 완료 — 결과 집계
+    total_segments = sum(r.get("segment_count", 0) for r in all_results)
+    update_job(job_id, status="completed", progress=100,
+               message=f"전처리 완료! (총 {total_segments}개 세그먼트, {total_batches}개 배치)",
+               result_json=json.dumps({
+                   "batch_count": total_batches,
+                   "segment_count": total_segments,
+                   "batch_results": all_results
+               }))
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # FastAPI 앱
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -629,9 +805,10 @@ async def start_training(
     if not rows:
         raise HTTPException(400, "학습할 파일이 없습니다.")
 
-    # 파일 인코딩
+    # 대용량 파일 자동 분할 + 배치 인코딩
     file_paths = [str(UPLOAD_DIR / r["filename"]) for r in rows]
-    encoded_files = runpod_client.encode_files(file_paths)
+    batches = prepare_files_for_runpod(file_paths)
+    total_segments = sum(len(b) for b in batches)
 
     # Job 생성
     job_id = uuid.uuid4().hex[:12]
@@ -642,20 +819,32 @@ async def start_training(
         """, (job_id,))
 
     try:
-        # RunPod에 학습 요청
-        runpod_job_id = runpod_client.submit_job({
-            "task_type": "train",
-            "model_name": model_name,
-            "audio_files": encoded_files,
-            "sample_rate": sample_rate,
-            "epochs": epochs,
-            "batch_size": batch_size
-        })
+        if len(batches) == 1:
+            # 단일 배치: 기존 방식
+            runpod_job_id = runpod_client.submit_job({
+                "task_type": "train",
+                "model_name": model_name,
+                "audio_files": batches[0],
+                "sample_rate": sample_rate,
+                "epochs": epochs,
+                "batch_size": batch_size
+            })
+        else:
+            # 다중 배치: 모든 세그먼트를 하나의 요청으로 합침 (MP3 압축으로 크기 감소)
+            all_files = [f for batch in batches for f in batch]
+            runpod_job_id = runpod_client.submit_job({
+                "task_type": "train",
+                "model_name": model_name,
+                "audio_files": all_files,
+                "sample_rate": sample_rate,
+                "epochs": epochs,
+                "batch_size": batch_size
+            })
 
+        msg = f"GPU에 작업 제출됨 ({total_segments}개 세그먼트)"
         update_job(job_id, status="running", progress=5,
-                  message="GPU에 작업 제출됨", runpod_job_id=runpod_job_id)
+                  message=msg, runpod_job_id=runpod_job_id)
 
-        # 백그라운드에서 폴링 시작
         thread = threading.Thread(
             target=poll_runpod_job,
             args=(job_id, runpod_job_id, "train"),
@@ -670,7 +859,7 @@ async def start_training(
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
 
-    return {"job_id": job_id}
+    return {"job_id": job_id, "segments": total_segments}
 
 
 # ─── 전처리 API ───
@@ -696,8 +885,10 @@ async def start_preprocess(
     if not rows:
         raise HTTPException(400, "선택한 파일을 찾을 수 없습니다.")
 
+    # 대용량 파일 자동 분할 + 배치 인코딩
     file_paths = [str(UPLOAD_DIR / r["filename"]) for r in rows]
-    encoded_files = runpod_client.encode_files(file_paths)
+    batches = prepare_files_for_runpod(file_paths)
+    total_segments = sum(len(b) for b in batches)
 
     job_id = uuid.uuid4().hex[:12]
     with get_db() as db:
@@ -707,20 +898,33 @@ async def start_preprocess(
         """, (job_id,))
 
     try:
-        runpod_job_id = runpod_client.submit_job({
-            "task_type": "preprocess",
-            "audio_files": encoded_files,
-        })
+        # 배치별로 RunPod 작업 제출 (대용량 파일은 여러 작업으로 분할)
+        if len(batches) == 1:
+            runpod_job_id = runpod_client.submit_job({
+                "task_type": "preprocess",
+                "audio_files": batches[0],
+            })
+            update_job(job_id, status="running", progress=5,
+                      message=f"GPU에 전처리 작업 제출됨 ({total_segments}개 세그먼트)",
+                      runpod_job_id=runpod_job_id)
 
-        update_job(job_id, status="running", progress=5,
-                  message="GPU에 전처리 작업 제출됨", runpod_job_id=runpod_job_id)
+            thread = threading.Thread(
+                target=poll_runpod_job,
+                args=(job_id, runpod_job_id, "preprocess"),
+                daemon=True
+            )
+            thread.start()
+        else:
+            # 다중 배치: 순차적으로 전처리 (각 배치를 별도 RunPod 작업으로)
+            update_job(job_id, status="running", progress=2,
+                      message=f"대용량 파일 분할 완료 ({total_segments}개 세그먼트, {len(batches)}개 배치)")
 
-        thread = threading.Thread(
-            target=poll_runpod_job,
-            args=(job_id, runpod_job_id, "preprocess"),
-            daemon=True
-        )
-        thread.start()
+            thread = threading.Thread(
+                target=_run_batched_preprocess,
+                args=(job_id, batches),
+                daemon=True
+            )
+            thread.start()
 
     except HTTPException:
         raise
@@ -729,7 +933,7 @@ async def start_preprocess(
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
 
-    return {"job_id": job_id}
+    return {"job_id": job_id, "segments": total_segments, "batches": len(batches)}
 
 
 # ─── 변환 API ───
