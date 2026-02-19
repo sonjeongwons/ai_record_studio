@@ -832,6 +832,7 @@ input[type="range"]::-webkit-slider-thumb {
               </div>
             </div>
             <div class="progress-label" id="preprocess-msg">전처리 준비 중...</div>
+            <button class="skip-link" onclick="cancelPreprocess()" style="margin-top:10px">취소하고 건너뛰기</button>
           </div>
         </div>
 
@@ -1599,12 +1600,23 @@ async function pollPreprocessStatus() {
 
 function skipPreprocess() {
   preprocessDone = true;
+  preprocessJobId = null;
   document.getElementById('preprocess-idle').style.display = 'none';
+  document.getElementById('preprocess-running').style.display = 'none';
   document.getElementById('preprocess-done').style.display = 'block';
   document.getElementById('preprocess-segments').textContent = '-';
   document.getElementById('preprocess-duration').textContent = '건너뜀';
   document.getElementById('btn-start-train').disabled = false;
   toast('전처리를 건너뛰었습니다', 'info');
+}
+
+function cancelPreprocess() {
+  preprocessJobId = null;
+  preprocessDone = false;
+  document.getElementById('preprocess-running').style.display = 'none';
+  document.getElementById('preprocess-idle').style.display = 'block';
+  document.getElementById('btn-start-train').disabled = true;
+  toast('전처리를 취소했습니다. 다시 시작하거나 건너뛸 수 있습니다.', 'info');
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

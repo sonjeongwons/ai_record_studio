@@ -1060,6 +1060,22 @@ async def get_job(job_id: str):
     return result
 
 
+@app.post("/api/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str):
+    """실행 중인 작업 취소 (DB 상태만 변경, 백그라운드 스레드는 다음 폴링 시 자동 종료)"""
+    with get_db() as db:
+        row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "작업을 찾을 수 없습니다.")
+        if row["status"] in ("completed", "failed"):
+            return {"status": "already_done"}
+        db.execute(
+            "UPDATE jobs SET status='failed', message='사용자가 취소함', updated_at=? WHERE id=?",
+            (datetime.now().isoformat(), job_id)
+        )
+    return {"status": "cancelled"}
+
+
 @app.get("/api/jobs")
 async def list_jobs():
     with get_db() as db:
