@@ -729,22 +729,26 @@ def _rvc_extract_f0(
         log.info(f"F0 extraction completed via core API (method={f0_method})")
     except ImportError:
         try:
-            # Direct module import
-            from rvc.train.extract.extract_f0_print import extract_f0
-
-            f0_dir = ensure_dir(logs_dir / "2a_f0")
-            f0_nsf_dir = ensure_dir(logs_dir / "2b-f0nsf")
-            wav_dir = logs_dir / "1_16k_wavs"
-
-            if not wav_dir.exists():
-                wav_dir = logs_dir / "0_gt_wavs"
-
-            extract_f0(
-                input_dir=str(wav_dir),
-                f0_dir=str(f0_dir),
-                f0nsf_dir=str(f0_nsf_dir),
-                f0_method=f0_method,
-            )
+            # Direct module import (Applio current: rvc.train.extract.extract)
+            try:
+                from rvc.train.extract.extract import run_pitch_extraction
+                run_pitch_extraction(
+                    logs_dir=str(logs_dir),
+                    f0_method=f0_method,
+                )
+            except ImportError:
+                from rvc.train.extract.extract_f0_print import extract_f0
+                f0_dir = ensure_dir(logs_dir / "2a_f0")
+                f0_nsf_dir = ensure_dir(logs_dir / "2b-f0nsf")
+                wav_dir = logs_dir / "1_16k_wavs"
+                if not wav_dir.exists():
+                    wav_dir = logs_dir / "0_gt_wavs"
+                extract_f0(
+                    input_dir=str(wav_dir),
+                    f0_dir=str(f0_dir),
+                    f0nsf_dir=str(f0_nsf_dir),
+                    f0_method=f0_method,
+                )
             log.info(f"F0 extraction completed via direct module (method={f0_method})")
         except ImportError:
             subprocess.run(
@@ -771,20 +775,25 @@ def _rvc_extract_features(
     try:
         # The extraction is already handled by run_extract_script in _rvc_extract_f0
         # if using core API. If called separately, use the feature extractor directly.
-        from rvc.train.extract.extract_feature_print import extract_features
-
-        wav_dir = logs_dir / "1_16k_wavs"
-        if not wav_dir.exists():
-            wav_dir = logs_dir / "0_gt_wavs"
-
-        feature_dir = ensure_dir(logs_dir / "3_feature768")
-
-        extract_features(
-            input_dir=str(wav_dir),
-            output_dir=str(feature_dir),
-            embedder_model=embedder_model,
-            device="cuda:0" if torch.cuda.is_available() else "cpu",
-        )
+        # Applio current: rvc.train.extract.extract
+        try:
+            from rvc.train.extract.extract import run_embedding_extraction
+            run_embedding_extraction(
+                logs_dir=str(logs_dir),
+                embedder_model=embedder_model,
+            )
+        except ImportError:
+            from rvc.train.extract.extract_feature_print import extract_features
+            wav_dir = logs_dir / "1_16k_wavs"
+            if not wav_dir.exists():
+                wav_dir = logs_dir / "0_gt_wavs"
+            feature_dir = ensure_dir(logs_dir / "3_feature768")
+            extract_features(
+                input_dir=str(wav_dir),
+                output_dir=str(feature_dir),
+                embedder_model=embedder_model,
+                device="cuda:0" if torch.cuda.is_available() else "cpu",
+            )
         log.info(f"Feature extraction completed ({embedder_model})")
     except ImportError:
         # Already handled in the combined extract step above
@@ -1390,12 +1399,50 @@ def handler(job: dict) -> dict:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 if __name__ == "__main__":
-    log.info("AI Voice Studio - RunPod Handler starting")
-    log.info(f"Applio root: {APPLIO_ROOT} (exists: {APPLIO_ROOT.exists()})")
-    log.info(f"Work directory: {WORK_DIR}")
-    log.info(f"CUDA available: {torch.cuda.is_available()}")
-    if torch.cuda.is_available():
-        log.info(f"GPU: {torch.cuda.get_device_name(0)}")
-        log.info(f"VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB")
+    try:
+        log.info("AI Voice Studio - RunPod Handler starting")
+        log.info(f"Python: {sys.version}")
+        log.info(f"Applio root: {APPLIO_ROOT} (exists: {APPLIO_ROOT.exists()})")
 
-    runpod.serverless.start({"handler": handler})
+        # Applio 디렉토리 구조 확인
+        if APPLIO_ROOT.exists():
+            core_py = APPLIO_ROOT / "core.py"
+            rvc_dir = APPLIO_ROOT / "rvc"
+            log.info(f"  core.py exists: {core_py.exists()}")
+            log.info(f"  rvc/ exists: {rvc_dir.exists()}")
+            if rvc_dir.exists():
+                subdirs = [d.name for d in rvc_dir.iterdir() if d.is_dir()]
+                log.info(f"  rvc/ subdirs: {subdirs}")
+
+        log.info(f"Work directory: {WORK_DIR}")
+        log.info(f"CUDA available: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            log.info(f"GPU: {torch.cuda.get_device_name(0)}")
+            log.info(f"VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB")
+
+        # 핵심 모듈 import 테스트
+        import_tests = [
+            ("numpy", "numpy"),
+            ("soundfile", "soundfile"),
+            ("librosa", "librosa"),
+            ("demucs", "demucs"),
+            ("noisereduce", "noisereduce"),
+            ("faiss", "faiss"),
+        ]
+        for name, mod in import_tests:
+            try:
+                __import__(mod)
+                log.info(f"  {name}: OK")
+            except ImportError as e:
+                log.warning(f"  {name}: MISSING ({e})")
+
+        log.info("Starting RunPod serverless handler...")
+        runpod.serverless.start({"handler": handler})
+
+    except Exception as e:
+        log.error(f"FATAL: Handler startup failed: {type(e).__name__}: {e}")
+        log.error(traceback.format_exc())
+        # stderr에도 출력 (RunPod 로그에 확실히 남도록)
+        print(f"FATAL: {type(e).__name__}: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
