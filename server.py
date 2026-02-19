@@ -260,6 +260,34 @@ def init_db():
             );
         """)
 
+
+def cleanup_stale_jobs():
+    """서버 시작 시 멈춰있는 작업 정리.
+    running/submitting 상태로 1시간 이상 방치된 작업을 실패 처리."""
+    with get_db() as db:
+        stale = db.execute("""
+            UPDATE jobs
+            SET status='failed',
+                message='서버 재시작으로 인한 자동 정리',
+                updated_at=?
+            WHERE status IN ('running', 'submitting')
+              AND updated_at < datetime('now', 'localtime', '-1 hour')
+        """, (datetime.now().isoformat(),))
+        if stale.rowcount > 0:
+            print(f"  정리된 멈춘 작업: {stale.rowcount}개")
+
+        # 서버 재시작 시 모든 running 작업도 정리 (백그라운드 스레드가 사라지므로)
+        active = db.execute("""
+            UPDATE jobs
+            SET status='failed',
+                message='서버 재시작으로 인한 자동 정리',
+                updated_at=?
+            WHERE status IN ('running', 'submitting')
+        """, (datetime.now().isoformat(),))
+        if active.rowcount > 0:
+            print(f"  정리된 진행 중 작업: {active.rowcount}개")
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # RunPod 에러 메시지 (한국어)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -416,11 +444,26 @@ def update_job(job_id: str, **kwargs):
         db.execute(f"UPDATE jobs SET {sets}, updated_at=? WHERE id=?", vals)
 
 
+def _is_job_cancelled(job_id: str) -> bool:
+    """작업이 취소/실패 상태인지 확인 (폴링 루프 종료용)"""
+    try:
+        with get_db() as db:
+            row = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+            return row and row["status"] == "failed"
+    except Exception:
+        return False
+
+
 def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
     """RunPod 작업 완료까지 폴링"""
     start_time = time.time()
     while True:
         time.sleep(5)
+
+        # 취소된 작업이면 폴링 중단
+        if _is_job_cancelled(job_id):
+            return
+
         try:
             result = runpod_client.check_status(runpod_job_id)
             status = result.get("status", "UNKNOWN")
@@ -539,6 +582,10 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
     all_results = []
 
     for idx, batch in enumerate(batches, 1):
+        # 취소된 작업이면 중단
+        if _is_job_cancelled(job_id):
+            return
+
         batch_label = f"배치 {idx}/{total_batches}"
         pct_base = int((idx - 1) / total_batches * 90)
 
@@ -564,6 +611,8 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
         start_time = time.time()
         while True:
             time.sleep(5)
+            if _is_job_cancelled(job_id):
+                return
             try:
                 result = runpod_client.check_status(runpod_job_id)
                 status = result.get("status", "UNKNOWN")
@@ -629,6 +678,7 @@ app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 @app.on_event("startup")
 async def startup():
     init_db()
+    cleanup_stale_jobs()
 
 
 # ─── 메인 페이지 ───
@@ -1074,6 +1124,20 @@ async def cancel_job(job_id: str):
             (datetime.now().isoformat(), job_id)
         )
     return {"status": "cancelled"}
+
+
+@app.post("/api/jobs/cleanup")
+async def cleanup_all_stuck_jobs():
+    """멈춘 작업 일괄 정리 — running/submitting 상태의 모든 작업을 실패 처리"""
+    with get_db() as db:
+        result = db.execute("""
+            UPDATE jobs
+            SET status='failed',
+                message='수동 정리',
+                updated_at=?
+            WHERE status IN ('running', 'submitting')
+        """, (datetime.now().isoformat(),))
+    return {"cleaned": result.rowcount}
 
 
 @app.get("/api/jobs")
