@@ -5,6 +5,7 @@
 # Components: RVC v2 (Applio), Demucs, noisereduce, RunPod SDK
 # Estimated image size: ~12-13 GB (all models pre-cached)
 # Build: docker build -t ai-voice-studio:latest .
+# CI/CD: GitHub Actions → ghcr.io (auto-build on push)
 # ================================================================
 
 # ── Base Image ─────────────────────────────────────────────────────
