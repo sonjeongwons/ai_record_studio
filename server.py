@@ -1047,6 +1047,17 @@ async def start_training(
     if not runpod_client.is_configured():
         raise HTTPException(400, "RunPod API 설정이 필요합니다. 설정 페이지에서 API Key와 Endpoint ID를 입력하세요.")
 
+    # 모델 이름 중복 검사
+    model_name = model_name.strip()
+    if not model_name:
+        raise HTTPException(400, "모델 이름을 입력해 주세요.")
+    with get_db() as db:
+        existing = db.execute(
+            "SELECT id FROM voice_models WHERE name = ?", (model_name,)
+        ).fetchone()
+    if existing:
+        raise HTTPException(400, f"'{model_name}' 이름의 모델이 이미 존재합니다. 다른 이름을 사용해 주세요.")
+
     # 학습 파일 수집
     with get_db() as db:
         if file_ids:
@@ -1446,11 +1457,18 @@ async def list_models():
 async def delete_model(model_id: int):
     with get_db() as db:
         row = db.execute("SELECT * FROM voice_models WHERE id=?", (model_id,)).fetchone()
-        if row:
-            for path_key in ["pth_path", "index_path"]:
-                if row[path_key] and Path(row[path_key]).exists():
-                    Path(row[path_key]).unlink()
-            db.execute("DELETE FROM voice_models WHERE id=?", (model_id,))
+        if not row:
+            raise HTTPException(404, "모델을 찾을 수 없습니다.")
+        dirs_to_check = set()
+        for path_key in ["pth_path", "index_path"]:
+            if row[path_key] and Path(row[path_key]).exists():
+                dirs_to_check.add(Path(row[path_key]).parent)
+                Path(row[path_key]).unlink()
+        # 빈 모델 디렉토리 정리
+        for d in dirs_to_check:
+            if d.exists() and not any(d.iterdir()):
+                d.rmdir()
+        db.execute("DELETE FROM voice_models WHERE id=?", (model_id,))
     return {"status": "ok"}
 
 

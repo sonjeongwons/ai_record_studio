@@ -309,6 +309,12 @@ select { -webkit-appearance: none; cursor: pointer; }
 }
 .model-card:hover { border-color: rgba(139,92,246,0.3); }
 .model-card.selected { border-color: var(--violet); background: var(--violet-g); }
+.btn-model-delete {
+  background: none; border: none; cursor: pointer; padding: 6px;
+  border-radius: 8px; color: var(--text3); transition: all 0.2s;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+}
+.btn-model-delete:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
 .model-icon {
   width: 42px; height: 42px;
   border-radius: 12px;
@@ -2171,6 +2177,9 @@ async function loadModels() {
           '<div style="font-size:11px;color:var(--text3)">' + (m.epochs || 0) + ' 에폭 \u00B7 ' + (m.created_at || '') + '</div>' +
         '</div>' +
         '<span class="badge badge-green">준비</span>' +
+        '<button class="btn-model-delete" onclick="event.stopPropagation(); deleteModel(' + m.id + ', \'' + m.name.replace(/'/g, "\\'") + '\')" title="모델 삭제">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+        '</button>' +
       '</div>';
     }).join('');
 
@@ -2183,6 +2192,18 @@ function selectModel(id) {
   document.querySelectorAll('.model-card').forEach(function(c) { c.classList.remove('selected'); });
   event.currentTarget.classList.add('selected');
   updateConvertBtn();
+}
+
+async function deleteModel(id, name) {
+  if (!confirm('"' + name + '" 모델을 영구 삭제하시겠습니까?\n삭제된 모델은 복구할 수 없습니다.')) return;
+  try {
+    await api('/models/' + id, { method: 'DELETE' });
+    if (selectedModelId === id) selectedModelId = null;
+    toast('"' + name + '" 모델이 삭제되었습니다', 'info');
+    loadModels();
+  } catch(e) {
+    toast('모델 삭제 실패: ' + e.message, 'error');
+  }
 }
 
 function updateConvertBtn() {

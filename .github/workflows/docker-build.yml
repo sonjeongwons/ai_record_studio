@@ -1,14 +1,13 @@
 name: Build RunPod Docker Image
 
 # Dockerfile 또는 handler 변경 시 자동 빌드
+# server.py, static/ 은 로컬 데스크톱 앱 파일 → Docker 이미지에 미포함 → 빌드 불필요
 on:
   push:
     branches: [main]
     paths:
       - 'Dockerfile'
       - 'runpod_handler.py'
-      - 'server.py'
-      - 'static/**'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # 수동 트리거 (Actions 탭에서 직접 실행)
 
