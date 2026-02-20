@@ -943,11 +943,16 @@ def _rvc_extract_f0(
     """
     Extract F0 (fundamental frequency) using RMVPE or other methods.
     Tries multiple strategies with detailed error logging.
+
+    IMPORTANT: Applio uses relative paths (rvc/configs/, rvc/lib/tools/) so
+    we must chdir to APPLIO_ROOT before calling its functions.
     """
     errors: list[str] = []
+    original_cwd = os.getcwd()
 
     # --- Strategy 1: Applio core API ---
     try:
+        os.chdir(APPLIO_ROOT)  # Applio uses relative paths
         from core import run_extract_script
         run_extract_script(
             model_name=model_name,
@@ -958,15 +963,19 @@ def _rvc_extract_f0(
             sample_rate=str(sample_rate),
             embedder_model="contentvec",
             embedder_model_custom=None,
+            include_mutes=2,  # include short mutes for natural speech/singing gaps
         )
         log.info(f"F0 extraction completed via core API (method={f0_method})")
         return
     except Exception as e:
         errors.append(f"core API: {type(e).__name__}: {e}")
         log.warning(f"F0 via core API failed: {e}")
+    finally:
+        os.chdir(original_cwd)
 
     # --- Strategy 2: Direct module (rvc.train.extract) ---
     try:
+        os.chdir(APPLIO_ROOT)
         from rvc.train.extract.extract import run_pitch_extraction
         run_pitch_extraction(
             logs_dir=str(logs_dir),
@@ -977,28 +986,10 @@ def _rvc_extract_f0(
     except Exception as e:
         errors.append(f"direct module: {type(e).__name__}: {e}")
         log.warning(f"F0 via direct module failed: {e}")
+    finally:
+        os.chdir(original_cwd)
 
-    # --- Strategy 3: Legacy extract_f0_print ---
-    try:
-        from rvc.train.extract.extract_f0_print import extract_f0
-        f0_dir = ensure_dir(logs_dir / "2a_f0")
-        f0_nsf_dir = ensure_dir(logs_dir / "2b-f0nsf")
-        wav_dir = logs_dir / "1_16k_wavs"
-        if not wav_dir.exists():
-            wav_dir = logs_dir / "0_gt_wavs"
-        extract_f0(
-            input_dir=str(wav_dir),
-            f0_dir=str(f0_dir),
-            f0nsf_dir=str(f0_nsf_dir),
-            f0_method=f0_method,
-        )
-        log.info(f"F0 extraction completed via legacy module (method={f0_method})")
-        return
-    except Exception as e:
-        errors.append(f"legacy module: {type(e).__name__}: {e}")
-        log.warning(f"F0 via legacy module failed: {e}")
-
-    # --- Strategy 4: CLI fallback ---
+    # --- Strategy 3: CLI fallback ---
     try:
         result = subprocess.run(
             [
@@ -1008,6 +999,9 @@ def _rvc_extract_f0(
                 "--model_name", model_name,
                 "--f0_method", f0_method,
                 "--sample_rate", str(sample_rate),
+                "--hop_length", "128",
+                "--embedder_model", "contentvec",
+                "--include_mutes", "2",
             ],
             cwd=str(APPLIO_ROOT),
             capture_output=True, text=True, timeout=7200, check=True,
@@ -1041,9 +1035,11 @@ def _rvc_extract_features(
         return
 
     errors: list[str] = []
+    original_cwd = os.getcwd()
 
     # --- Strategy 1: rvc.train.extract.extract ---
     try:
+        os.chdir(APPLIO_ROOT)  # Applio uses relative paths
         from rvc.train.extract.extract import run_embedding_extraction
         run_embedding_extraction(
             logs_dir=str(logs_dir),
@@ -1054,27 +1050,10 @@ def _rvc_extract_features(
     except Exception as e:
         errors.append(f"run_embedding_extraction: {type(e).__name__}: {e}")
         log.warning(f"Feature extraction via run_embedding_extraction failed: {e}")
+    finally:
+        os.chdir(original_cwd)
 
-    # --- Strategy 2: Legacy extract_feature_print ---
-    try:
-        from rvc.train.extract.extract_feature_print import extract_features
-        wav_dir = logs_dir / "1_16k_wavs"
-        if not wav_dir.exists():
-            wav_dir = logs_dir / "0_gt_wavs"
-        ensure_dir(feature_dir)
-        extract_features(
-            input_dir=str(wav_dir),
-            output_dir=str(feature_dir),
-            embedder_model=embedder_model,
-            device="cuda:0" if torch.cuda.is_available() else "cpu",
-        )
-        log.info(f"Feature extraction completed via legacy module ({embedder_model})")
-        return
-    except Exception as e:
-        errors.append(f"extract_features: {type(e).__name__}: {e}")
-        log.warning(f"Feature extraction via legacy module failed: {e}")
-
-    # --- Strategy 3: CLI fallback ---
+    # --- Strategy 2: CLI fallback ---
     try:
         result = subprocess.run(
             [
@@ -1082,8 +1061,11 @@ def _rvc_extract_features(
                 str(APPLIO_ROOT / "core.py"),
                 "extract",
                 "--model_name", model_name,
+                "--f0_method", "rmvpe",
                 "--embedder_model", embedder_model,
                 "--sample_rate", str(sample_rate),
+                "--hop_length", "128",
+                "--include_mutes", "2",
             ],
             cwd=str(APPLIO_ROOT),
             capture_output=True, text=True, timeout=7200, check=True,
@@ -1118,7 +1100,9 @@ def _rvc_train(
     pretrained_g = _find_pretrained("G", sr_label)
     pretrained_d = _find_pretrained("D", sr_label)
 
+    original_cwd = os.getcwd()
     try:
+        os.chdir(APPLIO_ROOT)  # Applio uses relative paths (rvc/configs/, etc.)
         from core import run_train_script
 
         run_train_script(
@@ -1140,11 +1124,19 @@ def _rvc_train(
             d_pretrained_path=str(pretrained_d) if pretrained_d else None,
         )
         log.info(f"Training completed via core API ({epochs} epochs)")
+        return
 
     except ImportError:
-        try:
-            # Direct module: construct training config and run
-            from rvc.train.train import train as rvc_train_fn
+        pass
+    except Exception as e:
+        log.warning(f"Training via core API failed: {e}, trying alternatives")
+    finally:
+        os.chdir(original_cwd)
+
+    try:
+        os.chdir(APPLIO_ROOT)
+        # Direct module: construct training config and run
+        from rvc.train.train import train as rvc_train_fn
 
             config = {
                 "model_name": model_name,
@@ -1161,73 +1153,80 @@ def _rvc_train(
             }
             rvc_train_fn(config)
             log.info(f"Training completed via direct train module ({epochs} epochs)")
+            return
 
-        except ImportError:
-            # CLI fallback
-            cmd = [
-                sys.executable,
-                str(APPLIO_ROOT / "core.py"),
-                "train",
-                "--model_name", model_name,
-                "--rvc_version", "v2",
-                "--total_epoch", str(epochs),
-                "--sample_rate", str(sample_rate),
-                "--batch_size", str(batch_size),
-                "--save_every_epoch", str(save_every_epoch),
-                "--gpu", "0",
-                "--pitch_guidance", "True",
-                "--pretrained", "True",
-            ]
-            if pretrained_g:
-                cmd.extend(["--g_pretrained_path", str(pretrained_g)])
-            if pretrained_d:
-                cmd.extend(["--d_pretrained_path", str(pretrained_d)])
+    except ImportError:
+        pass
+    except Exception as e:
+        log.warning(f"Training via direct module failed: {e}, trying CLI")
+    finally:
+        os.chdir(original_cwd)
 
-            log.info(f"Starting training via CLI: {epochs} epochs")
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(APPLIO_ROOT),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
+    # CLI fallback
+    cmd = [
+        sys.executable,
+        str(APPLIO_ROOT / "core.py"),
+        "train",
+        "--model_name", model_name,
+        "--rvc_version", "v2",
+        "--total_epoch", str(epochs),
+        "--sample_rate", str(sample_rate),
+        "--batch_size", str(batch_size),
+        "--save_every_epoch", str(save_every_epoch),
+        "--gpu", "0",
+        "--pitch_guidance", "True",
+        "--pretrained", "True",
+    ]
+    if pretrained_g:
+        cmd.extend(["--g_pretrained_path", str(pretrained_g)])
+    if pretrained_d:
+        cmd.extend(["--d_pretrained_path", str(pretrained_d)])
 
-            # Stream output and report progress
-            epoch_count = 0
-            for line in iter(proc.stdout.readline, ""):
-                line = line.strip()
-                if not line:
-                    continue
-                log.info(f"[train] {line}")
+    log.info(f"Starting training via CLI: {epochs} epochs")
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(APPLIO_ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
 
-                # Parse epoch progress from training output
-                if "Epoch" in line or "epoch" in line:
-                    try:
-                        # Typical format: "Epoch 50/300" or "Training epoch 50"
-                        for part in line.split():
-                            if "/" in part:
-                                current, total = part.split("/")
-                                epoch_count = int(current)
-                                break
-                    except (ValueError, IndexError):
-                        pass
+    # Stream output and report progress
+    epoch_count = 0
+    for line in iter(proc.stdout.readline, ""):
+        line = line.strip()
+        if not line:
+            continue
+        log.info(f"[train] {line}")
 
-                    if epoch_count > 0:
-                        pct = min(95, int((epoch_count / epochs) * 100))
-                        try:
-                            runpod.serverless.progress_update(
-                                job, f"Training epoch {epoch_count}/{epochs} ({pct}%)"
-                            )
-                        except Exception:
-                            pass
+        # Parse epoch progress from training output
+        if "Epoch" in line or "epoch" in line:
+            try:
+                # Typical format: "Epoch 50/300" or "Training epoch 50"
+                for part in line.split():
+                    if "/" in part:
+                        current, total = part.split("/")
+                        epoch_count = int(current)
+                        break
+            except (ValueError, IndexError):
+                pass
 
-            proc.wait(timeout=36000)  # 10-hour timeout
-            if proc.returncode != 0:
-                raise RuntimeError(
-                    f"학습 프로세스 실패 (exit code {proc.returncode}). "
-                    f"마지막 출력을 확인하세요."
-                )
-            log.info(f"Training completed via CLI ({epochs} epochs)")
+            if epoch_count > 0:
+                pct = min(95, int((epoch_count / epochs) * 100))
+                try:
+                    runpod.serverless.progress_update(
+                        job, f"Training epoch {epoch_count}/{epochs} ({pct}%)"
+                    )
+                except Exception:
+                    pass
+
+    proc.wait(timeout=36000)  # 10-hour timeout
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"학습 프로세스 실패 (exit code {proc.returncode}). "
+            f"마지막 출력을 확인하세요."
+        )
+    log.info(f"Training completed via CLI ({epochs} epochs)")
 
 
 def _find_pretrained(gen_or_disc: str, sr_label: str) -> Optional[Path]:
@@ -1592,11 +1591,14 @@ def _rvc_infer(
     """
     Run RVC v2 inference using Applio's pipeline.
     Tries multiple import strategies for compatibility across Applio versions.
+    IMPORTANT: Applio uses relative paths so we chdir to APPLIO_ROOT.
     """
     index_str = str(index_path) if index_path and index_path.exists() else ""
+    original_cwd = os.getcwd()
 
     # --- Strategy 1: Applio core API (>= v3.2.x) ---
     try:
+        os.chdir(APPLIO_ROOT)
         from core import run_infer_script
 
         run_infer_script(
@@ -1622,9 +1624,12 @@ def _rvc_infer(
         log.info("core.run_infer_script not available, trying alternative")
     except Exception as e:
         log.warning(f"core.run_infer_script failed: {e}, trying alternative")
+    finally:
+        os.chdir(original_cwd)
 
     # --- Strategy 2: Direct VC pipeline import ---
     try:
+        os.chdir(APPLIO_ROOT)
         from rvc.infer.infer import VoiceConverter
 
         vc = VoiceConverter()
@@ -1650,15 +1655,17 @@ def _rvc_infer(
         log.info("rvc.infer.infer.VoiceConverter not available, trying alternative")
     except Exception as e:
         log.warning(f"VoiceConverter failed: {e}, trying alternative")
+    finally:
+        os.chdir(original_cwd)
 
     # --- Strategy 3: Legacy VC pipeline ---
     try:
+        os.chdir(APPLIO_ROOT)
         from rvc.modules.vc.modules import VC
 
         vc = VC()
         vc.get_vc(str(pth_path))
 
-        # VC.vc_single expects specific args depending on version
         result = vc.vc_single(
             sid=0,
             input_audio_path=str(input_audio),
@@ -1667,12 +1674,11 @@ def _rvc_infer(
             file_index=index_str,
             index_rate=index_rate,
             filter_radius=filter_radius,
-            resample_sr=0,  # 0 = auto
+            resample_sr=0,
             rms_mix_rate=rms_mix_rate,
             protect=protect,
         )
 
-        # result is typically (message, (sample_rate, audio_array))
         if isinstance(result, tuple) and len(result) >= 2:
             sr_out, audio_out = result[1] if isinstance(result[1], tuple) else (44100, result[1])
         else:
@@ -1686,6 +1692,8 @@ def _rvc_infer(
         log.info("rvc.modules.vc.modules.VC not available, trying CLI fallback")
     except Exception as e:
         log.warning(f"Legacy VC failed: {e}, trying CLI fallback")
+    finally:
+        os.chdir(original_cwd)
 
     # --- Strategy 4: CLI fallback ---
     cmd = [
