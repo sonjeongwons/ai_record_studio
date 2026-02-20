@@ -1252,6 +1252,32 @@ input[type="range"]::-webkit-slider-thumb {
   </div>
 
   <div class="card">
+    <h2 style="margin-bottom:16px">클라우드 스토리지 (R2)</h2>
+    <div class="alert alert-info">
+      모델과 오디오 파일 전송에 사용됩니다. <a href="https://dash.cloudflare.com" target="_blank" style="color:#b4a0f0;text-decoration:underline">Cloudflare 대시보드</a> → R2 → API 토큰에서 확인하세요.
+      RunPod 템플릿 환경변수와 동일한 값을 입력합니다.
+    </div>
+    <div style="margin-top:16px">
+      <label class="label">Endpoint URL</label>
+      <input type="text" id="cfg-r2-endpoint" placeholder="https://<account_id>.r2.cloudflarestorage.com">
+    </div>
+    <div style="margin-top:12px">
+      <label class="label">Access Key ID</label>
+      <input type="text" id="cfg-r2-access-key" placeholder="R2 Access Key ID">
+    </div>
+    <div style="margin-top:12px">
+      <label class="label">Secret Access Key</label>
+      <input type="password" id="cfg-r2-secret-key" placeholder="R2 Secret Access Key">
+    </div>
+    <div style="margin-top:12px">
+      <label class="label">버킷 이름</label>
+      <input type="text" id="cfg-r2-bucket" placeholder="voice-studio" value="voice-studio">
+    </div>
+    <button class="btn btn-primary mt-16" onclick="saveR2Settings()">R2 설정 저장</button>
+    <div id="r2-settings-msg" style="font-size:12px;margin-top:8px"></div>
+  </div>
+
+  <div class="card">
     <h2 style="margin-bottom:12px">작업 관리</h2>
     <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
       멈춘 작업이 있거나 UI 상태가 이상한 경우 아래 버튼으로 정리할 수 있습니다.
@@ -2654,6 +2680,10 @@ async function loadSettings() {
     var config = await api('/config');
     document.getElementById('cfg-api-key').value = config.runpod_api_key || '';
     document.getElementById('cfg-endpoint-id').value = config.runpod_endpoint_id || '';
+    document.getElementById('cfg-r2-endpoint').value = config.r2_endpoint_url || '';
+    document.getElementById('cfg-r2-access-key').value = config.r2_access_key_id || '';
+    document.getElementById('cfg-r2-secret-key').value = config.r2_secret_key_display || '';
+    document.getElementById('cfg-r2-bucket').value = config.r2_bucket_name || 'voice-studio';
   } catch(e) {}
 }
 
@@ -2668,6 +2698,21 @@ async function saveSettings() {
     checkConnection(false);
   } catch(e) {
     toast('설정 저장 실패', 'error');
+  }
+}
+
+async function saveR2Settings() {
+  var form = new FormData();
+  form.append('r2_endpoint_url', document.getElementById('cfg-r2-endpoint').value);
+  form.append('r2_access_key_id', document.getElementById('cfg-r2-access-key').value);
+  form.append('r2_secret_access_key', document.getElementById('cfg-r2-secret-key').value);
+  form.append('r2_bucket_name', document.getElementById('cfg-r2-bucket').value);
+
+  try {
+    await api('/config/r2', { method: 'POST', body: form });
+    toast('R2 설정이 저장되었습니다', 'success');
+  } catch(e) {
+    toast('R2 설정 저장 실패: ' + e.message, 'error');
   }
 }
 

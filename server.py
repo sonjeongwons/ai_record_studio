@@ -461,6 +461,43 @@ runpod_client = RunPodClient()
 # 학습 작업별 사용된 훈련 파일 목록 (job_id → [파일명, ...])
 _training_file_map: dict[str, list[str]] = {}
 
+
+def upload_to_r2(file_path: Path, key: str) -> str:
+    """로컬 파일을 R2에 업로드하고 presigned URL을 반환합니다."""
+    try:
+        import boto3
+        from botocore.config import Config as BotoConfig
+    except ImportError:
+        raise HTTPException(400,
+            "boto3가 설치되지 않았습니다. 터미널에서 'pip install boto3'를 실행하세요.")
+
+    config = load_config()
+    endpoint_url = config.get("r2_endpoint_url")
+    access_key = config.get("r2_access_key_id")
+    secret_key = config.get("r2_secret_access_key")
+    bucket = config.get("r2_bucket_name", "voice-studio")
+
+    if not all([endpoint_url, access_key, secret_key]):
+        raise HTTPException(400,
+            "R2 스토리지가 설정되지 않았습니다. 설정 페이지에서 R2 정보를 입력하세요.")
+
+    s3 = boto3.client("s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=BotoConfig(signature_version="s3v4"),
+        region_name="auto",
+    )
+
+    s3.upload_file(str(file_path), bucket, key)
+
+    presigned_url = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=86400 * 7,  # 7일
+    )
+    return presigned_url
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 백그라운드 작업 관리
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -889,10 +926,15 @@ async def favicon():
 @app.get("/api/config")
 async def get_config():
     config = load_config()
+    r2_secret = config.get("r2_secret_access_key", "")
     return {
         "runpod_api_key": "***" + config.get("runpod_api_key", "")[-4:] if config.get("runpod_api_key") else "",
         "runpod_endpoint_id": config.get("runpod_endpoint_id", ""),
-        "is_configured": bool(config.get("runpod_api_key") and config.get("runpod_endpoint_id"))
+        "is_configured": bool(config.get("runpod_api_key") and config.get("runpod_endpoint_id")),
+        "r2_endpoint_url": config.get("r2_endpoint_url", ""),
+        "r2_access_key_id": config.get("r2_access_key_id", ""),
+        "r2_secret_key_display": "***" + r2_secret[-4:] if r2_secret else "",
+        "r2_bucket_name": config.get("r2_bucket_name", "voice-studio"),
     }
 
 @app.post("/api/config")
@@ -904,6 +946,25 @@ async def set_config(api_key: str = Form(""), endpoint_id: str = Form("")):
         config["runpod_endpoint_id"] = endpoint_id
     save_config(config)
     runpod_client.reload_config()
+    return {"status": "ok"}
+
+@app.post("/api/config/r2")
+async def set_r2_config(
+    r2_endpoint_url: str = Form(""),
+    r2_access_key_id: str = Form(""),
+    r2_secret_access_key: str = Form(""),
+    r2_bucket_name: str = Form("voice-studio"),
+):
+    config = load_config()
+    if r2_endpoint_url:
+        config["r2_endpoint_url"] = r2_endpoint_url.rstrip("/")
+    if r2_access_key_id:
+        config["r2_access_key_id"] = r2_access_key_id
+    if r2_secret_access_key and not r2_secret_access_key.startswith("***"):
+        config["r2_secret_access_key"] = r2_secret_access_key
+    if r2_bucket_name:
+        config["r2_bucket_name"] = r2_bucket_name
+    save_config(config)
     return {"status": "ok"}
 
 
@@ -1363,12 +1424,8 @@ async def start_conversion(
         """, (job_id,))
 
     try:
-        with open(temp_path, "rb") as f:
-            audio_b64 = base64.b64encode(f.read()).decode()
-
         payload = {
             "task_type": "convert",
-            "audio_data": audio_b64,
             "audio_filename": audio.filename,
             "pitch_shift": pitch_shift,
             "index_rate": index_rate,
@@ -1377,6 +1434,17 @@ async def start_conversion(
             "vocal_volume": vocal_volume,
             "mr_volume": mr_volume,
         }
+
+        # 오디오 파일을 R2에 업로드 (10 MB 페이로드 한도 회피)
+        audio_r2_key = f"voice-studio/convert/{job_id}/{audio.filename}"
+        try:
+            audio_url = upload_to_r2(temp_path, audio_r2_key)
+            payload["audio_url"] = audio_url
+        except HTTPException:
+            # R2 미설정 시 base64 폴백 (소용량 파일만 가능)
+            with open(temp_path, "rb") as f:
+                audio_b64 = base64.b64encode(f.read()).decode()
+            payload["audio_data"] = audio_b64
 
         # R2 URL로 모델 전달 (base64 인라인 대신)
         if pth_url:

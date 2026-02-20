@@ -1488,6 +1488,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     index_b64: str = job_input.get("index_data", "")
     index_url: str = job_input.get("index_url", "")
     audio_b64: str = job_input.get("audio_data", "")
+    audio_url: str = job_input.get("audio_url", "")
     audio_filename: str = job_input.get("audio_filename", "input.wav")
     pitch_shift: int = job_input.get("pitch_shift", 0)
     index_rate: float = job_input.get("index_rate", 0.75)
@@ -1506,8 +1507,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
 
     if not pth_b64 and not pth_url:
         raise ValueError("No model provided (pth_data or pth_url required)")
-    if not audio_b64:
-        raise ValueError("No audio_data (input audio) provided for conversion")
+    if not audio_b64 and not audio_url:
+        raise ValueError("No audio provided (audio_data or audio_url required)")
 
     job_id = job.get("id", uuid.uuid4().hex[:12])
     work = ensure_dir(WORK_DIR / f"convert_{job_id}")
@@ -1545,9 +1546,19 @@ def task_convert(job_input: dict, job: dict) -> dict:
         if index_path:
             log.info(f"Index file ready: {index_path.stat().st_size / 1024:.1f} KB")
 
-        # Decode and normalize input audio to WAV
-        input_ext = Path(audio_filename).suffix.lower()
-        raw_input = decode_b64_file(audio_b64, work / f"input{input_ext}")
+        # Decode input audio: download from URL or decode base64
+        input_ext = Path(audio_filename).suffix.lower() or ".mp3"
+        if audio_url:
+            import requests as _req
+            log.info(f"Downloading audio from URL: {audio_url[:80]}...")
+            resp = _req.get(audio_url, timeout=120)
+            resp.raise_for_status()
+            raw_input = work / f"input{input_ext}"
+            with open(raw_input, "wb") as f:
+                f.write(resp.content)
+        else:
+            raw_input = decode_b64_file(audio_b64, work / f"input{input_ext}")
+        log.info(f"Audio file ready: {raw_input.stat().st_size / 1024:.1f} KB")
 
         # Normalize to WAV for processing (keep STEREO for Demucs quality)
         input_stereo = work / "input_stereo.wav"
