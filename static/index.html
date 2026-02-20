@@ -153,6 +153,7 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
   border: 1px solid var(--border);
 }
 .btn-secondary:hover { background: rgba(255,255,255,0.08); }
+.btn-secondary:disabled { background: rgba(255,255,255,0.03); color: var(--text3); cursor: not-allowed; border-color: transparent; }
 .btn-danger {
   background: rgba(239,68,68,0.1);
   color: var(--red);
@@ -930,8 +931,8 @@ input[type="range"]::-webkit-slider-thumb {
         <div id="train-error-msg" style="font-size:12px;color:var(--text2);max-height:120px;overflow-y:auto;word-break:break-all;line-height:1.5"></div>
       </div>
       <div class="flex gap-8" style="justify-content:center;margin-top:12px">
-        <button class="btn btn-secondary" onclick="resetTraining()">돌아가기</button>
-        <button class="btn btn-primary" onclick="retryTraining()">다시 시도</button>
+        <button id="btn-train-back" class="btn btn-secondary" onclick="resetTraining()">돌아가기</button>
+        <button id="btn-train-retry" class="btn btn-primary" onclick="retryTraining()">다시 시도</button>
       </div>
     </div>
   </div>
@@ -1049,8 +1050,8 @@ input[type="range"]::-webkit-slider-thumb {
         <div id="convert-error-msg" style="font-size:12px;color:var(--text2);max-height:120px;overflow-y:auto;word-break:break-all;line-height:1.5"></div>
       </div>
       <div class="flex gap-8" style="justify-content:center;margin-top:12px">
-        <button class="btn btn-secondary" onclick="resetConversion()">돌아가기</button>
-        <button class="btn btn-primary" onclick="retryConversion()">다시 시도</button>
+        <button id="btn-convert-back" class="btn btn-secondary" onclick="resetConversion()">돌아가기</button>
+        <button id="btn-convert-retry" class="btn btn-primary" onclick="retryConversion()">다시 시도</button>
       </div>
     </div>
   </div>
@@ -1835,11 +1836,22 @@ async function pollTrainingStatus() {
 
 function resetTraining() {
   currentTrainJobId = null;
+  // 버튼 비활성화 + 로딩 표시
+  var backBtn = document.getElementById('btn-train-back');
+  var retryBtn = document.getElementById('btn-train-retry');
+  if (backBtn) { backBtn.disabled = true; backBtn.textContent = '복원 중...'; }
+  if (retryBtn) retryBtn.disabled = true;
+
   document.getElementById('train-upload').style.display = 'block';
   document.getElementById('train-progress').style.display = 'none';
   document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
+
+  // 버튼 상태 복원 (다음 에러 시를 위해)
+  if (backBtn) { backBtn.disabled = false; backBtn.textContent = '돌아가기'; }
+  if (retryBtn) { retryBtn.disabled = false; retryBtn.textContent = '다시 시도'; }
+
   // 파일 목록 & 전처리 상태 복원 (초기화하지 않음)
   api('/files').then(function(r) {
     uploadedFiles = r.files || [];
@@ -1868,6 +1880,11 @@ async function cancelTraining() {
 
 function retryTraining() {
   currentTrainJobId = null;
+  // 버튼 비활성화 + 로딩 표시
+  var btn = document.getElementById('btn-train-retry');
+  var backBtn = document.getElementById('btn-train-back');
+  if (btn) { btn.disabled = true; btn.textContent = '재시작 중...'; }
+  if (backBtn) backBtn.disabled = true;
   // 바로 학습 재시작
   startTraining();
 }
@@ -2328,6 +2345,11 @@ async function cancelConversion() {
 }
 
 function retryConversion() {
+  // 버튼 비활성화 + 로딩 표시
+  var btn = document.getElementById('btn-convert-retry');
+  var backBtn = document.getElementById('btn-convert-back');
+  if (btn) { btn.disabled = true; btn.textContent = '재시작 중...'; }
+  if (backBtn) backBtn.disabled = true;
   resetConversion();
 }
 
