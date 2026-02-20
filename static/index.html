@@ -917,6 +917,23 @@ input[type="range"]::-webkit-slider-thumb {
         <div><div style="font-size:12px;color:var(--text3)">상태</div><div style="font-size:14px;margin-top:4px" id="train-info-status">-</div></div>
       </div>
     </div>
+
+    <!-- 실행 중: 취소 버튼 -->
+    <div id="train-cancel-area" class="flex" style="justify-content:center;margin-top:16px">
+      <button class="btn btn-secondary" onclick="cancelTraining()">학습 취소</button>
+    </div>
+
+    <!-- 실패 시: 에러 + 복구 버튼 -->
+    <div id="train-error-area" style="display:none;margin-top:16px">
+      <div class="card" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.05)">
+        <div style="font-size:13px;font-weight:600;color:#ef4444;margin-bottom:8px">오류 상세</div>
+        <div id="train-error-msg" style="font-size:12px;color:var(--text3);max-height:120px;overflow-y:auto;word-break:break-all;line-height:1.5"></div>
+      </div>
+      <div class="flex gap-8" style="justify-content:center;margin-top:12px">
+        <button class="btn btn-secondary" onclick="resetTraining()">돌아가기</button>
+        <button class="btn btn-primary" onclick="retryTraining()">다시 시도</button>
+      </div>
+    </div>
   </div>
 
   <!-- Step: Done -->
@@ -1018,6 +1035,23 @@ input[type="range"]::-webkit-slider-thumb {
         </div>
       </div>
       <div class="progress-label" id="convert-status-msg">GPU 변환 중...</div>
+    </div>
+
+    <!-- 실행 중: 취소 버튼 -->
+    <div id="convert-cancel-area" class="flex" style="justify-content:center;margin-top:16px">
+      <button class="btn btn-secondary" onclick="cancelConversion()">변환 취소</button>
+    </div>
+
+    <!-- 실패 시: 에러 + 복구 버튼 -->
+    <div id="convert-error-area" style="display:none;margin-top:16px">
+      <div class="card" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.05)">
+        <div style="font-size:13px;font-weight:600;color:#ef4444;margin-bottom:8px">오류 상세</div>
+        <div id="convert-error-msg" style="font-size:12px;color:var(--text3);max-height:120px;overflow-y:auto;word-break:break-all;line-height:1.5"></div>
+      </div>
+      <div class="flex gap-8" style="justify-content:center;margin-top:12px">
+        <button class="btn btn-secondary" onclick="resetConversion()">돌아가기</button>
+        <button class="btn btn-primary" onclick="retryConversion()">다시 시도</button>
+      </div>
     </div>
   </div>
 
@@ -1711,8 +1745,11 @@ async function startTraining() {
 
     document.getElementById('train-upload').style.display = 'none';
     document.getElementById('train-progress').style.display = 'block';
+    document.getElementById('train-error-area').style.display = 'none';
+    document.getElementById('train-cancel-area').style.display = 'block';
     document.getElementById('train-info-name').textContent = modelName;
     document.getElementById('train-info-epochs').textContent = epochs;
+    document.getElementById('train-info-status').textContent = '진행 중';
 
     toast('학습이 시작되었습니다', 'info');
     pollTrainingStatus();
@@ -1746,9 +1783,12 @@ async function pollTrainingStatus() {
       return;
     }
     if (job.status === 'failed') {
-      document.getElementById('train-status-msg').textContent = job.message || '학습 실패';
+      document.getElementById('train-status-msg').textContent = '학습 실패';
       document.getElementById('train-info-status').textContent = '실패';
-      toast('학습 실패: ' + (job.message || ''), 'error');
+      document.getElementById('train-cancel-area').style.display = 'none';
+      document.getElementById('train-error-area').style.display = 'block';
+      document.getElementById('train-error-msg').textContent = extractErrorSummary(job.message || '');
+      toast('학습 실패', 'error');
       return;
     }
 
@@ -1760,18 +1800,48 @@ async function pollTrainingStatus() {
 
 function resetTraining() {
   currentTrainJobId = null;
-  preprocessJobId = null;
-  preprocessDone = false;
   document.getElementById('train-upload').style.display = 'block';
   document.getElementById('train-progress').style.display = 'none';
   document.getElementById('train-done').style.display = 'none';
+  document.getElementById('train-error-area').style.display = 'none';
+  document.getElementById('train-cancel-area').style.display = 'block';
   document.getElementById('btn-start-train').disabled = false;
-  // Reset preprocess UI
-  document.getElementById('preprocess-idle').style.display = 'block';
-  document.getElementById('preprocess-running').style.display = 'none';
-  document.getElementById('preprocess-done').style.display = 'none';
-  uploadedFiles = [];
-  renderFileList();
+  checkPreprocessStatus();
+}
+
+async function cancelTraining() {
+  if (currentTrainJobId) {
+    try { await api('/jobs/' + currentTrainJobId + '/cancel', { method: 'POST' }); } catch(e) {}
+  }
+  currentTrainJobId = null;
+  document.getElementById('train-upload').style.display = 'block';
+  document.getElementById('train-progress').style.display = 'none';
+  document.getElementById('train-error-area').style.display = 'none';
+  document.getElementById('train-cancel-area').style.display = 'block';
+  document.getElementById('btn-start-train').disabled = false;
+  toast('학습을 취소했습니다', 'info');
+}
+
+function retryTraining() {
+  document.getElementById('train-error-area').style.display = 'none';
+  document.getElementById('train-cancel-area').style.display = 'block';
+  document.getElementById('train-progress').style.display = 'none';
+  document.getElementById('train-upload').style.display = 'block';
+  document.getElementById('btn-start-train').disabled = false;
+  currentTrainJobId = null;
+  checkPreprocessStatus();
+}
+
+function extractErrorSummary(msg) {
+  if (!msg) return '알 수 없는 오류';
+  var moduleMatch = msg.match(/ModuleNotFoundError:\s*No module named '([^']+)'/);
+  if (moduleMatch) return "서버에 '" + moduleMatch[1] + "' 모듈이 설치되지 않았습니다. Docker 이미지 재빌드가 필요합니다.";
+  var calledMatch = msg.match(/CalledProcessError:.*returned non-zero exit status (\d+)/);
+  if (calledMatch) return "서버 프로세스 실행 실패 (exit code " + calledMatch[1] + "). 로그를 확인하세요.";
+  var httpMatch = msg.match(/HTTP (\d+):\s*(.+)/);
+  if (httpMatch) return "서버 오류 (HTTP " + httpMatch[1] + "): " + httpMatch[2].substring(0, 100);
+  if (msg.length > 200) return msg.substring(0, 200) + '...';
+  return msg;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2019,8 +2089,11 @@ async function pollConvertStatus() {
       return;
     }
     if (job.status === 'failed') {
-      document.getElementById('convert-status-msg').textContent = job.message || '변환 실패';
-      toast('변환 실패: ' + (job.message || ''), 'error');
+      document.getElementById('convert-status-msg').textContent = '변환 실패';
+      document.getElementById('convert-cancel-area').style.display = 'none';
+      document.getElementById('convert-error-area').style.display = 'block';
+      document.getElementById('convert-error-msg').textContent = extractErrorSummary(job.message || '');
+      toast('변환 실패', 'error');
       return;
     }
 
@@ -2194,6 +2267,8 @@ function resetConversion() {
   document.getElementById('convert-main').style.display = 'block';
   document.getElementById('convert-progress').style.display = 'none';
   document.getElementById('convert-done').style.display = 'none';
+  document.getElementById('convert-error-area').style.display = 'none';
+  document.getElementById('convert-cancel-area').style.display = 'block';
   document.getElementById('batch-progress').style.display = 'none';
   document.getElementById('batch-done').style.display = 'none';
   document.getElementById('convert-dropzone').style.display = 'block';
@@ -2202,6 +2277,18 @@ function resetConversion() {
   document.getElementById('convert-result-player').style.display = 'none';
   document.getElementById('btn-convert').disabled = false;
   loadModels();
+}
+
+async function cancelConversion() {
+  if (currentConvertJobId) {
+    try { await api('/jobs/' + currentConvertJobId + '/cancel', { method: 'POST' }); } catch(e) {}
+  }
+  resetConversion();
+  toast('변환을 취소했습니다', 'info');
+}
+
+function retryConversion() {
+  resetConversion();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
