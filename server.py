@@ -242,6 +242,8 @@ def init_db():
                 name TEXT NOT NULL,
                 pth_path TEXT,
                 index_path TEXT,
+                pth_url TEXT,
+                index_url TEXT,
                 epochs INTEGER,
                 training_time_seconds REAL,
                 quality_score REAL,
@@ -277,6 +279,12 @@ def init_db():
             db.execute("ALTER TABLE training_files ADD COLUMN preprocessed INTEGER DEFAULT 0")
         except Exception:
             pass  # 이미 존재하면 무시
+        # voice_models에 R2 URL 컬럼 추가 (기존 DB 마이그레이션)
+        for col in ("pth_url", "index_url"):
+            try:
+                db.execute(f"ALTER TABLE voice_models ADD COLUMN {col} TEXT")
+            except Exception:
+                pass
 
 
 def cleanup_stale_jobs():
@@ -680,10 +688,11 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
 
             with get_db() as db:
                 db.execute("""
-                    INSERT INTO voice_models (name, pth_path, index_path, epochs, 
-                                            training_time_seconds, status)
-                    VALUES (?, ?, ?, ?, ?, 'ready')
+                    INSERT INTO voice_models (name, pth_path, index_path, pth_url, index_url,
+                                            epochs, training_time_seconds, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'ready')
                 """, (model_name, pth_path, index_path,
+                      output.get("pth_url"), output.get("index_url"),
                       output.get("epochs_trained", 0),
                       output.get("training_time_seconds", 0)))
 
@@ -1304,16 +1313,9 @@ async def start_conversion(
         content = await audio.read()
         f.write(content)
 
-    # 모델 파일 인코딩
-    pth_b64 = ""
-    if model["pth_path"] and Path(model["pth_path"]).exists():
-        with open(model["pth_path"], "rb") as f:
-            pth_b64 = base64.b64encode(f.read()).decode()
-
-    index_b64 = ""
-    if model["index_path"] and Path(model["index_path"]).exists():
-        with open(model["index_path"], "rb") as f:
-            index_b64 = base64.b64encode(f.read()).decode()
+    # 모델 URL 또는 base64 준비
+    pth_url = model["pth_url"] if model["pth_url"] else None
+    index_url = model["index_url"] if model["index_url"] else None
 
     # Job 생성
     job_id = uuid.uuid4().hex[:12]
@@ -1327,10 +1329,8 @@ async def start_conversion(
         with open(temp_path, "rb") as f:
             audio_b64 = base64.b64encode(f.read()).decode()
 
-        runpod_job_id = runpod_client.submit_job({
+        payload = {
             "task_type": "convert",
-            "pth_data": pth_b64,
-            "index_data": index_b64,
             "audio_data": audio_b64,
             "audio_filename": audio.filename,
             "pitch_shift": pitch_shift,
@@ -1339,7 +1339,15 @@ async def start_conversion(
             "separate_vocals": True,
             "vocal_volume": vocal_volume,
             "mr_volume": mr_volume,
-        })
+        }
+
+        # R2 URL로 모델 전달 (base64 인라인 대신)
+        if pth_url:
+            payload["pth_url"] = pth_url
+        if index_url:
+            payload["index_url"] = index_url
+
+        runpod_job_id = runpod_client.submit_job(payload)
 
         update_job(job_id, status="running", progress=10,
                   message="GPU 변환 시작", runpod_job_id=runpod_job_id)

@@ -1484,7 +1484,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
       5) Return converted vocals + mixed output as base64
     """
     pth_b64: str = job_input.get("pth_data", "")
+    pth_url: str = job_input.get("pth_url", "")
     index_b64: str = job_input.get("index_data", "")
+    index_url: str = job_input.get("index_url", "")
     audio_b64: str = job_input.get("audio_data", "")
     audio_filename: str = job_input.get("audio_filename", "input.wav")
     pitch_shift: int = job_input.get("pitch_shift", 0)
@@ -1502,8 +1504,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
     vocal_volume: float = job_input.get("vocal_volume", 1.0)
     mr_volume: float = job_input.get("mr_volume", 1.0)
 
-    if not pth_b64:
-        raise ValueError("No pth_data (model weights) provided for conversion")
+    if not pth_b64 and not pth_url:
+        raise ValueError("No model provided (pth_data or pth_url required)")
     if not audio_b64:
         raise ValueError("No audio_data (input audio) provided for conversion")
 
@@ -1515,13 +1517,33 @@ def task_convert(job_input: dict, job: dict) -> dict:
         # --- Step 1: Decode files ---
         runpod.serverless.progress_update(job, "Decoding model and audio files... (1/4)")
 
-        pth_path = decode_b64_file(pth_b64, work / "model.pth")
-        log.info(f"Model file decoded: {pth_path.stat().st_size / 1024:.1f} KB")
+        # Model: download from URL or decode base64
+        if pth_url:
+            import requests as _req
+            log.info(f"Downloading model from URL: {pth_url[:80]}...")
+            resp = _req.get(pth_url, timeout=120)
+            resp.raise_for_status()
+            pth_path = work / "model.pth"
+            with open(pth_path, "wb") as f:
+                f.write(resp.content)
+        else:
+            pth_path = decode_b64_file(pth_b64, work / "model.pth")
+        log.info(f"Model file ready: {pth_path.stat().st_size / 1024:.1f} KB")
 
+        # Index: download from URL or decode base64
         index_path = None
-        if index_b64:
+        if index_url:
+            import requests as _req
+            log.info(f"Downloading index from URL: {index_url[:80]}...")
+            resp = _req.get(index_url, timeout=60)
+            resp.raise_for_status()
+            index_path = work / "model.index"
+            with open(index_path, "wb") as f:
+                f.write(resp.content)
+        elif index_b64:
             index_path = decode_b64_file(index_b64, work / "model.index")
-            log.info(f"Index file decoded: {index_path.stat().st_size / 1024:.1f} KB")
+        if index_path:
+            log.info(f"Index file ready: {index_path.stat().st_size / 1024:.1f} KB")
 
         # Decode and normalize input audio to WAV
         input_ext = Path(audio_filename).suffix.lower()
