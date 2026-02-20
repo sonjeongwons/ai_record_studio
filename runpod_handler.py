@@ -1018,8 +1018,31 @@ def _rvc_extract(
         )
 
     # Verify critical outputs exist
+    extracted_dir = logs_dir / "extracted"
+    f0_dir = logs_dir / "f0"
     config_json = logs_dir / "config.json"
     filelist_txt = logs_dir / "filelist.txt"
+
+    # Check feature extraction (most common silent failure point)
+    if not extracted_dir.exists() or not any(extracted_dir.glob("*.npy")):
+        npy_count = len(list(extracted_dir.glob("*.npy"))) if extracted_dir.exists() else 0
+        raise RuntimeError(
+            f"Feature extraction failed: extracted/ has {npy_count} .npy files. "
+            f"This usually means the embedder model ({embedder_model}) failed to load. "
+            f"Check that transformers is compatible with the installed PyTorch version."
+        )
+    else:
+        npy_count = len(list(extracted_dir.glob("*.npy")))
+        log.info(f"Feature extraction OK: {npy_count} .npy files in extracted/")
+
+    # Check F0 extraction
+    if not f0_dir.exists() or not any(f0_dir.glob("*.npy")):
+        f0_count = len(list(f0_dir.glob("*.npy"))) if f0_dir.exists() else 0
+        raise RuntimeError(
+            f"F0 extraction failed: f0/ has {f0_count} .npy files. "
+            f"Method: {f0_method}"
+        )
+
     if not config_json.exists():
         log.warning("extract.py did not create config.json, creating from template")
         config_src = APPLIO_ROOT / "rvc" / "configs" / f"{sample_rate}.json"
@@ -1028,8 +1051,18 @@ def _rvc_extract(
             shutil.copyfile(str(config_src), str(config_json))
     if not filelist_txt.exists():
         log.warning("extract.py did not create filelist.txt — training may fail")
+    else:
+        # Verify filelist has actual training data (not just mute entries)
+        with open(filelist_txt, "r") as f:
+            lines = [l.strip() for l in f if l.strip() and "mute" not in l.lower()]
+        log.info(f"filelist.txt: {len(lines)} training entries (excluding mutes)")
+        if len(lines) == 0:
+            raise RuntimeError(
+                "filelist.txt has no training entries (only mute placeholders). "
+                "Feature or F0 extraction may have produced mismatched files."
+            )
 
-    log.info(f"Extraction completed: F0 + features + config + filelist")
+    log.info(f"Extraction verified: features={npy_count}, config={'OK' if config_json.exists() else 'MISSING'}, filelist={'OK' if filelist_txt.exists() else 'MISSING'}")
 
 
 

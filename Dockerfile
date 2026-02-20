@@ -179,7 +179,7 @@ RUN python -m pip install --no-cache-dir "numpy>=1.23.0,<2.0"
 # wget: rvc/lib/utils.py → import wget
 RUN python -m pip install --no-cache-dir \
     beautifulsoup4 \
-    transformers \
+    "transformers<4.45.0" \
     tensorboard \
     wget
 
@@ -187,7 +187,8 @@ RUN python -m pip install --no-cache-dir runpod
 
 # -- Verify critical imports --
 RUN python -c "from bs4 import BeautifulSoup; print('bs4 OK')" \
-    && python -c "import transformers; print('transformers OK')" \
+    && python -c "import transformers; print('transformers', transformers.__version__)" \
+    && python -c "from transformers import HubertModel; print('HubertModel import OK')" \
     && python -c "import tensorboard; print('tensorboard OK')" \
     && python -c "import torch; print('torch', torch.__version__)" \
     && python -c "import numpy; print('numpy', numpy.__version__)"
