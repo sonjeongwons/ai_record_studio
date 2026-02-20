@@ -153,6 +153,13 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
     || python -m pip install --no-cache-dir onnxruntime-gpu \
     || python -m pip install --no-cache-dir onnxruntime
 
+# -- Group 6: Applio implicit deps (not always in requirements.txt) --
+# tensorboard: core.py → launch_tensorboard.py → from tensorboard import program
+# wget: rvc/lib/utils.py → import wget
+RUN python -m pip install --no-cache-dir \
+    tensorboard \
+    wget
+
 
 # ================================================================
 # LAYER 5: Audio ML Tools (Demucs + noisereduce)
