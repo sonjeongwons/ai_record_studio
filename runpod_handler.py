@@ -1618,7 +1618,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
         )
 
         if not converted_vocals_path.exists():
-            raise RuntimeError("Conversion produced no output file")
+            # 작업 디렉토리 내 파일 목록 로깅
+            all_files = list(work.rglob("*"))
+            log.error(f"Expected output: {converted_vocals_path}")
+            log.error(f"All files in work dir: {[str(f.relative_to(work)) for f in all_files if f.is_file()]}")
+            raise RuntimeError(
+                f"Conversion produced no output file at {converted_vocals_path.name}. "
+                f"Work dir contains: {[f.name for f in all_files if f.is_file()]}"
+            )
 
         # --- Step 4: Mix converted vocals + original accompaniment ---
         result = {
@@ -1706,8 +1713,8 @@ def _rvc_infer(
         )
         log.info("Inference completed via core.run_infer_script")
         return
-    except ImportError:
-        log.info("core.run_infer_script not available, trying alternative")
+    except ImportError as e:
+        log.info(f"core.run_infer_script not available ({e}), trying alternative")
     except Exception as e:
         log.warning(f"core.run_infer_script failed: {e}, trying alternative")
     finally:
@@ -1738,8 +1745,8 @@ def _rvc_infer(
         )
         log.info("Inference completed via VoiceConverter class")
         return
-    except ImportError:
-        log.info("rvc.infer.infer.VoiceConverter not available, trying CLI")
+    except ImportError as e:
+        log.info(f"rvc.infer.infer.VoiceConverter not available ({e}), trying CLI")
     except Exception as e:
         log.warning(f"VoiceConverter failed: {e}, trying CLI")
     finally:
@@ -1764,12 +1771,46 @@ def _rvc_infer(
         "--embedder_model", "contentvec",
     ]
 
-    result = subprocess.run(
+    log.info(f"CLI command: {' '.join(cmd)}")
+    cli_result = subprocess.run(
         cmd,
         cwd=str(APPLIO_ROOT),
-        capture_output=True, text=True, timeout=600, check=True,
+        capture_output=True, text=True, timeout=600,
     )
+    log.info(f"CLI exit code: {cli_result.returncode}")
+    if cli_result.stdout.strip():
+        log.info(f"CLI stdout: {cli_result.stdout[-2000:]}")
+    if cli_result.stderr.strip():
+        log.warning(f"CLI stderr: {cli_result.stderr[-2000:]}")
+
+    if cli_result.returncode != 0:
+        log.error(f"CLI failed with code {cli_result.returncode}")
+
     log.info("Inference completed via CLI fallback")
+
+    # --- 출력 파일 탐색: CLI가 다른 경로에 저장했을 수 있음 ---
+    if not output_path.exists():
+        log.warning(f"Output not at expected path: {output_path}")
+        # work 디렉토리에서 변환된 파일 검색
+        found_files = list(output_path.parent.glob("*"))
+        log.info(f"Files in work dir: {[f.name for f in found_files]}")
+        # Applio 기본 출력 디렉토리도 검색
+        for search_dir in [
+            APPLIO_ROOT / "audio" / "outputs",
+            APPLIO_ROOT / "audio",
+            APPLIO_ROOT / "output",
+            APPLIO_ROOT / "outputs",
+        ]:
+            if search_dir.exists():
+                applio_files = list(search_dir.rglob(f"*.{export_format}"))
+                if applio_files:
+                    log.info(f"Found in {search_dir}: {[f.name for f in applio_files]}")
+                    # 가장 최근 파일을 사용
+                    newest = max(applio_files, key=lambda f: f.stat().st_mtime)
+                    import shutil
+                    shutil.copy2(str(newest), str(output_path))
+                    log.info(f"Copied {newest} → {output_path}")
+                    break
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

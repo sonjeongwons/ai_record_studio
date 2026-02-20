@@ -489,13 +489,17 @@ def upload_to_r2(file_path: Path, key: str) -> str:
         region_name="auto",
     )
 
-    s3.upload_file(str(file_path), bucket, key)
+    try:
+        s3.upload_file(str(file_path), bucket, key)
+        presigned_url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=86400 * 7,  # 7일
+        )
+    except Exception as e:
+        print(f"[R2 Upload Error] {type(e).__name__}: {e}")
+        raise HTTPException(500, f"R2 업로드 실패: {type(e).__name__}: {e}")
 
-    presigned_url = s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=86400 * 7,  # 7일
-    )
     return presigned_url
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1440,8 +1444,14 @@ async def start_conversion(
         try:
             audio_url = upload_to_r2(temp_path, audio_r2_key)
             payload["audio_url"] = audio_url
-        except HTTPException:
-            # R2 미설정 시 base64 폴백 (소용량 파일만 가능)
+        except Exception as e:
+            print(f"[Convert] R2 audio upload failed: {e}")
+            file_size = temp_path.stat().st_size
+            if file_size > 7_000_000:  # 7MB 이상이면 base64로도 10MB 초과
+                update_job(job_id, status="failed",
+                    message=f"R2 업로드 실패 (파일 {file_size//1_000_000}MB): {e}")
+                return {"job_id": job_id}
+            # 소용량 파일만 base64 폴백
             with open(temp_path, "rb") as f:
                 audio_b64 = base64.b64encode(f.read()).decode()
             payload["audio_data"] = audio_b64
@@ -1451,6 +1461,43 @@ async def start_conversion(
             payload["pth_url"] = pth_url
         if index_url:
             payload["index_url"] = index_url
+
+        # pth_url 없는 모델 (이전 학습 모델) → 로컬 파일을 R2에 업로드
+        if not pth_url and model["pth_path"]:
+            local_pth = Path(model["pth_path"])
+            if not local_pth.is_absolute():
+                local_pth = MODEL_DIR / local_pth
+            if local_pth.exists():
+                try:
+                    pth_r2_key = f"voice-studio/convert/{job_id}/model.pth"
+                    pth_url = upload_to_r2(local_pth, pth_r2_key)
+                    payload["pth_url"] = pth_url
+                    print(f"[Convert] Uploaded model pth to R2: {pth_r2_key}")
+                except Exception as e:
+                    print(f"[Convert] R2 model upload failed: {e}")
+                    update_job(job_id, status="failed",
+                        message=f"모델 R2 업로드 실패: {e}")
+                    return {"job_id": job_id}
+
+        if not index_url and model["index_path"]:
+            local_idx = Path(model["index_path"])
+            if not local_idx.is_absolute():
+                local_idx = MODEL_DIR / local_idx
+            if local_idx.exists():
+                try:
+                    idx_r2_key = f"voice-studio/convert/{job_id}/model.index"
+                    index_url = upload_to_r2(local_idx, idx_r2_key)
+                    payload["index_url"] = index_url
+                    print(f"[Convert] Uploaded model index to R2: {idx_r2_key}")
+                except Exception as e:
+                    print(f"[Convert] R2 index upload failed: {e}")
+                    # index는 선택사항이므로 계속 진행
+
+        # 페이로드 크기 로깅 (디버깅용)
+        payload_keys = {k: (len(v) if isinstance(v, str) and len(v) > 100 else v)
+                        for k, v in payload.items()}
+        payload_size = len(json.dumps(payload))
+        print(f"[Convert] Payload size: {payload_size:,} bytes, keys: {payload_keys}")
 
         runpod_job_id = runpod_client.submit_job(payload)
 
