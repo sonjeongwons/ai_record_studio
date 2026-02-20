@@ -1054,6 +1054,40 @@ async def start_preprocess(
     return {"job_id": job_id, "segments": total_segments, "batches": len(batches)}
 
 
+@app.get("/api/preprocess/status")
+async def preprocess_status():
+    """전처리 상태 확인 — preprocessed/ 디렉토리에 세그먼트가 있는지 반환"""
+    files = sorted(PREPROCESSED_DIR.glob("*.wav"))
+    if not files:
+        return {"preprocessed": False, "segment_count": 0, "total_duration": 0}
+
+    total_dur = 0.0
+    try:
+        import wave
+        for f in files:
+            with wave.open(str(f), "rb") as wf:
+                total_dur += wf.getnframes() / wf.getframerate()
+    except Exception:
+        pass
+
+    return {
+        "preprocessed": True,
+        "segment_count": len(files),
+        "total_duration": round(total_dur, 2),
+    }
+
+
+@app.delete("/api/preprocess")
+async def clear_preprocess():
+    """전처리 결과 삭제 — preprocessed/ 디렉토리 비우기"""
+    count = 0
+    for f in PREPROCESSED_DIR.iterdir():
+        if f.is_file():
+            f.unlink()
+            count += 1
+    return {"cleared": count}
+
+
 # ─── 변환 API ───
 
 @app.post("/api/convert")

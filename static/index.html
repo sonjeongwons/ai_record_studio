@@ -852,6 +852,9 @@ input[type="range"]::-webkit-slider-thumb {
               <div class="preprocess-stat-label">총 길이</div>
             </div>
           </div>
+          <button class="skip-link" onclick="resetPreprocess()" style="margin-top:8px">
+            다시 전처리
+          </button>
         </div>
       </div>
     </div>
@@ -1631,6 +1634,35 @@ function cancelPreprocess() {
   toast('전처리를 취소했습니다. 다시 시작하거나 건너뛸 수 있습니다.', 'info');
 }
 
+async function resetPreprocess() {
+  try {
+    await api('/preprocess', { method: 'DELETE' });
+  } catch(e) { /* ignore */ }
+  preprocessDone = false;
+  preprocessJobId = null;
+  document.getElementById('preprocess-done').style.display = 'none';
+  document.getElementById('preprocess-idle').style.display = 'block';
+  document.getElementById('preprocess-segments').textContent = '-';
+  document.getElementById('preprocess-duration').textContent = '-';
+  document.getElementById('btn-start-train').disabled = true;
+  toast('전처리 초기화됨. 다시 전처리하거나 건너뛸 수 있습니다.', 'info');
+}
+
+async function checkPreprocessStatus() {
+  try {
+    var res = await api('/preprocess/status');
+    if (res.preprocessed && res.segment_count > 0) {
+      preprocessDone = true;
+      document.getElementById('preprocess-idle').style.display = 'none';
+      document.getElementById('preprocess-done').style.display = 'block';
+      document.getElementById('preprocess-segments').textContent = res.segment_count;
+      document.getElementById('preprocess-duration').textContent =
+        res.total_duration > 0 ? formatDuration(res.total_duration) : '-';
+      document.getElementById('btn-start-train').disabled = false;
+    }
+  } catch(e) { /* ignore on load */ }
+}
+
 async function cleanupStuckJobs() {
   try {
     var res = await api('/jobs/cleanup', { method: 'POST' });
@@ -2202,6 +2234,7 @@ async function saveSettings() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 loadDashboard();
 startConnectionPolling();
+checkPreprocessStatus();
 
 api('/files').then(function(res) {
   uploadedFiles = res.files || [];
