@@ -214,7 +214,7 @@ RUN python -m pip install --no-cache-dir \
     tensorboard \
     wget
 
-RUN python -m pip install --no-cache-dir runpod
+RUN python -m pip install --no-cache-dir runpod boto3
 
 # -- Verify critical imports --
 RUN python -c "from bs4 import BeautifulSoup; print('bs4 OK')" \

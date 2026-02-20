@@ -640,7 +640,16 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             pth_path = None
             index_path = None
 
-            if output.get("pth_data"):
+            # Download model from presigned URL (primary path)
+            if output.get("pth_url"):
+                pth_filename = output.get("pth_filename", f"{model_name}.pth")
+                pth_path = str(model_dir / pth_filename)
+                resp = requests.get(output["pth_url"], timeout=300)
+                resp.raise_for_status()
+                with open(pth_path, "wb") as f:
+                    f.write(resp.content)
+            # Legacy: inline base64 (backward compat for small models)
+            elif output.get("pth_data"):
                 pth_filename = output.get("pth_filename", f"{model_name}.pth")
                 pth_path = str(model_dir / pth_filename)
                 raw = base64.b64decode(output["pth_data"])
@@ -650,7 +659,16 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 with open(pth_path, "wb") as f:
                     f.write(raw)
 
-            if output.get("index_data"):
+            # Download index from presigned URL (primary path)
+            if output.get("index_url"):
+                idx_filename = output.get("index_filename", f"{model_name}.index")
+                index_path = str(model_dir / idx_filename)
+                resp = requests.get(output["index_url"], timeout=120)
+                resp.raise_for_status()
+                with open(index_path, "wb") as f:
+                    f.write(resp.content)
+            # Legacy: inline base64
+            elif output.get("index_data"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
                 index_path = str(model_dir / idx_filename)
                 raw = base64.b64decode(output["index_data"])

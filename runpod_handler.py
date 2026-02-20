@@ -866,31 +866,64 @@ def task_train(job_input: dict, job: dict) -> dict:
 
         elapsed = time.time() - start_time
 
-        # Compress model files — RunPod has ~20 MB payload limit for job results.
-        # A typical RVC voice model is ~52 MB raw → ~45 MB gzipped → ~60 MB base64.
-        # Still may exceed limit, so we strip optimizer state if present.
+        # Upload model files to S3-compatible storage via RunPod's rp_upload.
+        # RunPod payload limit is ~20 MB — RVC models are ~52 MB, so inline
+        # base64 is not viable. Bucket upload returns a 7-day presigned URL.
         pth_size_mb = pth_path.stat().st_size / 1024 / 1024
-        log.info(f"Encoding model: {pth_path.name} ({pth_size_mb:.1f} MB)")
+        log.info(f"Uploading model: {pth_path.name} ({pth_size_mb:.1f} MB)")
 
         result = {
             "model_name": model_name,
             "epochs_trained": epochs,
             "sample_rate": sample_rate,
             "training_time_seconds": round(elapsed, 1),
-            "pth_data": encode_file_b64(pth_path, compress=True),
             "pth_filename": pth_path.name,
-            "pth_compressed": True,
         }
 
-        if index_path is not None:
-            result["index_data"] = encode_file_b64(index_path, compress=True)
-            result["index_filename"] = index_path.name
-            result["index_compressed"] = True
-        else:
-            result["index_data"] = ""
-            result["index_filename"] = ""
-            result["index_compressed"] = False
-            log.warning("No FAISS index file generated")
+        try:
+            from runpod.serverless.utils import upload_file_to_bucket
+
+            pth_url = upload_file_to_bucket(
+                file_name=pth_path.name,
+                file_location=str(pth_path),
+                prefix=f"voice-studio/{job_id}",
+            )
+            # upload_file_to_bucket returns a local path if no bucket configured
+            if pth_url and pth_url.startswith("http"):
+                result["pth_url"] = pth_url
+                log.info(f"Model uploaded to bucket: {pth_url[:80]}...")
+            else:
+                raise RuntimeError(
+                    "클라우드 스토리지가 설정되지 않았습니다. "
+                    "RunPod 템플릿에 BUCKET_ENDPOINT_URL, BUCKET_ACCESS_KEY_ID, "
+                    "BUCKET_SECRET_ACCESS_KEY 환경변수를 설정하세요. "
+                    "(Cloudflare R2 무료 플랜 권장)"
+                )
+
+            if index_path is not None:
+                index_url = upload_file_to_bucket(
+                    file_name=index_path.name,
+                    file_location=str(index_path),
+                    prefix=f"voice-studio/{job_id}",
+                )
+                if index_url and index_url.startswith("http"):
+                    result["index_url"] = index_url
+                    result["index_filename"] = index_path.name
+                    log.info(f"Index uploaded to bucket: {index_url[:80]}...")
+            else:
+                log.warning("No FAISS index file generated")
+
+        except ImportError:
+            raise RuntimeError(
+                "boto3가 설치되지 않았습니다. Docker 이미지를 재빌드하세요."
+            )
+        except RuntimeError:
+            raise  # re-raise our own errors
+        except Exception as e:
+            raise RuntimeError(
+                f"모델 업로드 실패: {e}. "
+                f"RunPod 환경변수(BUCKET_ENDPOINT_URL 등)를 확인하세요."
+            ) from e
 
         return result
 
