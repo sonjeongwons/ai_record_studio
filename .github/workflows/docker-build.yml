@@ -7,6 +7,8 @@ on:
     paths:
       - 'Dockerfile'
       - 'runpod_handler.py'
+      - 'server.py'
+      - 'static/**'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # 수동 트리거 (Actions 탭에서 직접 실행)
 
