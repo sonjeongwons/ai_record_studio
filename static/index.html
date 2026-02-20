@@ -953,9 +953,10 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
     </div>
 
-    <!-- 실행 중: 취소 버튼 -->
+    <!-- 실행 중: 취소 버튼 (항상 표시) -->
     <div id="train-cancel-area" class="flex" style="justify-content:center;margin-top:16px">
       <button class="btn btn-secondary" onclick="cancelTraining()">학습 취소</button>
+      <button class="btn btn-secondary" onclick="resetTraining()" style="margin-left:8px;opacity:0.6;font-size:12px">처음으로</button>
     </div>
 
     <!-- 실패 시: 에러 + 복구 버튼 -->
@@ -1904,10 +1905,14 @@ async function startTraining() {
   }
 }
 
+var _trainPollErrors = 0;
+
 async function pollTrainingStatus() {
   if (!currentTrainJobId) return;
   try {
     var job = await api('/jobs/' + currentTrainJobId);
+    _trainPollErrors = 0; // reset on success
+
     var pct = job.progress || 0;
     var circ = 2 * Math.PI * 60;
     var offset = circ - (pct / 100) * circ;
@@ -1941,12 +1946,30 @@ async function pollTrainingStatus() {
 
     setTimeout(pollTrainingStatus, 5000);
   } catch(e) {
+    _trainPollErrors++;
+    if (_trainPollErrors > 20) {
+      // 20 consecutive failures (~3 min) — show error UI
+      document.getElementById('train-status-msg').textContent = '서버 연결 실패';
+      document.getElementById('train-info-status').textContent = '연결 오류';
+      document.getElementById('train-cancel-area').style.display = 'none';
+      document.getElementById('train-error-area').style.display = 'block';
+      document.getElementById('train-error-msg').textContent =
+        '서버와 연결이 끊어졌습니다. 서버가 실행 중인지 확인하세요.';
+      toast('서버 연결 실패', 'error');
+      return;
+    }
     setTimeout(pollTrainingStatus, 10000);
   }
 }
 
 function resetTraining() {
+  // Cancel any active job first
+  if (currentTrainJobId) {
+    try { api('/jobs/' + currentTrainJobId + '/cancel', { method: 'POST' }); } catch(e) {}
+  }
   currentTrainJobId = null;
+  _trainPollErrors = 0;
+
   // 버튼 비활성화 + 로딩 표시
   var backBtn = document.getElementById('btn-train-back');
   var retryBtn = document.getElementById('btn-train-retry');
@@ -1958,6 +1981,12 @@ function resetTraining() {
   document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
+  document.getElementById('btn-start-train').disabled = false;
+
+  // 진행률 초기화
+  document.getElementById('train-pct').textContent = '0%';
+  document.getElementById('train-ring').style.strokeDashoffset = 377;
+  document.getElementById('train-status-msg').textContent = '준비 중...';
 
   // 버튼 상태 복원 (다음 에러 시를 위해)
   if (backBtn) { backBtn.disabled = false; backBtn.textContent = '돌아가기'; }
@@ -1975,9 +2004,13 @@ async function cancelTraining() {
   if (currentTrainJobId) {
     try { await api('/jobs/' + currentTrainJobId + '/cancel', { method: 'POST' }); } catch(e) {}
   }
+  // Also cleanup any stuck jobs as fallback
+  try { await api('/jobs/cleanup', { method: 'POST' }); } catch(e) {}
   currentTrainJobId = null;
+  _trainPollErrors = 0;
   document.getElementById('train-upload').style.display = 'block';
   document.getElementById('train-progress').style.display = 'none';
+  document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
   toast('학습을 취소했습니다', 'info');

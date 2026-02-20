@@ -489,11 +489,19 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
 
             if status == "COMPLETED":
                 output = result.get("output", {})
-                # 결과 처리
-                handle_job_result(job_id, job_type, output)
+                if not output:
+                    update_job(job_id, status="failed",
+                              message="RunPod 작업은 완료되었지만 결과 데이터가 비어있습니다. "
+                                      "페이로드 크기 제한(413) 초과일 수 있습니다.")
+                    return
+                try:
+                    handle_job_result(job_id, job_type, output)
+                except Exception as e:
+                    update_job(job_id, status="failed",
+                              message=f"결과 처리 실패: {e}")
                 return
 
-            elif status == "FAILED":
+            elif status in ("FAILED", "TIMED_OUT", "CANCELLED"):
                 raw_error = result.get("error", "알 수 없는 오류")
                 # RunPod 에러가 dict이면 error_message 추출
                 if isinstance(raw_error, dict):
@@ -508,6 +516,10 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             error = parsed.get("error_message") or parsed.get("message") or error
                     except (ValueError, TypeError):
                         pass
+                if status == "TIMED_OUT":
+                    error = f"RunPod 시간 초과: {error}"
+                elif status == "CANCELLED":
+                    error = f"RunPod 작업 취소됨: {error}"
                 update_job(job_id, status="failed", message=error)
                 return
 
@@ -533,13 +545,24 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                     update_job(job_id, status="running", progress=pct,
                               message=f"변환 중... ({elapsed}초)")
 
+            else:
+                # Unknown status — log and treat as transient
+                update_job(job_id, status="running",
+                          message=f"상태: {status} ({elapsed}초)")
+
             if elapsed > 10 * 3600:  # 10시간 타임아웃
                 update_job(job_id, status="failed", message="시간 초과 (10시간)")
                 return
 
         except Exception as e:
+            poll_errors = getattr(poll_runpod_job, '_errors', 0) + 1
+            poll_runpod_job._errors = poll_errors
+            if poll_errors > 30:  # 30 consecutive errors = ~5 min of failures
+                update_job(job_id, status="failed",
+                          message=f"RunPod 상태 확인 반복 실패: {e}")
+                return
             update_job(job_id, status="running",
-                      message=f"상태 확인 중... (재시도)")
+                      message=f"상태 확인 중... (재시도 {poll_errors})")
             time.sleep(10)
 
 
