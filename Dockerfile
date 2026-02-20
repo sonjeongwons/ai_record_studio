@@ -156,9 +156,13 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
 # -- Group 6: Applio implicit deps (not always in requirements.txt) --
 # tensorboard: core.py → launch_tensorboard.py → from tensorboard import program
 # wget: rvc/lib/utils.py → import wget
+# beautifulsoup4: core.py → rvc/lib/tools/model_download.py → from bs4 import BeautifulSoup
+# transformers: rvc/lib/utils.py → from transformers import HubertModel (ContentVec embedder)
 RUN python -m pip install --no-cache-dir \
     tensorboard \
-    wget
+    wget \
+    beautifulsoup4 \
+    transformers
 
 
 # ================================================================
