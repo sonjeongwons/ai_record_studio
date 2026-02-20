@@ -247,6 +247,7 @@ def init_db():
                 epochs INTEGER,
                 training_time_seconds REAL,
                 quality_score REAL,
+                training_files_json TEXT,
                 status TEXT DEFAULT 'ready',
                 created_at TEXT DEFAULT (datetime('now','localtime'))
             );
@@ -280,7 +281,7 @@ def init_db():
         except Exception:
             pass  # 이미 존재하면 무시
         # voice_models에 R2 URL 컬럼 추가 (기존 DB 마이그레이션)
-        for col in ("pth_url", "index_url"):
+        for col in ("pth_url", "index_url", "training_files_json"):
             try:
                 db.execute(f"ALTER TABLE voice_models ADD COLUMN {col} TEXT")
             except Exception:
@@ -456,6 +457,9 @@ class RunPodClient:
 
 
 runpod_client = RunPodClient()
+
+# 학습 작업별 사용된 훈련 파일 목록 (job_id → [파일명, ...])
+_training_file_map: dict[str, list[str]] = {}
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 백그라운드 작업 관리
@@ -689,12 +693,13 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             with get_db() as db:
                 db.execute("""
                     INSERT INTO voice_models (name, pth_path, index_path, pth_url, index_url,
-                                            epochs, training_time_seconds, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'ready')
+                                            epochs, training_time_seconds, training_files_json, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready')
                 """, (model_name, pth_path, index_path,
                       output.get("pth_url"), output.get("index_url"),
                       output.get("epochs_trained", 0),
-                      output.get("training_time_seconds", 0)))
+                      output.get("training_time_seconds", 0),
+                      json.dumps(_training_file_map.pop(job_id, []), ensure_ascii=False)))
 
             update_job(job_id, status="completed", progress=100,
                       message="학습 완료!",
@@ -1084,8 +1089,12 @@ async def start_training(
     batches = prepare_files_for_runpod(file_paths)
     total_segments = sum(len(b) for b in batches)
 
+    # 학습에 사용된 원본 파일명 기록
+    training_file_names = [r["original_name"] for r in rows]
+
     # Job 생성
     job_id = uuid.uuid4().hex[:12]
+    _training_file_map[job_id] = training_file_names
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)

@@ -315,6 +315,22 @@ select { -webkit-appearance: none; cursor: pointer; }
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
 }
 .btn-model-delete:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+.model-train-files { margin-top: 4px; cursor: pointer; }
+.model-train-files-header {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text3); transition: color 0.2s;
+}
+.model-train-files-header:hover { color: var(--text2); }
+.model-train-files-header svg { transition: transform 0.2s; }
+.model-train-files.expanded .model-train-files-header svg { transform: rotate(90deg); }
+.model-train-files-list {
+  display: none; margin-top: 4px; padding-left: 14px;
+}
+.model-train-files.expanded .model-train-files-list { display: block; }
+.model-train-file {
+  font-size: 10px; color: var(--text3); padding: 1px 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .model-icon {
   width: 42px; height: 42px;
   border-radius: 12px;
@@ -2168,6 +2184,20 @@ async function loadModels() {
     if (!selectedModelId && models.length) selectedModelId = models[0].id;
 
     document.getElementById('convert-model-list').innerHTML = models.map(function(m) {
+      var files = [];
+      try { files = JSON.parse(m.training_files_json || '[]'); } catch(e) {}
+      var filesHtml = '';
+      if (files.length > 0) {
+        filesHtml = '<div class="model-train-files" onclick="event.stopPropagation(); this.classList.toggle(\'expanded\')">' +
+          '<div class="model-train-files-header">' +
+            '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>' +
+            '<span>학습 음원 ' + files.length + '개</span>' +
+          '</div>' +
+          '<div class="model-train-files-list">' +
+            files.map(function(f) { return '<div class="model-train-file">' + f + '</div>'; }).join('') +
+          '</div>' +
+        '</div>';
+      }
       return '<div class="model-card ' + (m.id === selectedModelId ? 'selected' : '') + '" onclick="selectModel(' + m.id + ')">' +
         '<div class="model-icon">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>' +
@@ -2175,6 +2205,7 @@ async function loadModels() {
         '<div style="flex:1">' +
           '<div style="font-size:14px;font-weight:500">' + m.name + '</div>' +
           '<div style="font-size:11px;color:var(--text3)">' + (m.epochs || 0) + ' 에폭 \u00B7 ' + (m.created_at || '') + '</div>' +
+          filesHtml +
         '</div>' +
         '<span class="badge badge-green">준비</span>' +
         '<button class="btn-model-delete" onclick="event.stopPropagation(); deleteModel(' + m.id + ', \'' + m.name.replace(/'/g, "\\'") + '\')" title="모델 삭제">' +
