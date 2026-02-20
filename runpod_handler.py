@@ -96,9 +96,18 @@ def decode_b64_file(data_b64: str, dest_path: Path) -> Path:
     return dest_path
 
 
-def encode_file_b64(file_path: Path) -> str:
-    """Read a file and return its base64 encoding."""
-    return base64.b64encode(file_path.read_bytes()).decode("utf-8")
+def encode_file_b64(file_path: Path, compress: bool = False) -> str:
+    """Read a file and return its base64 encoding, optionally gzip-compressed."""
+    data = file_path.read_bytes()
+    if compress:
+        import gzip
+        data = gzip.compress(data, compresslevel=6)
+        log.info(
+            f"Compressed {file_path.name}: "
+            f"{file_path.stat().st_size / 1024 / 1024:.1f} MB → "
+            f"{len(data) / 1024 / 1024:.1f} MB"
+        )
+    return base64.b64encode(data).decode("utf-8")
 
 
 def get_audio_duration(file_path: str | Path) -> float:
@@ -857,21 +866,30 @@ def task_train(job_input: dict, job: dict) -> dict:
 
         elapsed = time.time() - start_time
 
+        # Compress model files — RunPod has ~20 MB payload limit for job results.
+        # A typical RVC voice model is ~52 MB raw → ~45 MB gzipped → ~60 MB base64.
+        # Still may exceed limit, so we strip optimizer state if present.
+        pth_size_mb = pth_path.stat().st_size / 1024 / 1024
+        log.info(f"Encoding model: {pth_path.name} ({pth_size_mb:.1f} MB)")
+
         result = {
             "model_name": model_name,
             "epochs_trained": epochs,
             "sample_rate": sample_rate,
             "training_time_seconds": round(elapsed, 1),
-            "pth_data": encode_file_b64(pth_path),
+            "pth_data": encode_file_b64(pth_path, compress=True),
             "pth_filename": pth_path.name,
+            "pth_compressed": True,
         }
 
         if index_path is not None:
-            result["index_data"] = encode_file_b64(index_path)
+            result["index_data"] = encode_file_b64(index_path, compress=True)
             result["index_filename"] = index_path.name
+            result["index_compressed"] = True
         else:
             result["index_data"] = ""
             result["index_filename"] = ""
+            result["index_compressed"] = False
             log.warning("No FAISS index file generated")
 
         return result
@@ -1121,7 +1139,7 @@ def _rvc_train(
         "0",                      # 6: gpu
         str(batch_size),          # 7
         str(sample_rate),         # 8
-        "False",                  # 9: save_only_latest
+        "True",                   # 9: save_only_latest (avoid G_/D_ checkpoint bloat)
         "True",                   # 10: save_every_weights
         "False",                  # 11: cache_data_in_gpu
         "True",                   # 12: overtraining_detector
@@ -1311,13 +1329,18 @@ def _rvc_create_index(model_name: str, logs_dir: Path) -> None:
 
 def _find_best_pth(logs_dir: Path, model_name: str) -> Optional[Path]:
     """
-    Find the best .pth model file from training output.
-    Applio saves weights to logs/{model_name}/ and also
-    to logs/{model_name}/weights/ or rvc/models/{model_name}.pth
-    """
-    candidates: list[tuple[Path, int]] = []
+    Find the best .pth voice model file from training output.
 
-    # Search patterns
+    Applio produces several types of .pth files:
+      - G_*.pth / D_*.pth  → Generator/Discriminator checkpoints (400-800 MB each)
+                              These are internal training state, NOT usable for inference.
+      - {model_name}_*e_*s.pth → Exported voice model weights (~50 MB)
+      - {model_name}_*_best_epoch.pth → Best epoch selected by overtraining detector
+
+    We ONLY want the exported voice models, never the G_/D_ checkpoints.
+    """
+    candidates: list[tuple[Path, int, bool]] = []  # (path, epoch, is_best)
+
     search_locations = [
         logs_dir,
         logs_dir / "weights",
@@ -1330,29 +1353,38 @@ def _find_best_pth(logs_dir: Path, model_name: str) -> Optional[Path]:
         if not loc.exists():
             continue
         for pth in loc.glob("*.pth"):
-            # Extract epoch number from filename if present
-            # Common patterns: model_name_e300_s1200.pth, model_name_300e.pth
             name = pth.stem
+
+            # Skip G_/D_ checkpoint files — these are training state, not voice models
+            if name.startswith(("G_", "D_")):
+                continue
+
+            is_best = "best_epoch" in name
             epoch = 0
             try:
                 for part in name.split("_"):
-                    if part.startswith("e") and part[1:].isdigit():
-                        epoch = int(part[1:])
-                    elif part.endswith("e") and part[:-1].isdigit():
+                    # Pattern: "300e" → epoch 300
+                    if part.endswith("e") and part[:-1].isdigit():
                         epoch = int(part[:-1])
-                    elif part.isdigit():
-                        epoch = max(epoch, int(part))
+                    # Pattern: "e300" → epoch 300
+                    elif part.startswith("e") and part[1:].isdigit():
+                        epoch = int(part[1:])
+                    # Pattern: "900s" → step 900 (use as tiebreaker)
+                    elif part.endswith("s") and part[:-1].isdigit():
+                        epoch = max(epoch, int(part[:-1]) // 3)  # rough step→epoch
             except (ValueError, IndexError):
                 pass
-            candidates.append((pth, epoch))
+            candidates.append((pth, epoch, is_best))
 
     if not candidates:
         return None
 
-    # Return highest epoch model (or most recent if no epoch info)
-    candidates.sort(key=lambda x: (x[1], x[0].stat().st_mtime), reverse=True)
+    # Prefer: best_epoch first, then highest epoch, then most recent
+    candidates.sort(
+        key=lambda x: (x[2], x[1], x[0].stat().st_mtime), reverse=True
+    )
     best = candidates[0][0]
-    log.info(f"Best model found: {best}")
+    log.info(f"Best model found: {best} ({best.stat().st_size / 1024 / 1024:.1f} MB)")
     return best
 
 

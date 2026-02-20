@@ -620,14 +620,22 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             if output.get("pth_data"):
                 pth_filename = output.get("pth_filename", f"{model_name}.pth")
                 pth_path = str(model_dir / pth_filename)
+                raw = base64.b64decode(output["pth_data"])
+                if output.get("pth_compressed"):
+                    import gzip
+                    raw = gzip.decompress(raw)
                 with open(pth_path, "wb") as f:
-                    f.write(base64.b64decode(output["pth_data"]))
+                    f.write(raw)
 
             if output.get("index_data"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
                 index_path = str(model_dir / idx_filename)
+                raw = base64.b64decode(output["index_data"])
+                if output.get("index_compressed"):
+                    import gzip
+                    raw = gzip.decompress(raw)
                 with open(index_path, "wb") as f:
-                    f.write(base64.b64decode(output["index_data"]))
+                    f.write(raw)
 
             with get_db() as db:
                 db.execute("""
