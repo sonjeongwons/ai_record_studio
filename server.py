@@ -47,7 +47,8 @@ BASE_DIR = APP_DIR  # 하위 호환
 UPLOAD_DIR = DATA_DIR / "uploads"
 MODEL_DIR = DATA_DIR / "models"
 OUTPUT_DIR = DATA_DIR / "output"
-CHUNK_DIR = DATA_DIR / "chunks"       # 청크 업로드 임시 디렉토리
+CHUNK_DIR = DATA_DIR / "chunks"           # 청크 업로드 임시 디렉토리
+PREPROCESSED_DIR = DATA_DIR / "preprocessed"  # 전처리 결과 세그먼트 저장
 DB_PATH = DATA_DIR / "studio.db"
 CONFIG_PATH = DATA_DIR / "config.json"
 
@@ -55,7 +56,7 @@ CONFIG_PATH = DATA_DIR / "config.json"
 MAX_CHUNK_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-for d in [UPLOAD_DIR, MODEL_DIR, OUTPUT_DIR, CHUNK_DIR]:
+for d in [UPLOAD_DIR, MODEL_DIR, OUTPUT_DIR, CHUNK_DIR, PREPROCESSED_DIR]:
     d.mkdir(exist_ok=True)
 
 # 청크 업로드 상태 추적 (메모리 내)
@@ -512,6 +513,36 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             time.sleep(10)
 
 
+def _save_preprocessed_segments(output: dict) -> dict:
+    """전처리 결과의 세그먼트를 디스크에 저장하고 메타데이터만 반환.
+    base64 오디오 데이터를 DB에 저장하지 않고, 파일로 디코딩하여 preprocessed/ 디렉토리에 저장."""
+    # 이전 전처리 결과 정리
+    for old in PREPROCESSED_DIR.iterdir():
+        if old.is_file():
+            old.unlink()
+
+    segments = output.get("segments", [])
+    total_duration = output.get("total_duration", 0.0)
+    saved_files = []
+
+    for seg in segments:
+        fname = seg.get("filename", f"seg_{len(saved_files):04d}.wav")
+        seg_path = PREPROCESSED_DIR / fname
+        if seg.get("data_base64"):
+            with open(seg_path, "wb") as f:
+                f.write(base64.b64decode(seg["data_base64"]))
+            saved_files.append({
+                "filename": fname,
+                "duration_seconds": seg.get("duration_seconds", 0),
+            })
+
+    return {
+        "segment_count": len(saved_files),
+        "total_duration": round(total_duration, 2),
+        "segment_files": [s["filename"] for s in saved_files],
+    }
+
+
 def handle_job_result(job_id: str, job_type: str, output: dict):
     """RunPod 작업 결과 처리"""
     try:
@@ -567,9 +598,13 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 update_job(job_id, status="failed", message="변환 결과 없음")
 
         elif job_type == "preprocess":
+            saved = _save_preprocessed_segments(output)
+            seg_count = saved["segment_count"]
+            total_dur = saved["total_duration"]
+            dur_str = f", 총 {total_dur:.1f}초" if total_dur > 0 else ""
             update_job(job_id, status="completed", progress=100,
-                      message=f"전처리 완료! (세그먼트: {output.get('segment_count', 0)}개)",
-                      result_json=json.dumps(output))
+                      message=f"전처리 완료! (세그먼트: {seg_count}개{dur_str})",
+                      result_json=json.dumps(saved))
 
     except Exception as e:
         update_job(job_id, status="failed", message=f"결과 처리 오류: {str(e)}")
@@ -648,15 +683,23 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
                            message=f"{batch_label} 상태 확인 중... (재시도)")
                 time.sleep(10)
 
-    # 모든 배치 완료 — 결과 집계
-    total_segments = sum(r.get("segment_count", 0) for r in all_results)
+    # 모든 배치 완료 — 결과 집계 + 세그먼트 디스크 저장
+    merged_segments = []
+    merged_duration = 0.0
+    for r in all_results:
+        merged_segments.extend(r.get("segments", []))
+        merged_duration += r.get("total_duration", 0.0)
+
+    saved = _save_preprocessed_segments({
+        "segments": merged_segments,
+        "total_duration": merged_duration,
+    })
+    seg_count = saved["segment_count"]
+    total_dur = saved["total_duration"]
+    dur_str = f", 총 {total_dur:.1f}초" if total_dur > 0 else ""
     update_job(job_id, status="completed", progress=100,
-               message=f"전처리 완료! (총 {total_segments}개 세그먼트, {total_batches}개 배치)",
-               result_json=json.dumps({
-                   "batch_count": total_batches,
-                   "segment_count": total_segments,
-                   "batch_results": all_results
-               }))
+               message=f"전처리 완료! (총 {seg_count}개 세그먼트{dur_str}, {total_batches}개 배치)",
+               result_json=json.dumps(saved))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -879,8 +922,13 @@ async def start_training(
     if not rows:
         raise HTTPException(400, "학습할 파일이 없습니다.")
 
-    # 대용량 파일 자동 분할 + 배치 인코딩
-    file_paths = [str(UPLOAD_DIR / r["filename"]) for r in rows]
+    # 전처리된 세그먼트가 있으면 우선 사용 (용량 작음 → 10MB 이내)
+    preprocessed_files = sorted(PREPROCESSED_DIR.glob("*.wav"))
+    if preprocessed_files:
+        file_paths = [str(p) for p in preprocessed_files]
+    else:
+        file_paths = [str(UPLOAD_DIR / r["filename"]) for r in rows]
+
     batches = prepare_files_for_runpod(file_paths)
     total_segments = sum(len(b) for b in batches)
 
@@ -893,27 +941,23 @@ async def start_training(
         """, (job_id,))
 
     try:
-        if len(batches) == 1:
-            # 단일 배치: 기존 방식
-            runpod_job_id = runpod_client.submit_job({
-                "task_type": "train",
-                "model_name": model_name,
-                "audio_files": batches[0],
-                "sample_rate": sample_rate,
-                "epochs": epochs,
-                "batch_size": batch_size
-            })
-        else:
-            # 다중 배치: 모든 세그먼트를 하나의 요청으로 합침 (MP3 압축으로 크기 감소)
-            all_files = [f for batch in batches for f in batch]
-            runpod_job_id = runpod_client.submit_job({
-                "task_type": "train",
-                "model_name": model_name,
-                "audio_files": all_files,
-                "sample_rate": sample_rate,
-                "epochs": epochs,
-                "batch_size": batch_size
-            })
+        # 배치가 여러 개여도 학습은 모든 데이터가 한 번에 필요
+        # → 순차 업로드 불가, 반드시 단일 요청에 포함되어야 함
+        if len(batches) > 1:
+            raise HTTPException(
+                400,
+                f"학습 데이터가 너무 큽니다 ({total_segments}개 세그먼트, {len(batches)}개 배치). "
+                f"전처리를 먼저 실행하여 데이터를 줄이거나, 파일 수를 줄여주세요."
+            )
+
+        runpod_job_id = runpod_client.submit_job({
+            "task_type": "train",
+            "model_name": model_name,
+            "audio_files": batches[0],
+            "sample_rate": sample_rate,
+            "epochs": epochs,
+            "batch_size": batch_size
+        })
 
         msg = f"GPU에 작업 제출됨 ({total_segments}개 세그먼트)"
         update_job(job_id, status="running", progress=5,
