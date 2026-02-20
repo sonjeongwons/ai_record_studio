@@ -62,6 +62,9 @@ for d in [UPLOAD_DIR, MODEL_DIR, OUTPUT_DIR, CHUNK_DIR, PREPROCESSED_DIR]:
 # 청크 업로드 상태 추적 (메모리 내)
 chunk_uploads: dict = {}
 
+# 전처리 작업별 원본 파일 ID 추적 (완료 시 preprocessed=1 마킹용)
+preprocess_file_map: dict[str, list[int]] = {}
+
 # RunPod payload 제한: 오디오 데이터 최대 7MB (base64 → ~10MB JSON)
 MAX_RUNPOD_AUDIO_BYTES = 7 * 1024 * 1024
 SPLIT_SEGMENT_SECONDS = 180  # 3분 단위 분할
@@ -223,6 +226,7 @@ def init_db():
                 duration_seconds REAL,
                 file_type TEXT,
                 category TEXT DEFAULT 'vocal',
+                preprocessed INTEGER DEFAULT 0,
                 uploaded_at TEXT DEFAULT (datetime('now','localtime'))
             );
             CREATE TABLE IF NOT EXISTS voice_models (
@@ -260,6 +264,11 @@ def init_db():
                 updated_at TEXT DEFAULT (datetime('now','localtime'))
             );
         """)
+        # 기존 DB 마이그레이션: preprocessed 컬럼 추가
+        try:
+            db.execute("ALTER TABLE training_files ADD COLUMN preprocessed INTEGER DEFAULT 0")
+        except Exception:
+            pass  # 이미 존재하면 무시
 
 
 def cleanup_stale_jobs():
@@ -513,20 +522,21 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             time.sleep(10)
 
 
-def _save_preprocessed_segments(output: dict) -> dict:
+def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     """전처리 결과의 세그먼트를 디스크에 저장하고 메타데이터만 반환.
-    base64 오디오 데이터를 DB에 저장하지 않고, 파일로 디코딩하여 preprocessed/ 디렉토리에 저장."""
-    # 이전 전처리 결과 정리
-    for old in PREPROCESSED_DIR.iterdir():
-        if old.is_file():
-            old.unlink()
-
+    기존 세그먼트 유지 (append), 새 세그먼트만 추가."""
     segments = output.get("segments", [])
     total_duration = output.get("total_duration", 0.0)
     saved_files = []
 
-    for seg in segments:
-        fname = seg.get("filename", f"seg_{len(saved_files):04d}.wav")
+    # 기존 파일과 이름 충돌 방지용 prefix
+    existing = set(f.name for f in PREPROCESSED_DIR.iterdir() if f.is_file())
+    prefix = uuid.uuid4().hex[:6]
+
+    for i, seg in enumerate(segments):
+        orig_name = seg.get("filename", f"seg_{i:04d}.wav")
+        # 이름 충돌 방지
+        fname = orig_name if orig_name not in existing else f"{prefix}_{orig_name}"
         seg_path = PREPROCESSED_DIR / fname
         if seg.get("data_base64"):
             with open(seg_path, "wb") as f:
@@ -535,11 +545,25 @@ def _save_preprocessed_segments(output: dict) -> dict:
                 "filename": fname,
                 "duration_seconds": seg.get("duration_seconds", 0),
             })
+            existing.add(fname)
+
+    # 전처리 완료된 파일 마킹
+    file_ids = preprocess_file_map.pop(job_id, [])
+    if file_ids:
+        with get_db() as db:
+            placeholders = ",".join("?" * len(file_ids))
+            db.execute(
+                f"UPDATE training_files SET preprocessed=1 WHERE id IN ({placeholders})",
+                file_ids
+            )
+
+    # 전체 전처리 세그먼트 수 (기존 + 새로 추가)
+    all_files = sorted(PREPROCESSED_DIR.glob("*.wav"))
 
     return {
-        "segment_count": len(saved_files),
+        "segment_count": len(all_files),
         "total_duration": round(total_duration, 2),
-        "segment_files": [s["filename"] for s in saved_files],
+        "segment_files": [f.name for f in all_files],
     }
 
 
@@ -598,7 +622,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 update_job(job_id, status="failed", message="변환 결과 없음")
 
         elif job_type == "preprocess":
-            saved = _save_preprocessed_segments(output)
+            saved = _save_preprocessed_segments(output, job_id)
             seg_count = saved["segment_count"]
             total_dur = saved["total_duration"]
             dur_str = f", 총 {total_dur:.1f}초" if total_dur > 0 else ""
@@ -693,7 +717,7 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
     saved = _save_preprocessed_segments({
         "segments": merged_segments,
         "total_duration": merged_duration,
-    })
+    }, job_id)
     seg_count = saved["segment_count"]
     total_dur = saved["total_duration"]
     dur_str = f", 총 {total_dur:.1f}초" if total_dur > 0 else ""
@@ -1003,12 +1027,25 @@ async def start_preprocess(
     if not rows:
         raise HTTPException(400, "선택한 파일을 찾을 수 없습니다.")
 
+    # 이미 전처리된 파일 제외
+    unprocessed = [r for r in rows if not r["preprocessed"]]
+    if not unprocessed:
+        return {"job_id": None, "segments": 0, "batches": 0,
+                "message": "모든 파일이 이미 전처리되었습니다."}
+
+    # 전처리 대상 파일 ID 기록 (완료 시 마킹용)
+    preprocess_file_ids = [r["id"] for r in unprocessed]
+
     # 대용량 파일 자동 분할 + 배치 인코딩
-    file_paths = [str(UPLOAD_DIR / r["filename"]) for r in rows]
+    file_paths = [str(UPLOAD_DIR / r["filename"]) for r in unprocessed]
     batches = prepare_files_for_runpod(file_paths)
     total_segments = sum(len(b) for b in batches)
 
+    skipped = len(rows) - len(unprocessed)
+    skip_msg = f" ({skipped}개 파일은 이미 전처리됨)" if skipped else ""
+
     job_id = uuid.uuid4().hex[:12]
+    preprocess_file_map[job_id] = preprocess_file_ids
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -1023,7 +1060,7 @@ async def start_preprocess(
                 "audio_files": batches[0],
             })
             update_job(job_id, status="running", progress=5,
-                      message=f"GPU에 전처리 작업 제출됨 ({total_segments}개 세그먼트)",
+                      message=f"GPU에 전처리 작업 제출됨 ({len(unprocessed)}개 파일{skip_msg})",
                       runpod_job_id=runpod_job_id)
 
             thread = threading.Thread(
@@ -1051,7 +1088,8 @@ async def start_preprocess(
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
 
-    return {"job_id": job_id, "segments": total_segments, "batches": len(batches)}
+    return {"job_id": job_id, "segments": total_segments, "batches": len(batches),
+            "skipped": skipped, "processing": len(unprocessed)}
 
 
 @app.get("/api/preprocess/status")
@@ -1079,12 +1117,14 @@ async def preprocess_status():
 
 @app.delete("/api/preprocess")
 async def clear_preprocess():
-    """전처리 결과 삭제 — preprocessed/ 디렉토리 비우기"""
+    """전처리 결과 삭제 — preprocessed/ 비우기 + DB preprocessed 플래그 리셋"""
     count = 0
     for f in PREPROCESSED_DIR.iterdir():
         if f.is_file():
             f.unlink()
             count += 1
+    with get_db() as db:
+        db.execute("UPDATE training_files SET preprocessed=0")
     return {"cleared": count}
 
 
