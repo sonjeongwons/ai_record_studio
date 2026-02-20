@@ -113,6 +113,22 @@ print('torch.amp.GradScaler shim installed OK') \
 WORKDIR /app
 RUN git clone --depth 1 https://github.com/IAHispano/Applio.git /app/Applio
 
+# -- Fix PyTorch 2.1 compatibility in Applio source --
+# Applio uses torch.amp.GradScaler / torch.amp.autocast (PyTorch 2.3+ API).
+# In PyTorch 2.1.x these live in torch.cuda.amp. Direct source patch is most
+# reliable since train.py runs in a multiprocessing child process.
+RUN find /app/Applio -name "*.py" -exec grep -l "torch\.amp\." {} \; 2>/dev/null | head -20 \
+    && echo "--- Patching torch.amp references for PyTorch 2.1 ---" \
+    && find /app/Applio -name "*.py" -print0 | xargs -0 sed -i \
+        's/torch\.amp\.GradScaler/torch.cuda.amp.GradScaler/g' \
+    && find /app/Applio -name "*.py" -print0 | xargs -0 sed -i \
+        's/torch\.amp\.autocast("cuda"/torch.cuda.amp.autocast(/g' \
+    && find /app/Applio -name "*.py" -print0 | xargs -0 sed -i \
+        's/torch\.amp\.autocast(device_type="cuda"/torch.cuda.amp.autocast(/g' \
+    && echo "--- Verifying patches ---" \
+    && ! grep -r "torch\.amp\.GradScaler" /app/Applio/rvc/ --include="*.py" \
+    && echo "All torch.amp.GradScaler references patched successfully"
+
 
 # ================================================================
 # LAYER 4: Applio Python Dependencies
