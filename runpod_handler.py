@@ -350,8 +350,13 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     # --- Try demucs.api first (GitHub v4.1.0a2+) ---
     try:
         import demucs.api
-        log.info("Using demucs.api (v4.1+) for vocal separation")
-        separator = demucs.api.Separator(model="htdemucs_ft", device=device)
+        log.info("Using demucs.api (v4.1+) for vocal separation (shifts=5, overlap=0.5)")
+        separator = demucs.api.Separator(
+            model="htdemucs_ft",
+            device=device,
+            shifts=5,       # 5 random time shifts → average = dramatically better SDR
+            overlap=0.5,    # 50% overlap between segments = smoother transitions
+        )
 
         vocal_paths: list[Path] = []
         accomp_paths: list[Path] = []
@@ -411,7 +416,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
             )
             ref = wav.mean(0)
             wav = (wav - ref.mean()) / ref.std()
-            sources = apply_model(model, wav[None], device=device)[0]
+            sources = apply_model(model, wav[None], device=device, shifts=5, overlap=0.5)[0]
             sources = sources * ref.std() + ref.mean()
 
             if vocals_idx >= 0:
@@ -728,12 +733,12 @@ def task_train(job_input: dict, job: dict) -> dict:
     """
     model_name: str = job_input.get("model_name", "my_voice_model")
     audio_files: list[dict] = job_input.get("audio_files", [])
-    sample_rate: int = job_input.get("sample_rate", 44100)
+    sample_rate: int = job_input.get("sample_rate", 40000)  # 40k recommended for SVC
     epochs: int = job_input.get("epochs", 300)
     batch_size: int = job_input.get("batch_size", 0)  # 0 = auto-detect
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    save_every_epoch: int = job_input.get("save_every_epoch", 50)
+    save_every_epoch: int = job_input.get("save_every_epoch", 25)  # finer checkpoints for optimal model selection
 
     if not audio_files:
         raise ValueError("No audio_files provided for training")
@@ -901,20 +906,22 @@ def _rvc_preprocess(
 
             padded = f"{idx:07d}"
 
-            # Save at target sample rate (mono, 16-bit PCM)
+            # Save at target sample rate (mono, 16-bit PCM, soxr HQ resampler)
             gt_path = gt_dir / f"{padded}.wav"
             run_ffmpeg([
                 "-i", str(audio_file),
-                "-ar", str(sample_rate), "-ac", "1",
+                "-af", f"aresample=resampler=soxr:precision=28:osr={sample_rate}",
+                "-ac", "1",
                 "-acodec", "pcm_s16le",
                 str(gt_path),
             ])
 
-            # Save at 16kHz for F0 & feature extraction
+            # Save at 16kHz for F0 & feature extraction (soxr HQ resampler)
             sr16k_path = sr16k_dir / f"{padded}.wav"
             run_ffmpeg([
                 "-i", str(audio_file),
-                "-ar", "16000", "-ac", "1",
+                "-af", "aresample=resampler=soxr:precision=28:osr=16000",
+                "-ac", "1",
                 "-acodec", "pcm_s16le",
                 str(sr16k_path),
             ])
@@ -1404,11 +1411,11 @@ def _mix_audio(
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
-        f"[0:a]volume={vocal_volume}[v];"
-        f"[1:a]volume={mr_volume}[m];"
+        f"[0:a]aresample=resampler=soxr,volume={vocal_volume}[v];"
+        f"[1:a]aresample=resampler=soxr,volume={mr_volume}[m];"
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.95:attack=5:release=50",
-        "-acodec", "pcm_s16le",
+        f"alimiter=limit=0.99:attack=5:release=50",
+        "-acodec", "pcm_s24le",  # 24-bit for maximum dynamic range
         "-ar", "44100",
         str(output_path),
     ])
@@ -1468,6 +1475,15 @@ def task_convert(job_input: dict, job: dict) -> dict:
         input_ext = Path(audio_filename).suffix.lower()
         raw_input = decode_b64_file(audio_b64, work / f"input{input_ext}")
 
+        # Normalize to WAV for processing (keep STEREO for Demucs quality)
+        input_stereo = work / "input_stereo.wav"
+        run_ffmpeg([
+            "-i", str(raw_input),
+            "-acodec", "pcm_s16le",
+            "-ar", "44100",
+            str(input_stereo),  # preserve original channel count (stereo if source is stereo)
+        ])
+        # Also create mono version for direct RVC use (when skipping Demucs)
         input_wav = work / "input_normalized.wav"
         run_ffmpeg([
             "-i", str(raw_input),
@@ -1482,7 +1498,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
         if separate_vocals:
             runpod.serverless.progress_update(job, "Separating vocals (Demucs)... (2/4)")
             demucs_dir = ensure_dir(work / "demucs")
-            separation = _demucs_separate([input_wav], demucs_dir)
+            # Use STEREO input for Demucs — stereo cues improve separation quality
+            separation = _demucs_separate([input_stereo], demucs_dir)
 
             if separation["vocals"]:
                 rvc_input = separation["vocals"][0]
@@ -1594,7 +1611,7 @@ def _rvc_infer(
             output_path=str(output_path),
             pth_path=str(pth_path),
             index_path=index_str,
-            split_audio=False,
+            split_audio=True,    # split into chunks for more consistent quality
             clean_audio=clean_audio,
             clean_strength=clean_strength,
             export_format=export_format.upper(),

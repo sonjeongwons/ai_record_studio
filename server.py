@@ -973,7 +973,7 @@ async def upload_chunk(
 async def start_training(
     model_name: str = Form(...),
     epochs: int = Form(300),
-    sample_rate: int = Form(44100),
+    sample_rate: int = Form(40000),  # 40k recommended for SVC quality
     batch_size: int = Form(0),  # 0 = GPU auto-detect (RTX 4090 → 24)
     f0_method: str = Form("rmvpe"),
     file_ids: str = Form("")  # comma-separated
