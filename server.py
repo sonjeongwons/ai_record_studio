@@ -802,6 +802,14 @@ async def startup():
 async def root():
     return FileResponse(str(APP_DIR / "static" / "index.html"))
 
+@app.get("/favicon.ico")
+async def favicon():
+    favicon_path = APP_DIR / "static" / "favicon.ico"
+    if favicon_path.exists():
+        return FileResponse(str(favicon_path), media_type="image/x-icon")
+    # Return empty 204 to suppress browser 404 warnings
+    return JSONResponse(content=None, status_code=204)
+
 
 # ─── 설정 API ───
 

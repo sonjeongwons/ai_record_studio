@@ -951,19 +951,19 @@ def _rvc_extract_f0(
     original_cwd = os.getcwd()
 
     # --- Strategy 1: Applio core API ---
+    # run_extract_script does BOTH F0 + feature extraction in one call
     try:
         os.chdir(APPLIO_ROOT)  # Applio uses relative paths
         from core import run_extract_script
         run_extract_script(
             model_name=model_name,
-            rvc_version="v2",
             f0_method=f0_method,
-            hop_length=128,
             cpu_cores=os.cpu_count() or 4,
-            sample_rate=str(sample_rate),
+            gpu=0,
+            sample_rate=sample_rate,
             embedder_model="contentvec",
             embedder_model_custom=None,
-            include_mutes=2,  # include short mutes for natural speech/singing gaps
+            include_mutes=2,
         )
         log.info(f"F0 extraction completed via core API (method={f0_method})")
         return
@@ -973,23 +973,7 @@ def _rvc_extract_f0(
     finally:
         os.chdir(original_cwd)
 
-    # --- Strategy 2: Direct module (rvc.train.extract) ---
-    try:
-        os.chdir(APPLIO_ROOT)
-        from rvc.train.extract.extract import run_pitch_extraction
-        run_pitch_extraction(
-            logs_dir=str(logs_dir),
-            f0_method=f0_method,
-        )
-        log.info(f"F0 extraction completed via direct module (method={f0_method})")
-        return
-    except Exception as e:
-        errors.append(f"direct module: {type(e).__name__}: {e}")
-        log.warning(f"F0 via direct module failed: {e}")
-    finally:
-        os.chdir(original_cwd)
-
-    # --- Strategy 3: CLI fallback ---
+    # --- Strategy 2: CLI fallback ---
     try:
         result = subprocess.run(
             [
@@ -999,7 +983,7 @@ def _rvc_extract_f0(
                 "--model_name", model_name,
                 "--f0_method", f0_method,
                 "--sample_rate", str(sample_rate),
-                "--hop_length", "128",
+                "--gpu", "0",
                 "--embedder_model", "contentvec",
                 "--include_mutes", "2",
             ],
@@ -1037,19 +1021,25 @@ def _rvc_extract_features(
     errors: list[str] = []
     original_cwd = os.getcwd()
 
-    # --- Strategy 1: rvc.train.extract.extract ---
+    # --- Strategy 1: Applio core API (extract does F0 + features) ---
     try:
-        os.chdir(APPLIO_ROOT)  # Applio uses relative paths
-        from rvc.train.extract.extract import run_embedding_extraction
-        run_embedding_extraction(
-            logs_dir=str(logs_dir),
+        os.chdir(APPLIO_ROOT)
+        from core import run_extract_script
+        run_extract_script(
+            model_name=model_name,
+            f0_method="rmvpe",
+            cpu_cores=os.cpu_count() or 4,
+            gpu=0,
+            sample_rate=sample_rate,
             embedder_model=embedder_model,
+            embedder_model_custom=None,
+            include_mutes=2,
         )
-        log.info(f"Feature extraction completed via run_embedding_extraction ({embedder_model})")
+        log.info(f"Feature extraction completed via core API ({embedder_model})")
         return
     except Exception as e:
-        errors.append(f"run_embedding_extraction: {type(e).__name__}: {e}")
-        log.warning(f"Feature extraction via run_embedding_extraction failed: {e}")
+        errors.append(f"core API: {type(e).__name__}: {e}")
+        log.warning(f"Feature extraction via core API failed: {e}")
     finally:
         os.chdir(original_cwd)
 
@@ -1064,7 +1054,7 @@ def _rvc_extract_features(
                 "--f0_method", "rmvpe",
                 "--embedder_model", embedder_model,
                 "--sample_rate", str(sample_rate),
-                "--hop_length", "128",
+                "--gpu", "0",
                 "--include_mutes", "2",
             ],
             cwd=str(APPLIO_ROOT),
@@ -1107,19 +1097,20 @@ def _rvc_train(
 
         run_train_script(
             model_name=model_name,
-            rvc_version="v2",
             save_every_epoch=save_every_epoch,
             save_only_latest=False,
             save_every_weights=True,
             total_epoch=epochs,
-            sample_rate=str(sample_rate),
+            sample_rate=sample_rate,
             batch_size=batch_size,
-            gpu="0",
-            pitch_guidance=True,
+            gpu=0,
             overtraining_detector=True,
             overtraining_threshold=50,
             pretrained=True,
-            custom_pretrained=False,
+            cleanup=False,
+            index_algorithm="Auto",
+            cache_data_in_gpu=False,
+            custom_pretrained=bool(pretrained_g and pretrained_d),
             g_pretrained_path=str(pretrained_g) if pretrained_g else None,
             d_pretrained_path=str(pretrained_d) if pretrained_d else None,
         )
@@ -1129,36 +1120,7 @@ def _rvc_train(
     except ImportError:
         pass
     except Exception as e:
-        log.warning(f"Training via core API failed: {e}, trying alternatives")
-    finally:
-        os.chdir(original_cwd)
-
-    try:
-        os.chdir(APPLIO_ROOT)
-        # Direct module: construct training config and run
-        from rvc.train.train import train as rvc_train_fn
-
-            config = {
-                "model_name": model_name,
-                "sample_rate": sample_rate,
-                "total_epoch": epochs,
-                "batch_size": batch_size,
-                "save_every_epoch": save_every_epoch,
-                "gpu_ids": "0",
-                "if_f0": True,       # pitch guidance
-                "version": "v2",
-                "logs_path": str(logs_dir),
-                "pretrainedG": str(pretrained_g) if pretrained_g else "",
-                "pretrainedD": str(pretrained_d) if pretrained_d else "",
-            }
-            rvc_train_fn(config)
-            log.info(f"Training completed via direct train module ({epochs} epochs)")
-            return
-
-    except ImportError:
-        pass
-    except Exception as e:
-        log.warning(f"Training via direct module failed: {e}, trying CLI")
+        log.warning(f"Training via core API failed: {e}, trying CLI")
     finally:
         os.chdir(original_cwd)
 
@@ -1168,17 +1130,19 @@ def _rvc_train(
         str(APPLIO_ROOT / "core.py"),
         "train",
         "--model_name", model_name,
-        "--rvc_version", "v2",
         "--total_epoch", str(epochs),
         "--sample_rate", str(sample_rate),
         "--batch_size", str(batch_size),
         "--save_every_epoch", str(save_every_epoch),
         "--gpu", "0",
-        "--pitch_guidance", "True",
         "--pretrained", "True",
+        "--overtraining_detector", "True",
+        "--overtraining_threshold", "50",
+        "--cleanup", "False",
     ]
     if pretrained_g:
-        cmd.extend(["--g_pretrained_path", str(pretrained_g)])
+        cmd.extend(["--custom_pretrained", "True",
+                     "--g_pretrained_path", str(pretrained_g)])
     if pretrained_d:
         cmd.extend(["--d_pretrained_path", str(pretrained_d)])
 
@@ -1265,64 +1229,71 @@ def _rvc_create_index(model_name: str, logs_dir: Path) -> None:
     """
     Create FAISS index from extracted features for inference-time retrieval.
     """
+    original_cwd = os.getcwd()
     try:
+        os.chdir(APPLIO_ROOT)
         from core import run_index_script
 
         run_index_script(
             model_name=model_name,
-            rvc_version="v2",
+            index_algorithm="Auto",
         )
         log.info("FAISS index created via core API")
+        return
+    except Exception as e:
+        log.warning(f"Index creation via core API failed: {e}")
+    finally:
+        os.chdir(original_cwd)
+
+    try:
+        import faiss
+
+        feature_dir = logs_dir / "3_feature768"
+        if not feature_dir.exists():
+            feature_dir = logs_dir / "3_feature256"
+
+        if not feature_dir.exists():
+            log.warning(f"Feature directory not found: {feature_dir}")
+            return
+
+        # Collect all feature .npy files
+        npys = sorted(feature_dir.glob("*.npy"))
+        if not npys:
+            log.warning("No .npy feature files found for index creation")
+            return
+
+        # Stack all feature vectors
+        features = []
+        for npy_file in npys:
+            feat = np.load(str(npy_file))
+            features.append(feat)
+        big_npy = np.concatenate(features, axis=0).astype(np.float32)
+
+        log.info(f"Building FAISS index from {len(npys)} files, {big_npy.shape[0]} vectors")
+
+        # Save concatenated features
+        big_npy_path = logs_dir / "total_fea.npy"
+        np.save(str(big_npy_path), big_npy)
+
+        # Build IVF index
+        n_ivf = min(int(big_npy.shape[0] ** 0.5), big_npy.shape[0])
+        n_ivf = max(1, n_ivf)
+
+        dim = big_npy.shape[1]  # 768 for ContentVec, 256 for HuBERT
+        index = faiss.index_factory(dim, f"IVF{n_ivf},Flat")
+
+        # Train index
+        index.train(big_npy)
+        index.add(big_npy)
+
+        index_path = logs_dir / f"{model_name}.index"
+        faiss.write_index(index, str(index_path))
+        log.info(f"FAISS index created: {index_path} ({big_npy.shape[0]} vectors)")
+
     except ImportError:
-        try:
-            import faiss
-
-            feature_dir = logs_dir / "3_feature768"
-            if not feature_dir.exists():
-                feature_dir = logs_dir / "3_feature256"
-
-            if not feature_dir.exists():
-                log.warning(f"Feature directory not found: {feature_dir}")
-                return
-
-            # Collect all feature .npy files
-            npys = sorted(feature_dir.glob("*.npy"))
-            if not npys:
-                log.warning("No .npy feature files found for index creation")
-                return
-
-            # Stack all feature vectors
-            features = []
-            for npy_file in npys:
-                feat = np.load(str(npy_file))
-                features.append(feat)
-            big_npy = np.concatenate(features, axis=0).astype(np.float32)
-
-            log.info(f"Building FAISS index from {len(npys)} files, {big_npy.shape[0]} vectors")
-
-            # Save concatenated features
-            big_npy_path = logs_dir / "total_fea.npy"
-            np.save(str(big_npy_path), big_npy)
-
-            # Build IVF index
-            n_ivf = min(int(big_npy.shape[0] ** 0.5), big_npy.shape[0])
-            n_ivf = max(1, n_ivf)
-
-            dim = big_npy.shape[1]  # 768 for ContentVec, 256 for HuBERT
-            index = faiss.index_factory(dim, f"IVF{n_ivf},Flat")
-
-            # Train index
-            index.train(big_npy)
-            index.add(big_npy)
-
-            index_path = logs_dir / f"{model_name}.index"
-            faiss.write_index(index, str(index_path))
-            log.info(f"FAISS index created: {index_path} ({big_npy.shape[0]} vectors)")
-
-        except ImportError:
-            log.warning("faiss not available, skipping index creation")
-        except Exception as e:
-            log.error(f"FAISS index creation failed: {e}")
+        log.warning("faiss not available, skipping index creation")
+    except Exception as e:
+        log.error(f"FAISS index creation failed: {e}")
 
 
 def _find_best_pth(logs_dir: Path, model_name: str) -> Optional[Path]:
@@ -1524,8 +1495,6 @@ def task_convert(job_input: dict, job: dict) -> dict:
             pitch_shift=pitch_shift,
             f0_method=f0_method,
             index_rate=index_rate,
-            filter_radius=filter_radius,
-            rms_mix_rate=rms_mix_rate,
             protect=protect,
             hop_length=hop_length,
             clean_audio=clean_audio,
@@ -1580,8 +1549,6 @@ def _rvc_infer(
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
     index_rate: float = 0.75,
-    filter_radius: int = 3,
-    rms_mix_rate: float = 0.25,
     protect: float = 0.33,
     hop_length: int = 128,
     clean_audio: bool = False,
@@ -1596,27 +1563,31 @@ def _rvc_infer(
     index_str = str(index_path) if index_path and index_path.exists() else ""
     original_cwd = os.getcwd()
 
-    # --- Strategy 1: Applio core API (>= v3.2.x) ---
+    # --- Strategy 1: Applio core API ---
     try:
         os.chdir(APPLIO_ROOT)
         from core import run_infer_script
 
         run_infer_script(
             pitch=pitch_shift,
-            filter_radius=filter_radius,
             index_rate=index_rate,
-            rms_mix_rate=rms_mix_rate,
+            volume_envelope=1.0,
             protect=protect,
-            hop_length=hop_length,
             f0_method=f0_method,
             input_path=str(input_audio),
             output_path=str(output_path),
             pth_path=str(pth_path),
             index_path=index_str,
-            split_audio=True,    # split into chunks for more consistent quality
+            split_audio=True,
+            f0_autotune=False,
+            f0_autotune_strength=1.0,
+            proposed_pitch=False,
+            proposed_pitch_threshold=155.0,
             clean_audio=clean_audio,
             clean_strength=clean_strength,
             export_format=export_format.upper(),
+            embedder_model="contentvec",
+            embedder_model_custom=None,
         )
         log.info("Inference completed via core.run_infer_script")
         return
@@ -1627,7 +1598,7 @@ def _rvc_infer(
     finally:
         os.chdir(original_cwd)
 
-    # --- Strategy 2: Direct VC pipeline import ---
+    # --- Strategy 2: VoiceConverter class ---
     try:
         os.chdir(APPLIO_ROOT)
         from rvc.infer.infer import VoiceConverter
@@ -1641,77 +1612,41 @@ def _rvc_infer(
             pitch=pitch_shift,
             f0_method=f0_method,
             index_rate=index_rate,
-            filter_radius=filter_radius,
-            rms_mix_rate=rms_mix_rate,
+            volume_envelope=1.0,
             protect=protect,
             hop_length=hop_length,
+            split_audio=True,
             clean_audio=clean_audio,
             clean_strength=clean_strength,
             export_format=export_format.upper(),
+            embedder_model="contentvec",
         )
         log.info("Inference completed via VoiceConverter class")
         return
     except ImportError:
-        log.info("rvc.infer.infer.VoiceConverter not available, trying alternative")
+        log.info("rvc.infer.infer.VoiceConverter not available, trying CLI")
     except Exception as e:
-        log.warning(f"VoiceConverter failed: {e}, trying alternative")
+        log.warning(f"VoiceConverter failed: {e}, trying CLI")
     finally:
         os.chdir(original_cwd)
 
-    # --- Strategy 3: Legacy VC pipeline ---
-    try:
-        os.chdir(APPLIO_ROOT)
-        from rvc.modules.vc.modules import VC
-
-        vc = VC()
-        vc.get_vc(str(pth_path))
-
-        result = vc.vc_single(
-            sid=0,
-            input_audio_path=str(input_audio),
-            f0_up_key=pitch_shift,
-            f0_method=f0_method,
-            file_index=index_str,
-            index_rate=index_rate,
-            filter_radius=filter_radius,
-            resample_sr=0,
-            rms_mix_rate=rms_mix_rate,
-            protect=protect,
-        )
-
-        if isinstance(result, tuple) and len(result) >= 2:
-            sr_out, audio_out = result[1] if isinstance(result[1], tuple) else (44100, result[1])
-        else:
-            raise RuntimeError(f"Unexpected VC output format: {type(result)}")
-
-        import soundfile as sf
-        sf.write(str(output_path), audio_out, samplerate=sr_out)
-        log.info("Inference completed via legacy VC module")
-        return
-    except ImportError:
-        log.info("rvc.modules.vc.modules.VC not available, trying CLI fallback")
-    except Exception as e:
-        log.warning(f"Legacy VC failed: {e}, trying CLI fallback")
-    finally:
-        os.chdir(original_cwd)
-
-    # --- Strategy 4: CLI fallback ---
+    # --- Strategy 3: CLI fallback ---
     cmd = [
         sys.executable,
         str(APPLIO_ROOT / "core.py"),
         "infer",
         "--pitch", str(pitch_shift),
-        "--filter_radius", str(filter_radius),
         "--index_rate", str(index_rate),
-        "--rms_mix_rate", str(rms_mix_rate),
+        "--volume_envelope", "1.0",
         "--protect", str(protect),
-        "--hop_length", str(hop_length),
         "--f0_method", f0_method,
         "--input_path", str(input_audio),
         "--output_path", str(output_path),
         "--pth_path", str(pth_path),
         "--index_path", index_str,
+        "--split_audio", "True",
         "--export_format", export_format.upper(),
+        "--embedder_model", "contentvec",
     ]
 
     result = subprocess.run(
