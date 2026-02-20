@@ -743,9 +743,10 @@ def task_train(job_input: dict, job: dict) -> dict:
     if not audio_files:
         raise ValueError("No audio_files provided for training")
 
-    # Validate parameters
-    if sample_rate not in (32000, 40000, 44100, 48000):
-        sample_rate = 44100
+    # Validate parameters — Applio only supports 32k, 40k, 48k
+    if sample_rate not in (32000, 40000, 48000):
+        log.warning(f"Invalid sample_rate {sample_rate}, defaulting to 40000")
+        sample_rate = 40000
     epochs = max(1, min(epochs, 10000))
 
     # Auto-detect optimal batch_size from GPU VRAM if not specified
@@ -773,8 +774,8 @@ def task_train(job_input: dict, job: dict) -> dict:
     ensure_dir(logs_dir)
 
     # Map sample rate to Applio's internal version string
-    sr_map = {32000: "32k", 40000: "40k", 44100: "44k", 48000: "48k"}
-    sr_label = sr_map.get(sample_rate, "44k")
+    sr_map = {32000: "32k", 40000: "40k", 48000: "48k"}
+    sr_label = sr_map.get(sample_rate, "40k")
 
     try:
         # --- Step 1: Decode audio files to dataset directory ---
@@ -837,11 +838,29 @@ def task_train(job_input: dict, job: dict) -> dict:
         _rvc_create_index(model_name, logs_dir)
 
         # --- Collect output files ---
+        # Diagnostic: list all files in logs_dir to understand what training produced
+        if logs_dir.exists():
+            all_files = list(logs_dir.rglob("*"))
+            pth_files = [f for f in all_files if f.suffix == ".pth"]
+            log.info(f"Logs dir contents: {len(all_files)} total files, "
+                     f"{len(pth_files)} .pth files")
+            for pf in pth_files:
+                log.info(f"  Found .pth: {pf} ({pf.stat().st_size / 1024 / 1024:.1f} MB)")
+            if not pth_files:
+                # Log directory tree for debugging
+                dirs = sorted(set(f.parent for f in all_files))
+                log.error(f"No .pth files found! Directory tree: {[str(d) for d in dirs]}")
+        else:
+            log.error(f"Logs directory does not exist: {logs_dir}")
+
         pth_path = _find_best_pth(logs_dir, model_name)
         index_path = _find_index(logs_dir, model_name)
 
         if pth_path is None:
-            raise RuntimeError(f"Training completed but no .pth model found in {logs_dir}")
+            raise RuntimeError(
+                f"Training completed but no .pth model found in {logs_dir}. "
+                f"Check RunPod logs for training subprocess output."
+            )
 
         elapsed = time.time() - start_time
 
@@ -1083,48 +1102,31 @@ def _rvc_train(
     job: dict,
 ) -> None:
     """
-    Run RVC v2 training loop.
-    Uses Applio's core.run_train_script or falls back to direct training module.
+    Run RVC v2 training loop via Applio CLI.
+    Uses CLI (subprocess) instead of core API because core API
+    doesn't check subprocess return codes.
     """
     # Determine pretrained model paths
     pretrained_g = _find_pretrained("G", sr_label)
     pretrained_d = _find_pretrained("D", sr_label)
 
-    original_cwd = os.getcwd()
-    try:
-        os.chdir(APPLIO_ROOT)  # Applio uses relative paths (rvc/configs/, etc.)
-        from core import run_train_script
+    # Log training parameters for debugging
+    log.info(f"Training params: model={model_name}, sr={sample_rate}, epochs={epochs}, "
+             f"batch={batch_size}, save_every={save_every_epoch}, sr_label={sr_label}")
+    log.info(f"Pretrained G: {pretrained_g}")
+    log.info(f"Pretrained D: {pretrained_d}")
 
-        run_train_script(
-            model_name=model_name,
-            save_every_epoch=save_every_epoch,
-            save_only_latest=False,
-            save_every_weights=True,
-            total_epoch=epochs,
-            sample_rate=sample_rate,
-            batch_size=batch_size,
-            gpu=0,
-            overtraining_detector=True,
-            overtraining_threshold=50,
-            pretrained=True,
-            cleanup=False,
-            index_algorithm="Auto",
-            cache_data_in_gpu=False,
-            custom_pretrained=bool(pretrained_g and pretrained_d),
-            g_pretrained_path=str(pretrained_g) if pretrained_g else None,
-            d_pretrained_path=str(pretrained_d) if pretrained_d else None,
-        )
-        log.info(f"Training completed via core API ({epochs} epochs)")
-        return
+    # Verify preprocessed data exists before training
+    gt_dir = logs_dir / "0_gt_wavs"
+    if gt_dir.exists():
+        gt_count = len(list(gt_dir.glob("*.wav")))
+        log.info(f"Preprocessed audio files: {gt_count} in {gt_dir}")
+        if gt_count == 0:
+            raise RuntimeError("No preprocessed audio files found — cannot train")
+    else:
+        raise RuntimeError(f"Preprocessed directory missing: {gt_dir}")
 
-    except ImportError:
-        pass
-    except Exception as e:
-        log.warning(f"Training via core API failed: {e}, trying CLI")
-    finally:
-        os.chdir(original_cwd)
-
-    # CLI fallback
+    # Use CLI for training (core API's run_train_script doesn't check subprocess exit)
     cmd = [
         sys.executable,
         str(APPLIO_ROOT / "core.py"),
@@ -1134,6 +1136,7 @@ def _rvc_train(
         "--sample_rate", str(sample_rate),
         "--batch_size", str(batch_size),
         "--save_every_epoch", str(save_every_epoch),
+        "--save_every_weights", "True",
         "--gpu", "0",
         "--pretrained", "True",
         "--overtraining_detector", "True",
