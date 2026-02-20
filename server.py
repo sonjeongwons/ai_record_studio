@@ -726,6 +726,16 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                         f.write(base64.b64decode(output["mixed_audio"]))
                     result_data["mixed_file"] = mixed_filename
 
+                # conversions 테이블에 결과 파일 업데이트
+                with get_db() as db:
+                    db.execute("""
+                        UPDATE conversions SET output_file=?, output_name=?,
+                            processing_time=?, status='completed'
+                        WHERE status='processing'
+                        ORDER BY created_at DESC LIMIT 1
+                    """, (out_filename, result_data.get("mixed_file", out_filename),
+                          output.get("processing_time_seconds", 0)))
+
                 update_job(job_id, status="completed", progress=100,
                           message="변환 완료!",
                           result_json=json.dumps(result_data))
@@ -940,7 +950,14 @@ async def upload_files(
 async def list_files():
     with get_db() as db:
         rows = db.execute("SELECT * FROM training_files ORDER BY uploaded_at DESC").fetchall()
-    return {"files": [dict(r) for r in rows]}
+    files = []
+    for r in rows:
+        d = dict(r)
+        # 프론트엔드 필드명 통일 (DB: file_size/file_type → size/type)
+        d["size"] = d.get("file_size") or 0
+        d["type"] = d.get("file_type") or ""
+        files.append(d)
+    return {"files": files}
 
 
 @app.delete("/api/files/{file_id}")
@@ -1519,6 +1536,22 @@ async def list_conversions():
             ORDER BY c.created_at DESC LIMIT 50
         """).fetchall()
     return {"conversions": [dict(r) for r in rows]}
+
+
+@app.delete("/api/conversions/{conv_id}")
+async def delete_conversion(conv_id: int):
+    with get_db() as db:
+        row = db.execute("SELECT * FROM conversions WHERE id=?", (conv_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "변환 기록을 찾을 수 없습니다.")
+        for col in ("output_file", "output_name"):
+            fname = row[col]
+            if fname:
+                fpath = OUTPUT_DIR / fname
+                if fpath.exists():
+                    fpath.unlink()
+        db.execute("DELETE FROM conversions WHERE id=?", (conv_id,))
+    return {"status": "ok"}
 
 
 @app.get("/api/download/{filename}")

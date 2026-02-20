@@ -315,6 +315,21 @@ select { -webkit-appearance: none; cursor: pointer; }
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
 }
 .btn-model-delete:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+.conversion-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+  margin-bottom: 6px; transition: border-color 0.2s;
+}
+.conversion-item:hover { border-color: rgba(139,92,246,0.3); }
+.btn-conv-action {
+  background: none; border: none; cursor: pointer; padding: 6px;
+  border-radius: 8px; color: var(--text3); transition: all 0.2s;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  text-decoration: none;
+}
+.btn-conv-action:hover { background: rgba(139,92,246,0.15); color: var(--violet); }
+.btn-conv-delete:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
 .model-train-files { margin-top: 4px; cursor: pointer; }
 .model-train-files-header {
   display: flex; align-items: center; gap: 4px;
@@ -1203,6 +1218,15 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
     </div>
   </div>
+
+  <!-- Conversion History -->
+  <div id="conversion-history" class="card mt-24" style="display:none">
+    <div class="flex-between mb-16">
+      <label class="label" style="margin:0">변환 기록</label>
+      <span style="font-size:11px;color:var(--text3)" id="conversion-history-count"></span>
+    </div>
+    <div id="conversion-history-list"></div>
+  </div>
 </div>
 
 <!-- ═══════════════════════ SETTINGS ═══════════════════════ -->
@@ -1484,7 +1508,7 @@ function showPage(page) {
   document.querySelector('[data-page="' + page + '"]').classList.add('active');
 
   if (page === 'home') loadDashboard();
-  if (page === 'convert') loadModels();
+  if (page === 'convert') { loadModels(); loadConversionHistory(); }
   if (page === 'settings') loadSettings();
 }
 
@@ -1502,6 +1526,7 @@ async function api(path, opts) {
 }
 
 function formatSize(bytes) {
+  if (!bytes || isNaN(bytes)) return '-';
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
   return (bytes/1024/1024).toFixed(1) + ' MB';
@@ -1607,7 +1632,7 @@ function renderFileList() {
   }
 
   headerEl.style.display = 'flex';
-  var totalSize = uploadedFiles.reduce(function(a, f) { return a + f.size; }, 0);
+  var totalSize = uploadedFiles.reduce(function(a, f) { return a + (f.size || f.file_size || 0); }, 0);
   document.getElementById('file-count-label').textContent =
     uploadedFiles.length + '개 파일 \u00B7 ' + formatSize(totalSize);
 
@@ -1639,7 +1664,7 @@ function renderFileList() {
       '</div>' +
       '<div class="file-info">' +
         '<div class="file-name">' + f.original_name + ppBadge + '</div>' +
-        '<div class="file-meta">' + formatSize(f.size) + ' \u00B7 ' + f.type + '</div>' +
+        '<div class="file-meta">' + formatSize(f.size || f.file_size) + ' \u00B7 ' + (f.type || f.file_type || '') + '</div>' +
       '</div>' +
       '<button class="file-delete" onclick="deleteFile(' + f.id + ')">&#x2715;</button>' +
       (playerHtml ? '<div style="width:100%;padding-left:48px">' + playerHtml + '</div>' : '') +
@@ -2351,6 +2376,7 @@ async function pollConvertStatus() {
         }
       }
       toast('변환이 완료되었습니다', 'success');
+      loadConversionHistory();
       return;
     }
     if (job.status === 'failed') {
@@ -2552,6 +2578,7 @@ function resetConversion() {
   if (mixedBtn) mixedBtn.style.display = 'none';
   document.getElementById('btn-convert').disabled = false;
   loadModels();
+  loadConversionHistory();
 }
 
 async function cancelConversion() {
@@ -2560,6 +2587,54 @@ async function cancelConversion() {
   }
   resetConversion();
   toast('변환을 취소했습니다', 'info');
+}
+
+async function loadConversionHistory() {
+  try {
+    var res = await api('/conversions');
+    var list = (res.conversions || []).filter(function(c) { return c.status === 'completed' && c.output_file; });
+    var container = document.getElementById('conversion-history');
+    var listEl = document.getElementById('conversion-history-list');
+    if (!list.length) {
+      container.style.display = 'none';
+      return;
+    }
+    container.style.display = 'block';
+    document.getElementById('conversion-history-count').textContent = list.length + '개';
+    listEl.innerHTML = list.map(function(c) {
+      var displayName = c.output_name || c.output_file || '-';
+      return '<div class="conversion-item">' +
+        '<div class="file-icon" style="flex-shrink:0">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
+        '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (c.input_file || '-') + '</div>' +
+          '<div style="font-size:10px;color:var(--text3)">' +
+            (c.model_name || '삭제된 모델') +
+            (c.processing_time ? ' · ' + c.processing_time.toFixed(1) + '초' : '') +
+            ' · ' + (c.created_at || '') +
+          '</div>' +
+        '</div>' +
+        '<a class="btn-conv-action" href="/api/download/' + c.output_file + '" download title="다운로드">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
+        '</a>' +
+        '<button class="btn-conv-action btn-conv-delete" onclick="deleteConversion(' + c.id + ')" title="삭제">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+        '</button>' +
+      '</div>';
+    }).join('');
+  } catch(e) {}
+}
+
+async function deleteConversion(id) {
+  if (!confirm('이 변환 파일을 영구 삭제하시겠습니까?')) return;
+  try {
+    await api('/conversions/' + id, { method: 'DELETE' });
+    toast('변환 파일이 삭제되었습니다', 'info');
+    loadConversionHistory();
+  } catch(e) {
+    toast('삭제 실패: ' + e.message, 'error');
+  }
 }
 
 function retryConversion() {
