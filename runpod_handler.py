@@ -883,10 +883,13 @@ def task_train(job_input: dict, job: dict) -> dict:
         try:
             from runpod.serverless.utils import upload_file_to_bucket
 
+            bucket_name = os.environ.get("BUCKET_NAME", "voice-studio")
+
             pth_url = upload_file_to_bucket(
                 file_name=pth_path.name,
                 file_location=str(pth_path),
                 prefix=f"voice-studio/{job_id}",
+                bucket_name=bucket_name,
             )
             # upload_file_to_bucket returns a local path if no bucket configured
             if pth_url and pth_url.startswith("http"):
@@ -905,6 +908,7 @@ def task_train(job_input: dict, job: dict) -> dict:
                     file_name=index_path.name,
                     file_location=str(index_path),
                     prefix=f"voice-studio/{job_id}",
+                    bucket_name=bucket_name,
                 )
                 if index_url and index_url.startswith("http"):
                     result["index_url"] = index_url
