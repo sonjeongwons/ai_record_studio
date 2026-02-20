@@ -853,6 +853,20 @@ input[type="range"]::-webkit-slider-thumb {
               <div class="preprocess-stat-label">총 길이</div>
             </div>
           </div>
+          <!-- 분리된 파일 다운로드 -->
+          <div id="preprocess-downloads" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.06)">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:8px">분리된 파일 다운로드</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <a id="btn-download-mr" class="btn btn-secondary" style="display:none;padding:6px 14px;font-size:12px;text-decoration:none" download>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                반주(MR)
+              </a>
+              <a id="btn-download-vocal" class="btn btn-secondary" style="display:none;padding:6px 14px;font-size:12px;text-decoration:none" download>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                보컬
+              </a>
+            </div>
+          </div>
           <button class="skip-link" onclick="resetPreprocess()" style="margin-top:8px">
             다시 전처리
           </button>
@@ -882,6 +896,26 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="48000">48 kHz</option>
           </select>
         </div>
+      </div>
+      <div class="grid-3 mt-16">
+        <div>
+          <label class="label">피치 추출 (F0)</label>
+          <select id="train-f0">
+            <option value="rmvpe" selected>RMVPE (권장, 빠름)</option>
+            <option value="crepe">Crepe (최고 품질, 느림)</option>
+            <option value="crepe-tiny">Crepe-tiny (빠른 Crepe)</option>
+          </select>
+        </div>
+        <div>
+          <label class="label">배치 사이즈</label>
+          <select id="train-batch">
+            <option value="0" selected>자동 (GPU 최적화)</option>
+            <option value="8">8 (저사양)</option>
+            <option value="16">16 (중간)</option>
+            <option value="24">24 (RTX 4090)</option>
+          </select>
+        </div>
+        <div></div>
       </div>
       <div class="alert alert-info mt-16">
         예상 비용: ~$1.50~3.00 / 예상 시간: 300 에폭 기준 약 3~6시간 / GPU: RTX 4090
@@ -973,8 +1007,8 @@ input[type="range"]::-webkit-slider-thumb {
     <div class="card">
       <label class="label">변환할 음원 업로드 (여러 파일 가능)</label>
       <div class="dropzone" id="convert-dropzone" style="padding:24px">
-        <div class="dropzone-text">가이드 보컬 또는 원곡 파일을 업로드</div>
-        <div class="dropzone-sub">WAV, MP3, FLAC 지원 -- 여러 파일을 한번에 드래그하세요</div>
+        <div class="dropzone-text">변환할 원곡 파일을 업로드 (자동 보컬 분리)</div>
+        <div class="dropzone-sub">원곡을 업로드하면 자동으로 보컬을 분리하여 변환합니다 -- WAV, MP3, FLAC 지원</div>
       </div>
       <input type="file" id="convert-file-input" multiple accept=".wav,.mp3,.flac,.ogg" style="display:none">
 
@@ -1013,6 +1047,23 @@ input[type="range"]::-webkit-slider-thumb {
           <span class="slider-value" id="index-val">0.75</span>
         </div>
         <input type="range" id="index-slider" min="0" max="100" value="75" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2)">
+      </div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:10px">믹스 볼륨 (보컬 + 반주)</div>
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">보컬 볼륨</span>
+            <span class="slider-value" id="vocal-vol-val">1.0</span>
+          </div>
+          <input type="range" id="vocal-vol-slider" min="0" max="200" value="100" oninput="document.getElementById('vocal-vol-val').textContent=(this.value/100).toFixed(1)">
+        </div>
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">반주(MR) 볼륨</span>
+            <span class="slider-value" id="mr-vol-val">1.0</span>
+          </div>
+          <input type="range" id="mr-vol-slider" min="0" max="200" value="100" oninput="document.getElementById('mr-vol-val').textContent=(this.value/100).toFixed(1)">
+        </div>
       </div>
     </div>
 
@@ -1077,10 +1128,14 @@ input[type="range"]::-webkit-slider-thumb {
         <span class="audio-time" id="result-audio-time">0:00</span>
         <audio id="result-audio" preload="auto"></audio>
       </div>
-      <div class="flex mt-16 gap-8">
+      <div class="flex mt-16 gap-8" style="flex-wrap:wrap">
         <a class="btn btn-primary" id="convert-download-btn" href="#" download>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-          다운로드
+          변환된 보컬
+        </a>
+        <a class="btn btn-gradient" id="convert-mixed-btn" href="#" download style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          최종 믹스 (보컬+반주)
         </a>
         <button class="btn btn-secondary" onclick="resetConversion()">다른 곡 변환</button>
       </div>
@@ -1646,11 +1701,22 @@ async function pollPreprocessStatus() {
       document.getElementById('preprocess-duration').textContent =
         duration ? formatDuration(duration) : '-';
 
+      // Populate download buttons from result
+      if (job.result) {
+        updatePreprocessDownloads(job.result.accompaniment_files, job.result.vocal_files);
+      }
+
       preprocessDone = true;
       document.getElementById('btn-start-train').disabled = false;
       toast('전처리 완료: ' + segments + '개 세그먼트', 'success');
       // 파일 목록 새로고침 (전처리 배지 업데이트)
       api('/files').then(function(r) { uploadedFiles = r.files || []; renderFileList(); }).catch(function(){});
+      // Fetch full status for download info if not in result
+      if (!job.result || !job.result.accompaniment_files) {
+        api('/preprocess/status').then(function(st) {
+          updatePreprocessDownloads(st.accompaniment_files, st.vocal_files);
+        }).catch(function(){});
+      }
       return;
     }
     if (job.status === 'failed') {
@@ -1700,6 +1766,8 @@ async function resetPreprocess() {
   document.getElementById('preprocess-idle').style.display = 'block';
   document.getElementById('preprocess-segments').textContent = '-';
   document.getElementById('preprocess-duration').textContent = '-';
+  var dlSection = document.getElementById('preprocess-downloads');
+  if (dlSection) dlSection.style.display = 'none';
   document.getElementById('btn-start-train').disabled = true;
   toast('전처리 초기화됨. 다시 전처리하거나 건너뛸 수 있습니다.', 'info');
   // 파일 배지 새로고침 (모두 "미처리"로)
@@ -1708,6 +1776,32 @@ async function resetPreprocess() {
     uploadedFiles = r.files || [];
     renderFileList();
   } catch(e2) {}
+}
+
+function updatePreprocessDownloads(accompFiles, vocalFiles) {
+  var dlSection = document.getElementById('preprocess-downloads');
+  var mrBtn = document.getElementById('btn-download-mr');
+  var vocalBtn = document.getElementById('btn-download-vocal');
+  if (!dlSection) return;
+
+  var hasFiles = false;
+  if (accompFiles && accompFiles.length > 0) {
+    var fn = typeof accompFiles[0] === 'string' ? accompFiles[0] : accompFiles[0].filename;
+    mrBtn.href = '/api/preprocess/download/' + fn;
+    mrBtn.style.display = 'inline-flex';
+    hasFiles = true;
+  } else {
+    mrBtn.style.display = 'none';
+  }
+  if (vocalFiles && vocalFiles.length > 0) {
+    var fn2 = typeof vocalFiles[0] === 'string' ? vocalFiles[0] : vocalFiles[0].filename;
+    vocalBtn.href = '/api/preprocess/download/' + fn2;
+    vocalBtn.style.display = 'inline-flex';
+    hasFiles = true;
+  } else {
+    vocalBtn.style.display = 'none';
+  }
+  dlSection.style.display = hasFiles ? 'block' : 'none';
 }
 
 async function checkPreprocessStatus() {
@@ -1721,6 +1815,8 @@ async function checkPreprocessStatus() {
       document.getElementById('preprocess-duration').textContent =
         res.total_duration > 0 ? formatDuration(res.total_duration) : '-';
       document.getElementById('btn-start-train').disabled = false;
+      // Populate download buttons
+      updatePreprocessDownloads(res.accompaniment_files, res.vocal_files);
       // 서버가 DB 동기화했으므로 파일 목록 새로고침 (배지 업데이트)
       try {
         var r = await api('/files');
@@ -1766,10 +1862,15 @@ async function startTraining() {
   var sr = document.getElementById('train-sr').value;
   var fileIds = uploadedFiles.map(function(f) { return f.id; }).join(',');
 
+  var f0Method = document.getElementById('train-f0').value;
+  var batchSize = document.getElementById('train-batch').value;
+
   var form = new FormData();
   form.append('model_name', modelName);
   form.append('epochs', epochs);
   form.append('sample_rate', sr);
+  form.append('batch_size', batchSize);
+  form.append('f0_method', f0Method);
   form.append('file_ids', fileIds);
 
   try {
@@ -2060,6 +2161,8 @@ async function startConversion() {
   form.append('model_id', selectedModelId);
   form.append('pitch_shift', document.getElementById('pitch-slider').value);
   form.append('index_rate', (document.getElementById('index-slider').value / 100).toFixed(2));
+  form.append('vocal_volume', (document.getElementById('vocal-vol-slider').value / 100).toFixed(1));
+  form.append('mr_volume', (document.getElementById('mr-vol-slider').value / 100).toFixed(1));
   form.append('audio', convertFile);
 
   try {
@@ -2103,11 +2206,21 @@ async function pollConvertStatus() {
         var dlUrl = '/api/download/' + outFile;
         document.getElementById('convert-download-btn').href = dlUrl;
 
-        // Show audio player for result
+        // Show mixed file download button if available
+        var mixedFile = job.result ? job.result.mixed_file : null;
+        var mixedBtn = document.getElementById('convert-mixed-btn');
+        if (mixedFile && mixedBtn) {
+          mixedBtn.href = '/api/download/' + mixedFile;
+          mixedBtn.style.display = 'inline-flex';
+        } else if (mixedBtn) {
+          mixedBtn.style.display = 'none';
+        }
+
+        // Show audio player for result (play mixed if available, else vocals)
         var playerEl = document.getElementById('convert-result-player');
         var audioEl = document.getElementById('result-audio');
         if (playerEl && audioEl) {
-          audioEl.src = dlUrl;
+          audioEl.src = mixedFile ? '/api/download/' + mixedFile : dlUrl;
           playerEl.style.display = 'flex';
           setTimeout(function() {
             var canvas = document.getElementById('result-waveform');
@@ -2202,6 +2315,8 @@ async function startBatchConversion() {
       form.append('model_id', selectedModelId);
       form.append('pitch_shift', document.getElementById('pitch-slider').value);
       form.append('index_rate', (document.getElementById('index-slider').value / 100).toFixed(2));
+      form.append('vocal_volume', (document.getElementById('vocal-vol-slider').value / 100).toFixed(1));
+      form.append('mr_volume', (document.getElementById('mr-vol-slider').value / 100).toFixed(1));
       form.append('audio', batchResults[i].file);
 
       var res = await api('/convert', { method: 'POST', body: form });
@@ -2229,9 +2344,13 @@ async function startBatchConversion() {
       ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     var dlBtn = r.resultUrl
-      ? '<a class="btn btn-secondary" href="' + r.resultUrl + '" download style="padding:6px 12px;font-size:11px">다운로드</a>'
+      ? '<a class="btn btn-secondary" href="' + r.resultUrl + '" download style="padding:6px 12px;font-size:11px">보컬</a>'
       : '';
-    var playerHtml = r.resultUrl ? createAudioPlayer(r.resultUrl, 'br_' + idx) : '';
+    var mixBtn = r.mixedUrl
+      ? '<a class="btn btn-primary" href="' + r.mixedUrl + '" download style="padding:6px 12px;font-size:11px">믹스</a>'
+      : '';
+    dlBtn = dlBtn + mixBtn;
+    var playerHtml = (r.mixedUrl || r.resultUrl) ? createAudioPlayer(r.mixedUrl || r.resultUrl, 'br_' + idx) : '';
     return '<div class="batch-item ' + r.status + '" style="flex-wrap:wrap">' +
       '<div class="batch-item-icon ' + r.status + '">' + icon + '</div>' +
       '<div class="batch-item-info">' +
@@ -2265,6 +2384,8 @@ function pollBatchItem(index) {
           r.status = 'completed';
           var outFile = job.result ? job.result.output_file : null;
           if (outFile) r.resultUrl = '/api/download/' + outFile;
+          var mixFile = job.result ? job.result.mixed_file : null;
+          if (mixFile) r.mixedUrl = '/api/download/' + mixFile;
           renderBatchProgress();
           resolve();
           return;
@@ -2332,6 +2453,8 @@ function resetConversion() {
   document.getElementById('convert-file-info').style.display = 'none';
   document.getElementById('batch-queue').style.display = 'none';
   document.getElementById('convert-result-player').style.display = 'none';
+  var mixedBtn = document.getElementById('convert-mixed-btn');
+  if (mixedBtn) mixedBtn.style.display = 'none';
   document.getElementById('btn-convert').disabled = false;
   loadModels();
 }

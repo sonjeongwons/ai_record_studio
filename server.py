@@ -544,9 +544,11 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
 
 
 def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
-    """전처리 결과의 세그먼트를 디스크에 저장하고 메타데이터만 반환.
+    """전처리 결과의 세그먼트 + 반주(MR) + 보컬 파일을 디스크에 저장하고 메타데이터 반환.
     기존 세그먼트 유지 (append), 새 세그먼트만 추가."""
     segments = output.get("segments", [])
+    accomp_files = output.get("accompaniment_files", [])
+    vocal_files = output.get("vocal_files", [])
     total_duration = output.get("total_duration", 0.0)
     saved_files = []
 
@@ -554,19 +556,31 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     existing = set(f.name for f in PREPROCESSED_DIR.iterdir() if f.is_file())
     prefix = uuid.uuid4().hex[:6]
 
-    for i, seg in enumerate(segments):
-        orig_name = seg.get("filename", f"seg_{i:04d}.wav")
-        # 이름 충돌 방지
-        fname = orig_name if orig_name not in existing else f"{prefix}_{orig_name}"
-        seg_path = PREPROCESSED_DIR / fname
-        if seg.get("data_base64"):
-            with open(seg_path, "wb") as f:
-                f.write(base64.b64decode(seg["data_base64"]))
-            saved_files.append({
-                "filename": fname,
-                "duration_seconds": seg.get("duration_seconds", 0),
-            })
-            existing.add(fname)
+    def _save_file_list(file_list, default_prefix="seg"):
+        """Save a list of base64-encoded files to PREPROCESSED_DIR."""
+        saved = []
+        for i, fobj in enumerate(file_list):
+            orig_name = fobj.get("filename", f"{default_prefix}_{i:04d}.wav")
+            fname = orig_name if orig_name not in existing else f"{prefix}_{orig_name}"
+            fpath = PREPROCESSED_DIR / fname
+            if fobj.get("data_base64"):
+                with open(fpath, "wb") as f:
+                    f.write(base64.b64decode(fobj["data_base64"]))
+                saved.append({
+                    "filename": fname,
+                    "duration_seconds": fobj.get("duration_seconds", 0),
+                })
+                existing.add(fname)
+        return saved
+
+    # Save training segments
+    saved_files = _save_file_list(segments, "seg")
+
+    # Save accompaniment (MR) files for user download
+    saved_accomp = _save_file_list(accomp_files, "mr")
+
+    # Save full vocal files for user download
+    saved_vocals = _save_file_list(vocal_files, "vocal")
 
     # 전처리 완료된 파일 마킹
     file_ids = preprocess_file_map.pop(job_id, [])
@@ -578,13 +592,16 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
                 file_ids
             )
 
-    # 전체 전처리 세그먼트 수 (기존 + 새로 추가, WAV + MP3)
+    # 전체 전처리 세그먼트 수 (학습용 세그먼트만 카운트, mr_/vocal_ 제외)
     all_files = _list_preprocessed_files()
+    training_files = [f for f in all_files if not f.name.startswith(("mr_", "vocal_"))]
 
     return {
-        "segment_count": len(all_files),
+        "segment_count": len(training_files),
         "total_duration": round(total_duration, 2),
-        "segment_files": [f.name for f in all_files],
+        "segment_files": [f.name for f in training_files],
+        "accompaniment_files": [s["filename"] for s in saved_accomp],
+        "vocal_files": [s["filename"] for s in saved_vocals],
     }
 
 
@@ -626,19 +643,29 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                       result_json=json.dumps({"model_name": model_name}))
 
         elif job_type == "convert":
-            # 변환 파일 저장
+            # 변환 파일 저장 (보컬 + 믹스)
             if output.get("converted_audio"):
                 out_filename = output.get("filename", f"converted_{job_id[:8]}.wav")
                 out_path = str(OUTPUT_DIR / out_filename)
                 with open(out_path, "wb") as f:
                     f.write(base64.b64decode(output["converted_audio"]))
 
+                result_data = {
+                    "output_file": out_filename,
+                    "processing_time": output.get("processing_time_seconds", 0),
+                }
+
+                # 믹스 파일도 저장 (보컬+반주 합성)
+                if output.get("mixed_audio"):
+                    mixed_filename = output.get("mixed_filename", f"mixed_{job_id[:8]}.wav")
+                    mixed_path = str(OUTPUT_DIR / mixed_filename)
+                    with open(mixed_path, "wb") as f:
+                        f.write(base64.b64decode(output["mixed_audio"]))
+                    result_data["mixed_file"] = mixed_filename
+
                 update_job(job_id, status="completed", progress=100,
                           message="변환 완료!",
-                          result_json=json.dumps({
-                              "output_file": out_filename,
-                              "processing_time": output.get("processing_time_seconds", 0)
-                          }))
+                          result_json=json.dumps(result_data))
             else:
                 update_job(job_id, status="failed", message="변환 결과 없음")
 
@@ -947,7 +974,8 @@ async def start_training(
     model_name: str = Form(...),
     epochs: int = Form(300),
     sample_rate: int = Form(44100),
-    batch_size: int = Form(8),
+    batch_size: int = Form(0),  # 0 = GPU auto-detect (RTX 4090 → 24)
+    f0_method: str = Form("rmvpe"),
     file_ids: str = Form("")  # comma-separated
 ):
     if not runpod_client.is_configured():
@@ -968,7 +996,9 @@ async def start_training(
         raise HTTPException(400, "학습할 파일이 없습니다.")
 
     # 전처리된 세그먼트가 있으면 우선 사용 (용량 작음 → 10MB 이내)
-    preprocessed_files = _list_preprocessed_files()
+    # mr_/vocal_ 파일은 학습용이 아니므로 제외
+    preprocessed_files = [f for f in _list_preprocessed_files()
+                          if not f.name.startswith(("mr_", "vocal_"))]
     if preprocessed_files:
         file_paths = [str(p) for p in preprocessed_files]
     else:
@@ -1001,7 +1031,8 @@ async def start_training(
             "audio_files": batches[0],
             "sample_rate": sample_rate,
             "epochs": epochs,
-            "batch_size": batch_size
+            "batch_size": batch_size,
+            "f0_method": f0_method,
         })
 
         msg = f"GPU에 작업 제출됨 ({total_segments}개 세그먼트)"
@@ -1116,15 +1147,15 @@ async def start_preprocess(
 @app.get("/api/preprocess/status")
 async def preprocess_status():
     """전처리 상태 확인 — preprocessed/ 디렉토리에 세그먼트가 있는지 반환.
-    세그먼트가 존재하면 DB의 preprocessed 플래그도 동기화."""
+    세그먼트가 존재하면 DB의 preprocessed 플래그도 동기화.
+    반주(MR) 및 보컬 파일도 분류하여 반환."""
     files = _list_preprocessed_files()
     if not files:
-        # 세그먼트 없으면 DB도 리셋
         with get_db() as db:
             db.execute("UPDATE training_files SET preprocessed=0 WHERE preprocessed=1")
-        return {"preprocessed": False, "segment_count": 0, "total_duration": 0}
+        return {"preprocessed": False, "segment_count": 0, "total_duration": 0,
+                "accompaniment_files": [], "vocal_files": []}
 
-    # 세그먼트가 존재하면 미처리 파일을 전처리 완료로 동기화
     with get_db() as db:
         unmarked = db.execute(
             "SELECT COUNT(*) FROM training_files WHERE preprocessed=0"
@@ -1132,24 +1163,48 @@ async def preprocess_status():
         if unmarked > 0:
             db.execute("UPDATE training_files SET preprocessed=1")
 
+    # Categorize files: training segments vs MR vs vocals
+    training_segments = []
+    accomp_files = []
+    vocal_files = []
+    for f in files:
+        if f.name.startswith("mr_"):
+            accomp_files.append({"filename": f.name, "size": f.stat().st_size})
+        elif f.name.startswith("vocal_"):
+            vocal_files.append({"filename": f.name, "size": f.stat().st_size})
+        else:
+            training_segments.append(f)
+
     total_dur = 0.0
     import wave
-    for f in files:
+    for f in training_segments:
         try:
             if f.suffix.lower() == ".wav":
                 with wave.open(str(f), "rb") as wf:
                     total_dur += wf.getnframes() / wf.getframerate()
             elif f.suffix.lower() == ".mp3":
-                # MP3: estimate duration from file size (~192kbps = ~24KB/s)
                 total_dur += f.stat().st_size / 24000.0
         except Exception:
             pass
 
     return {
         "preprocessed": True,
-        "segment_count": len(files),
+        "segment_count": len(training_segments),
         "total_duration": round(total_dur, 2),
+        "accompaniment_files": accomp_files,
+        "vocal_files": vocal_files,
     }
+
+
+@app.get("/api/preprocess/download/{filename}")
+async def download_preprocessed_file(filename: str):
+    """전처리된 파일 다운로드 (반주/보컬/세그먼트)."""
+    # Path traversal 방지
+    safe_name = Path(filename).name
+    filepath = PREPROCESSED_DIR / safe_name
+    if not filepath.exists():
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+    return FileResponse(str(filepath), filename=safe_name)
 
 
 @app.delete("/api/preprocess")
@@ -1172,6 +1227,8 @@ async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
     index_rate: float = Form(0.75),
+    vocal_volume: float = Form(1.0),
+    mr_volume: float = Form(1.0),
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -1221,7 +1278,10 @@ async def start_conversion(
             "audio_filename": audio.filename,
             "pitch_shift": pitch_shift,
             "index_rate": index_rate,
-            "f0_method": "rmvpe"
+            "f0_method": "rmvpe",
+            "separate_vocals": True,
+            "vocal_volume": vocal_volume,
+            "mr_volume": mr_volume,
         })
 
         update_job(job_id, status="running", progress=10,

@@ -197,7 +197,9 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
 
         # --- Step 3: Vocal separation with Demucs htdemucs_ft ---
         runpod.serverless.progress_update(job, "Separating vocals (Demucs)... (3/6)")
-        vocal_paths = _demucs_separate(audio_paths, vocal_dir)
+        separation = _demucs_separate(audio_paths, vocal_dir)
+        vocal_paths = separation["vocals"]
+        accomp_paths = separation["accompaniment"]
 
         # --- Step 4: Speaker diarization (optional) ---
         runpod.serverless.progress_update(job, "Speaker diarization... (4/6)")
@@ -242,11 +244,56 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 "duration_seconds": round(dur, 2),
             })
 
-        log.info(f"Returning {len(segment_data)} segments ({total_duration:.1f}s) as MP3")
+        # Compress accompaniment files to MP3 for download (stereo, high quality)
+        accomp_data = []
+        for accomp_path in accomp_paths:
+            dur = get_audio_duration(accomp_path)
+            mp3_path = mp3_dir / f"mr_{accomp_path.stem}.mp3"
+            try:
+                run_ffmpeg([
+                    "-i", str(accomp_path),
+                    "-codec:a", "libmp3lame", "-b:a", "320k",
+                    "-ar", "44100", "-ac", "2",
+                    str(mp3_path),
+                ])
+                encode_path = mp3_path
+            except Exception:
+                encode_path = accomp_path
+            accomp_data.append({
+                "filename": encode_path.name,
+                "data_base64": encode_file_b64(encode_path),
+                "duration_seconds": round(dur, 2),
+            })
+
+        # Compress full vocal files (pre-diarization) for download
+        vocal_data = []
+        for vp in vocal_paths:
+            dur = get_audio_duration(vp)
+            mp3_path = mp3_dir / f"vocal_{vp.stem}.mp3"
+            try:
+                run_ffmpeg([
+                    "-i", str(vp),
+                    "-codec:a", "libmp3lame", "-b:a", "192k",
+                    "-ar", "44100", "-ac", "1",
+                    str(mp3_path),
+                ])
+                encode_path = mp3_path
+            except Exception:
+                encode_path = vp
+            vocal_data.append({
+                "filename": encode_path.name,
+                "data_base64": encode_file_b64(encode_path),
+                "duration_seconds": round(dur, 2),
+            })
+
+        log.info(f"Returning {len(segment_data)} segments ({total_duration:.1f}s), "
+                 f"{len(accomp_data)} accompaniment, {len(vocal_data)} vocal files")
         return {
             "segment_count": len(segment_data),
             "total_duration": round(total_duration, 2),
             "segments": segment_data,
+            "accompaniment_files": accomp_data,
+            "vocal_files": vocal_data,
         }
 
     finally:
@@ -254,19 +301,51 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         cleanup_gpu()
 
 
-def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> list[Path]:
+def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     """
     Run Demucs htdemucs_ft model to separate vocals from accompaniment.
-    Returns list of vocal-only WAV paths.
+    Returns dict with:
+      - "vocals": list of vocal-only WAV paths
+      - "accompaniment": list of accompaniment (drums+bass+other) WAV paths
 
     Supports two backends:
       1. demucs.api (v4.1.0a2+ / GitHub main) — preferred, clean Python API
       2. demucs.pretrained + demucs.apply (v4.0.1 / PyPI) — fallback
     """
     import soundfile as sf
+    import numpy as np
 
     ensure_dir(output_dir)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    def _to_mono(arr):
+        """Convert numpy array to mono 1D."""
+        if arr.ndim == 2 and arr.shape[0] > 1:
+            return arr.mean(axis=0)
+        elif arr.ndim == 2:
+            return arr[0]
+        return arr
+
+    def _to_stereo(arr):
+        """Ensure numpy array is stereo [2, samples]. Preserves original stereo."""
+        if arr.ndim == 1:
+            return np.stack([arr, arr])  # mono → duplicate to stereo
+        if arr.ndim == 2 and arr.shape[0] == 1:
+            return np.concatenate([arr, arr], axis=0)
+        return arr  # already stereo or multi-channel
+
+    def _safe_sum_stems(stems_list):
+        """Sum multiple stems and normalize to prevent clipping.
+        Returns stereo numpy array with peak at -1dB headroom."""
+        result = None
+        for s in stems_list:
+            s_stereo = _to_stereo(s)
+            result = s_stereo if result is None else result + s_stereo
+        if result is not None:
+            peak = np.abs(result).max()
+            if peak > 0.9:  # normalize only if near clipping
+                result = result * (0.9 / peak)
+        return result
 
     # --- Try demucs.api first (GitHub v4.1.0a2+) ---
     try:
@@ -275,19 +354,30 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> list[Path]:
         separator = demucs.api.Separator(model="htdemucs_ft", device=device)
 
         vocal_paths: list[Path] = []
+        accomp_paths: list[Path] = []
         for audio_path in audio_paths:
             try:
                 origin, separated = separator.separate_audio_file(str(audio_path))
                 if "vocals" in separated:
+                    # Save vocals as MONO (RVC requires mono input)
                     vocal_wav = output_dir / f"{audio_path.stem}_vocals.wav"
-                    vocal_np = separated["vocals"].cpu().numpy()
-                    if vocal_np.ndim == 2 and vocal_np.shape[0] > 1:
-                        vocal_np = vocal_np.mean(axis=0)
-                    elif vocal_np.ndim == 2:
-                        vocal_np = vocal_np[0]
+                    vocal_np = _to_mono(separated["vocals"].cpu().numpy())
                     sf.write(str(vocal_wav), vocal_np, samplerate=44100, subtype="PCM_16")
                     vocal_paths.append(vocal_wav)
-                    log.info(f"Demucs vocal separation done: {audio_path.name}")
+
+                    # Build accompaniment = drums + bass + other (STEREO preserved)
+                    mr_stems = []
+                    for stem in ("drums", "bass", "other"):
+                        if stem in separated:
+                            mr_stems.append(separated[stem].cpu().numpy())
+                    if mr_stems:
+                        accomp_np = _safe_sum_stems(mr_stems)
+                        accomp_wav = output_dir / f"{audio_path.stem}_accompaniment.wav"
+                        # Transpose [channels, samples] → [samples, channels] for soundfile
+                        sf.write(str(accomp_wav), accomp_np.T, samplerate=44100, subtype="PCM_16")
+                        accomp_paths.append(accomp_wav)
+
+                    log.info(f"Demucs separation done: {audio_path.name} → vocals (mono) + accompaniment (stereo)")
                 else:
                     log.warning(f"No 'vocals' source from Demucs for {audio_path.name}, using original")
                     vocal_paths.append(audio_path)
@@ -296,7 +386,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> list[Path]:
                 vocal_paths.append(audio_path)
 
         cleanup_gpu()
-        return vocal_paths
+        return {"vocals": vocal_paths, "accompaniment": accomp_paths}
 
     except ImportError:
         log.warning("demucs.api not available (PyPI v4.0.1), using fallback with demucs.pretrained + demucs.apply")
@@ -313,30 +403,36 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> list[Path]:
     vocals_idx = source_names.index("vocals") if "vocals" in source_names else -1
 
     vocal_paths: list[Path] = []
+    accomp_paths: list[Path] = []
     for audio_path in audio_paths:
         try:
-            # Load audio as tensor [channels, samples] at model's samplerate
             wav = AudioFile(str(audio_path)).read(
                 streams=0, samplerate=model.samplerate, channels=model.audio_channels
             )
             ref = wav.mean(0)
             wav = (wav - ref.mean()) / ref.std()
-            # apply_model expects [batch, channels, samples]
             sources = apply_model(model, wav[None], device=device)[0]
-            # sources shape: [num_sources, channels, samples]
             sources = sources * ref.std() + ref.mean()
 
             if vocals_idx >= 0:
+                # Save vocals as MONO (RVC requires mono input)
                 vocal_wav_path = output_dir / f"{audio_path.stem}_vocals.wav"
-                vocal_tensor = sources[vocals_idx]
-                vocal_np = vocal_tensor.cpu().numpy()
-                if vocal_np.ndim == 2 and vocal_np.shape[0] > 1:
-                    vocal_np = vocal_np.mean(axis=0)
-                elif vocal_np.ndim == 2:
-                    vocal_np = vocal_np[0]
+                vocal_np = _to_mono(sources[vocals_idx].cpu().numpy())
                 sf.write(str(vocal_wav_path), vocal_np, samplerate=model.samplerate, subtype="PCM_16")
                 vocal_paths.append(vocal_wav_path)
-                log.info(f"Demucs vocal separation done (fallback): {audio_path.name}")
+
+                # Build accompaniment: sum all non-vocal sources (STEREO preserved)
+                mr_stems = []
+                for i, sname in enumerate(source_names):
+                    if sname != "vocals":
+                        mr_stems.append(sources[i].cpu().numpy())
+                if mr_stems:
+                    accomp_np = _safe_sum_stems(mr_stems)
+                    accomp_wav_path = output_dir / f"{audio_path.stem}_accompaniment.wav"
+                    sf.write(str(accomp_wav_path), accomp_np.T, samplerate=model.samplerate, subtype="PCM_16")
+                    accomp_paths.append(accomp_wav_path)
+
+                log.info(f"Demucs separation done (fallback): {audio_path.name} → vocals (mono) + accompaniment (stereo)")
             else:
                 log.warning(f"No 'vocals' source in model for {audio_path.name}, using original")
                 vocal_paths.append(audio_path)
@@ -345,7 +441,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> list[Path]:
             vocal_paths.append(audio_path)
 
     cleanup_gpu()
-    return vocal_paths
+    return {"vocals": vocal_paths, "accompaniment": accomp_paths}
 
 
 def _speaker_diarize(vocal_paths: list[Path], output_dir: Path) -> list[Path]:
@@ -429,25 +525,41 @@ def _speaker_diarize(vocal_paths: list[Path], output_dir: Path) -> list[Path]:
 
 def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
     """
-    Noise reduction using noisereduce library.
-    Applies stationary noise reduction optimized for vocal clarity.
+    Light noise reduction using noisereduce library.
+    Optimized for singing vocals after Demucs separation:
+    - prop_decrease=0.4 (gentle) to preserve high-frequency detail
+      (consonants, sibilants, breath sounds that give voice character)
+    - Demucs already removes most background noise, so aggressive
+      noise reduction here degrades quality rather than improving it
+    - Only targets residual stationary noise (hum, hiss)
     """
     ensure_dir(output_dir)
 
     try:
         import noisereduce as nr
         import soundfile as sf
+        import numpy as np
 
         cleaned: list[Path] = []
         for ap in audio_paths:
             audio_data, sr = sf.read(str(ap))
 
-            # Apply noise reduction
-            # prop_decrease=0.8 keeps it moderate (not too aggressive for singing)
+            # Check if audio is already clean (Demucs output usually is)
+            # RMS below -50dB noise floor → skip noise reduction entirely
+            rms = np.sqrt(np.mean(audio_data ** 2))
+            noise_floor_db = 20 * np.log10(max(rms, 1e-10))
+
+            if noise_floor_db < -50:
+                # Extremely quiet / already very clean → skip
+                log.info(f"Audio already clean ({noise_floor_db:.1f}dB), skipping NR: {ap.name}")
+                cleaned.append(ap)
+                continue
+
+            # Gentle noise reduction — preserve singing detail
             reduced = nr.reduce_noise(
                 y=audio_data,
                 sr=sr,
-                prop_decrease=0.8,
+                prop_decrease=0.4,     # gentle (was 0.8, too aggressive for singing)
                 stationary=True,
                 n_fft=2048,
                 hop_length=512,
@@ -456,7 +568,7 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
             out_path = output_dir / f"{ap.stem}_clean.wav"
             sf.write(str(out_path), reduced, samplerate=sr, subtype="PCM_16")
             cleaned.append(out_path)
-            log.info(f"Noise reduction done: {ap.name}")
+            log.info(f"Noise reduction done (gentle): {ap.name}")
 
         return cleaned
 
@@ -618,7 +730,7 @@ def task_train(job_input: dict, job: dict) -> dict:
     audio_files: list[dict] = job_input.get("audio_files", [])
     sample_rate: int = job_input.get("sample_rate", 44100)
     epochs: int = job_input.get("epochs", 300)
-    batch_size: int = job_input.get("batch_size", 8)
+    batch_size: int = job_input.get("batch_size", 0)  # 0 = auto-detect
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
     save_every_epoch: int = job_input.get("save_every_epoch", 50)
@@ -630,7 +742,18 @@ def task_train(job_input: dict, job: dict) -> dict:
     if sample_rate not in (32000, 40000, 44100, 48000):
         sample_rate = 44100
     epochs = max(1, min(epochs, 10000))
-    batch_size = max(1, min(batch_size, 32))
+
+    # Auto-detect optimal batch_size from GPU VRAM if not specified
+    if batch_size <= 0:
+        try:
+            vram_gb = torch.cuda.get_device_properties(0).total_mem / (1024 ** 3)
+            # Rule of thumb: batch_size ≈ VRAM_GB, in multiples of 4
+            # RTX 4090 (24GB) → 16~24, RTX 3090 (24GB) → 16, RTX 3060 (12GB) → 8
+            batch_size = max(4, min(32, int(vram_gb) // 4 * 4))
+            log.info(f"Auto-detected batch_size={batch_size} for {vram_gb:.1f}GB VRAM")
+        except Exception:
+            batch_size = 8
+    batch_size = max(4, min(32, batch_size))
 
     job_id = job.get("id", uuid.uuid4().hex[:12])
     start_time = time.time()
@@ -1263,12 +1386,43 @@ def _find_index(logs_dir: Path, model_name: str) -> Optional[Path]:
 # 3. CONVERT (inference) task
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+def _mix_audio(
+    vocal_path: Path,
+    accomp_path: Path,
+    output_path: Path,
+    vocal_volume: float = 1.0,
+    mr_volume: float = 1.0,
+) -> None:
+    """Mix converted vocals with original accompaniment (MR) using FFmpeg.
+
+    Key: amix normalize=0 prevents the default behavior of dividing output
+    by number of inputs (which halves volume). alimiter prevents clipping
+    after summation while preserving dynamics.
+    Vocal (mono) is auto-upmixed to stereo by amix to match MR channels.
+    """
+    run_ffmpeg([
+        "-i", str(vocal_path),
+        "-i", str(accomp_path),
+        "-filter_complex",
+        f"[0:a]volume={vocal_volume}[v];"
+        f"[1:a]volume={mr_volume}[m];"
+        f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
+        f"alimiter=limit=0.95:attack=5:release=50",
+        "-acodec", "pcm_s16le",
+        "-ar", "44100",
+        str(output_path),
+    ])
+    log.info(f"Mixed audio: {output_path.name} (vocal={vocal_volume}, mr={mr_volume})")
+
+
 def task_convert(job_input: dict, job: dict) -> dict:
     """
-    RVC v2 voice conversion (inference):
+    RVC v2 voice conversion (SVC pipeline):
       1) Decode model (.pth, .index) and input audio
-      2) Run voice conversion with configurable parameters
-      3) Return converted audio as base64
+      2) Demucs vocal separation → vocals + accompaniment (MR)
+      3) RVC voice conversion on vocals only
+      4) Mix converted vocals + original MR
+      5) Return converted vocals + mixed output as base64
     """
     pth_b64: str = job_input.get("pth_data", "")
     index_b64: str = job_input.get("index_data", "")
@@ -1284,6 +1438,10 @@ def task_convert(job_input: dict, job: dict) -> dict:
     clean_audio: bool = job_input.get("clean_audio", False)
     clean_strength: float = job_input.get("clean_strength", 0.7)
     export_format: str = job_input.get("export_format", "wav")
+    # SVC pipeline options
+    separate_vocals: bool = job_input.get("separate_vocals", True)
+    vocal_volume: float = job_input.get("vocal_volume", 1.0)
+    mr_volume: float = job_input.get("mr_volume", 1.0)
 
     if not pth_b64:
         raise ValueError("No pth_data (model weights) provided for conversion")
@@ -1296,7 +1454,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
 
     try:
         # --- Step 1: Decode files ---
-        runpod.serverless.progress_update(job, "Decoding model and audio files...")
+        runpod.serverless.progress_update(job, "Decoding model and audio files... (1/4)")
 
         pth_path = decode_b64_file(pth_b64, work / "model.pth")
         log.info(f"Model file decoded: {pth_path.stat().st_size / 1024:.1f} KB")
@@ -1319,16 +1477,34 @@ def task_convert(job_input: dict, job: dict) -> dict:
             str(input_wav),
         ])
 
-        output_path = work / f"converted.{export_format}"
+        # --- Step 2: Vocal separation with Demucs ---
+        accomp_path = None
+        if separate_vocals:
+            runpod.serverless.progress_update(job, "Separating vocals (Demucs)... (2/4)")
+            demucs_dir = ensure_dir(work / "demucs")
+            separation = _demucs_separate([input_wav], demucs_dir)
 
-        # --- Step 2: Run inference ---
-        runpod.serverless.progress_update(job, "Running voice conversion...")
+            if separation["vocals"]:
+                rvc_input = separation["vocals"][0]
+            else:
+                log.warning("Demucs produced no vocals, using original audio for RVC")
+                rvc_input = input_wav
 
+            if separation["accompaniment"]:
+                accomp_path = separation["accompaniment"][0]
+                log.info(f"Accompaniment saved: {accomp_path.name}")
+        else:
+            rvc_input = input_wav
+
+        # --- Step 3: RVC voice conversion on vocals ---
+        runpod.serverless.progress_update(job, "Running voice conversion (RVC)... (3/4)")
+
+        converted_vocals_path = work / f"converted_vocals.{export_format}"
         _rvc_infer(
             pth_path=pth_path,
             index_path=index_path,
-            input_audio=input_wav,
-            output_path=output_path,
+            input_audio=rvc_input,
+            output_path=converted_vocals_path,
             pitch_shift=pitch_shift,
             f0_method=f0_method,
             index_rate=index_rate,
@@ -1341,16 +1517,13 @@ def task_convert(job_input: dict, job: dict) -> dict:
             export_format=export_format,
         )
 
-        if not output_path.exists():
+        if not converted_vocals_path.exists():
             raise RuntimeError("Conversion produced no output file")
 
-        elapsed = time.time() - start_time
-        out_filename = f"converted_{Path(audio_filename).stem}.{export_format}"
-
-        return {
-            "converted_audio": encode_file_b64(output_path),
-            "filename": out_filename,
-            "processing_time_seconds": round(elapsed, 2),
+        # --- Step 4: Mix converted vocals + original accompaniment ---
+        result = {
+            "converted_audio": encode_file_b64(converted_vocals_path),
+            "filename": f"converted_{Path(audio_filename).stem}.{export_format}",
             "parameters": {
                 "pitch_shift": pitch_shift,
                 "f0_method": f0_method,
@@ -1360,6 +1533,23 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 "protect": protect,
             },
         }
+
+        if accomp_path and accomp_path.exists():
+            runpod.serverless.progress_update(job, "Mixing vocals + accompaniment... (4/4)")
+            mixed_path = work / f"mixed_output.{export_format}"
+            try:
+                _mix_audio(converted_vocals_path, accomp_path, mixed_path,
+                           vocal_volume=vocal_volume, mr_volume=mr_volume)
+                if mixed_path.exists():
+                    result["mixed_audio"] = encode_file_b64(mixed_path)
+                    result["mixed_filename"] = f"mixed_{Path(audio_filename).stem}.{export_format}"
+                    log.info("Mixed output created successfully")
+            except Exception as e:
+                log.error(f"Mixing failed (returning vocals only): {e}")
+
+        elapsed = time.time() - start_time
+        result["processing_time_seconds"] = round(elapsed, 2)
+        return result
 
     finally:
         cleanup_dir(work)
