@@ -142,6 +142,7 @@ RUN python -m pip install --no-cache-dir \
     praat-parselmouth \
     pyworld \
     torchcrepe \
+    torchfcpe \
     scipy \
     librosa \
     soundfile \

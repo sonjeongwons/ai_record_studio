@@ -779,7 +779,7 @@ def task_train(job_input: dict, job: dict) -> dict:
 
     try:
         # --- Step 1: Decode audio files to dataset directory ---
-        runpod.serverless.progress_update(job, f"Decoding {len(audio_files)} audio files... (1/6)")
+        runpod.serverless.progress_update(job, f"Decoding {len(audio_files)} audio files... (1/5)")
         for i, fobj in enumerate(audio_files):
             fname = fobj.get("filename", f"audio_{i}.wav")
             dest = dataset_dir / fname
@@ -800,28 +800,21 @@ def task_train(job_input: dict, job: dict) -> dict:
                 ])
 
         # --- Step 2: Preprocess (resample to target SR) ---
-        runpod.serverless.progress_update(job, "Preprocessing audio (slicing, resampling)... (2/6)")
+        runpod.serverless.progress_update(job, "Preprocessing audio (slicing, resampling)... (2/5)")
         try:
             _rvc_preprocess(model_name, str(wav_dir), sample_rate, logs_dir)
         except Exception as e:
             raise RuntimeError(f"[2/6 전처리] {e}") from e
 
-        # --- Step 3: Extract F0 ---
-        runpod.serverless.progress_update(job, f"Extracting F0 ({f0_method})... (3/6)")
+        # --- Step 3+4: Extract F0 + features + config + filelist ---
+        runpod.serverless.progress_update(job, f"Extracting F0 & features ({f0_method}, {embedder_model})... (3/5)")
         try:
-            _rvc_extract_f0(model_name, f0_method, sample_rate, logs_dir)
+            _rvc_extract(model_name, f0_method, sample_rate, logs_dir, embedder_model)
         except Exception as e:
-            raise RuntimeError(f"[3/6 F0추출] {e}") from e
+            raise RuntimeError(f"[3/5 추출] {e}") from e
 
-        # --- Step 4: Extract features (ContentVec embeddings) ---
-        runpod.serverless.progress_update(job, f"Extracting features ({embedder_model})... (4/6)")
-        try:
-            _rvc_extract_features(model_name, embedder_model, sample_rate, logs_dir)
-        except Exception as e:
-            raise RuntimeError(f"[4/6 특징추출] {e}") from e
-
-        # --- Step 5: Train ---
-        runpod.serverless.progress_update(job, f"Training model ({epochs} epochs)... (5/6)")
+        # --- Step 4: Train ---
+        runpod.serverless.progress_update(job, f"Training model ({epochs} epochs)... (4/5)")
         _rvc_train(
             model_name=model_name,
             sample_rate=sample_rate,
@@ -834,7 +827,7 @@ def task_train(job_input: dict, job: dict) -> dict:
         )
 
         # --- Step 6: Generate FAISS index ---
-        runpod.serverless.progress_update(job, "Generating FAISS index... (6/6)")
+        runpod.serverless.progress_update(job, "Generating FAISS index... (5/5)")
         _rvc_create_index(model_name, logs_dir)
 
         # --- Collect output files ---
@@ -899,12 +892,14 @@ def _rvc_preprocess(
     Self-contained implementation using FFmpeg — avoids Applio's import chain
     (core.py → launch_tensorboard → tensorboard, etc.) which frequently breaks.
 
-    Creates the directory structure RVC training expects:
-      - logs/{model_name}/0_gt_wavs/   → audio at target sample rate
-      - logs/{model_name}/1_16k_wavs/  → audio at 16kHz (for F0/feature extraction)
+    Creates the directory structure current Applio expects:
+      - logs/{model_name}/sliced_audios/     → audio at target sample rate
+      - logs/{model_name}/sliced_audios_16k/ → audio at 16kHz (for extraction)
+
+    Also creates config.json from rvc/configs/{sample_rate}.json template.
     """
-    gt_dir = ensure_dir(logs_dir / "0_gt_wavs")
-    sr16k_dir = ensure_dir(logs_dir / "1_16k_wavs")
+    gt_dir = ensure_dir(logs_dir / "sliced_audios")
+    sr16k_dir = ensure_dir(logs_dir / "sliced_audios_16k")
 
     dataset = Path(dataset_path)
     audio_files = sorted(
@@ -955,140 +950,87 @@ def _rvc_preprocess(
 
     log.info(f"RVC preprocess completed: {idx} files → {gt_dir} + {sr16k_dir}")
 
+    # Create config.json from Applio's sample-rate template
+    config_src = APPLIO_ROOT / "rvc" / "configs" / f"{sample_rate}.json"
+    config_dst = logs_dir / "config.json"
+    if config_src.exists() and not config_dst.exists():
+        import shutil
+        shutil.copyfile(str(config_src), str(config_dst))
+        log.info(f"Created config.json from {config_src.name}")
+    elif not config_src.exists():
+        log.warning(f"Config template not found: {config_src}")
 
-def _rvc_extract_f0(
-    model_name: str, f0_method: str, sample_rate: int, logs_dir: Path
+
+def _rvc_extract(
+    model_name: str, f0_method: str, sample_rate: int, logs_dir: Path,
+    embedder_model: str = "contentvec",
 ) -> None:
     """
-    Extract F0 (fundamental frequency) using RMVPE or other methods.
-    Tries multiple strategies with detailed error logging.
+    Extract F0 + features + generate config.json + filelist.txt.
 
-    IMPORTANT: Applio uses relative paths (rvc/configs/, rvc/lib/tools/) so
-    we must chdir to APPLIO_ROOT before calling its functions.
+    Calls rvc/train/extract/extract.py DIRECTLY (bypasses core.py which
+    swallows subprocess failures). extract.py does everything in one call:
+    F0 extraction, feature extraction, config generation, and filelist creation.
+
+    Positional args for extract.py:
+      1: model_path (logs dir), 2: f0_method, 3: cpu_cores, 4: gpu,
+      5: sample_rate, 6: embedder_model, 7: embedder_model_custom,
+      8: include_mutes
     """
-    errors: list[str] = []
-    original_cwd = os.getcwd()
+    cmd = [
+        sys.executable,
+        str(APPLIO_ROOT / "rvc" / "train" / "extract" / "extract.py"),
+        str(logs_dir),          # 1: model_path (experiment dir)
+        f0_method,              # 2: f0_method
+        str(os.cpu_count() or 4),  # 3: cpu_cores
+        "0",                    # 4: gpu
+        str(sample_rate),       # 5: sample_rate
+        embedder_model,         # 6: embedder_model
+        "None",                 # 7: embedder_model_custom
+        "2",                    # 8: include_mutes
+    ]
 
-    # --- Strategy 1: Applio core API ---
-    # run_extract_script does BOTH F0 + feature extraction in one call
-    try:
-        os.chdir(APPLIO_ROOT)  # Applio uses relative paths
-        from core import run_extract_script
-        run_extract_script(
-            model_name=model_name,
-            f0_method=f0_method,
-            cpu_cores=os.cpu_count() or 4,
-            gpu=0,
-            sample_rate=sample_rate,
-            embedder_model="contentvec",
-            embedder_model_custom=None,
-            include_mutes=2,
+    log.info(f"Starting extraction: method={f0_method}, sr={sample_rate}")
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(APPLIO_ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    last_lines = []
+    for line in iter(proc.stdout.readline, ""):
+        line = line.strip()
+        if not line:
+            continue
+        log.info(f"[extract] {line}")
+        last_lines.append(line)
+        if len(last_lines) > 20:
+            last_lines.pop(0)
+
+    proc.wait(timeout=7200)
+    if proc.returncode != 0:
+        tail = "\n".join(last_lines[-10:])
+        raise RuntimeError(
+            f"Extraction failed (exit code {proc.returncode}).\n"
+            f"Last output:\n{tail}"
         )
-        log.info(f"F0 extraction completed via core API (method={f0_method})")
-        return
-    except Exception as e:
-        errors.append(f"core API: {type(e).__name__}: {e}")
-        log.warning(f"F0 via core API failed: {e}")
-    finally:
-        os.chdir(original_cwd)
 
-    # --- Strategy 2: CLI fallback ---
-    try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(APPLIO_ROOT / "core.py"),
-                "extract",
-                "--model_name", model_name,
-                "--f0_method", f0_method,
-                "--sample_rate", str(sample_rate),
-                "--gpu", "0",
-                "--embedder_model", "contentvec",
-                "--include_mutes", "2",
-            ],
-            cwd=str(APPLIO_ROOT),
-            capture_output=True, text=True, timeout=7200, check=True,
-        )
-        log.info("F0 extraction completed via CLI")
-        return
-    except subprocess.CalledProcessError as e:
-        stderr_tail = (e.stderr or "")[-500:]
-        stdout_tail = (e.stdout or "")[-500:]
-        errors.append(f"CLI exit code {e.returncode}: {stderr_tail or stdout_tail}")
-        log.error(f"F0 CLI failed (exit {e.returncode}):\nSTDERR: {stderr_tail}\nSTDOUT: {stdout_tail}")
-    except Exception as e:
-        errors.append(f"CLI: {type(e).__name__}: {e}")
-        log.error(f"F0 via CLI failed: {e}")
+    # Verify critical outputs exist
+    config_json = logs_dir / "config.json"
+    filelist_txt = logs_dir / "filelist.txt"
+    if not config_json.exists():
+        log.warning("extract.py did not create config.json, creating from template")
+        config_src = APPLIO_ROOT / "rvc" / "configs" / f"{sample_rate}.json"
+        if config_src.exists():
+            import shutil
+            shutil.copyfile(str(config_src), str(config_json))
+    if not filelist_txt.exists():
+        log.warning("extract.py did not create filelist.txt — training may fail")
 
-    raise RuntimeError(f"F0 추출 실패. 시도한 방법들: {'; '.join(errors)}")
+    log.info(f"Extraction completed: F0 + features + config + filelist")
 
-
-def _rvc_extract_features(
-    model_name: str, embedder_model: str, sample_rate: int, logs_dir: Path
-) -> None:
-    """
-    Extract speaker embeddings using ContentVec (HuBERT-based) or other embedder.
-    Note: If _rvc_extract_f0 used core API's run_extract_script, features may
-    already be extracted. Check for existing features before running.
-    """
-    # Check if features were already extracted (by combined extract step)
-    feature_dir = logs_dir / "3_feature768"
-    if feature_dir.exists() and any(feature_dir.glob("*.npy")):
-        log.info(f"Features already extracted ({len(list(feature_dir.glob('*.npy')))} files)")
-        return
-
-    errors: list[str] = []
-    original_cwd = os.getcwd()
-
-    # --- Strategy 1: Applio core API (extract does F0 + features) ---
-    try:
-        os.chdir(APPLIO_ROOT)
-        from core import run_extract_script
-        run_extract_script(
-            model_name=model_name,
-            f0_method="rmvpe",
-            cpu_cores=os.cpu_count() or 4,
-            gpu=0,
-            sample_rate=sample_rate,
-            embedder_model=embedder_model,
-            embedder_model_custom=None,
-            include_mutes=2,
-        )
-        log.info(f"Feature extraction completed via core API ({embedder_model})")
-        return
-    except Exception as e:
-        errors.append(f"core API: {type(e).__name__}: {e}")
-        log.warning(f"Feature extraction via core API failed: {e}")
-    finally:
-        os.chdir(original_cwd)
-
-    # --- Strategy 2: CLI fallback ---
-    try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(APPLIO_ROOT / "core.py"),
-                "extract",
-                "--model_name", model_name,
-                "--f0_method", "rmvpe",
-                "--embedder_model", embedder_model,
-                "--sample_rate", str(sample_rate),
-                "--gpu", "0",
-                "--include_mutes", "2",
-            ],
-            cwd=str(APPLIO_ROOT),
-            capture_output=True, text=True, timeout=7200, check=True,
-        )
-        log.info("Feature extraction completed via CLI")
-        return
-    except subprocess.CalledProcessError as e:
-        stderr_tail = (e.stderr or "")[-500:]
-        errors.append(f"CLI exit code {e.returncode}: {stderr_tail}")
-        log.error(f"Feature CLI failed (exit {e.returncode}): {stderr_tail}")
-    except Exception as e:
-        errors.append(f"CLI: {type(e).__name__}: {e}")
-
-    raise RuntimeError(f"특징 추출 실패. 시도한 방법들: {'; '.join(errors)}")
 
 
 def _rvc_train(
@@ -1117,7 +1059,7 @@ def _rvc_train(
     log.info(f"Pretrained D: {pretrained_d}")
 
     # Verify preprocessed data exists before training
-    gt_dir = logs_dir / "0_gt_wavs"
+    gt_dir = logs_dir / "sliced_audios"
     if gt_dir.exists():
         gt_count = len(list(gt_dir.glob("*.wav")))
         log.info(f"Preprocessed audio files: {gt_count} in {gt_dir}")
