@@ -1561,6 +1561,8 @@ async function handleTrainFiles(fileList) {
     uploadedFiles = uploadedFiles.concat(res.files);
     renderFileList();
     toast(res.files.length + '개 파일 업로드 완료', 'success');
+    // 이전 전처리 결과가 있으면 상태 동기화 (재시작 후 재업로드 시)
+    checkPreprocessStatus();
   } catch(e) {
     toast('업로드 실패: ' + e.message, 'error');
   }
@@ -1588,6 +1590,13 @@ function renderFileList() {
 
   // Show preprocess section when files exist
   preprocessSection.style.display = 'block';
+
+  // Sync preprocess sub-section visibility with current state
+  if (!preprocessDone && !preprocessJobId) {
+    document.getElementById('preprocess-idle').style.display = 'block';
+    document.getElementById('preprocess-done').style.display = 'none';
+    document.getElementById('preprocess-running').style.display = 'none';
+  }
 
   // Enable train button only if preprocess is done or skipped
   btnTrain.disabled = !preprocessDone;
@@ -1808,21 +1817,22 @@ async function checkPreprocessStatus() {
   try {
     var res = await api('/preprocess/status');
     if (res.preprocessed && res.segment_count > 0) {
+      // 서버가 DB 동기화했으므로 파일 목록 먼저 새로고침
+      try {
+        var r = await api('/files');
+        uploadedFiles = r.files || [];
+      } catch(e2) {}
+      // 모든 상태를 한번에 설정 (renderFileList 호출 전에 preprocessDone 설정)
       preprocessDone = true;
       document.getElementById('preprocess-idle').style.display = 'none';
+      document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-done').style.display = 'block';
       document.getElementById('preprocess-segments').textContent = res.segment_count;
       document.getElementById('preprocess-duration').textContent =
         res.total_duration > 0 ? formatDuration(res.total_duration) : '-';
       document.getElementById('btn-start-train').disabled = false;
-      // Populate download buttons
       updatePreprocessDownloads(res.accompaniment_files, res.vocal_files);
-      // 서버가 DB 동기화했으므로 파일 목록 새로고침 (배지 업데이트)
-      try {
-        var r = await api('/files');
-        uploadedFiles = r.files || [];
-        renderFileList();
-      } catch(e2) {}
+      renderFileList();
     }
   } catch(e) { /* ignore on load */ }
 }
@@ -2506,12 +2516,13 @@ async function saveSettings() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 loadDashboard();
 startConnectionPolling();
-checkPreprocessStatus();
 
+// 파일 목록을 먼저 로드한 후 전처리 상태 확인 (race condition 방지)
 api('/files').then(function(res) {
   uploadedFiles = res.files || [];
   renderFileList();
-}).catch(function() {});
+  return checkPreprocessStatus();
+}).catch(function() { checkPreprocessStatus(); });
 </script>
 
 </body>
