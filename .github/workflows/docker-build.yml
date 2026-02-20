@@ -12,6 +12,12 @@ on:
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:  # 수동 트리거 (Actions 탭에서 직접 실행)
 
+# 같은 브랜치의 새 빌드가 시작되면 이전 빌드를 자동 취소
+# → latest 태그가 항상 최신 커밋의 이미지를 가리키도록 보장
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
