@@ -48,7 +48,7 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 MODEL_DIR = DATA_DIR / "models"
 OUTPUT_DIR = DATA_DIR / "output"
 CHUNK_DIR = DATA_DIR / "chunks"           # 청크 업로드 임시 디렉토리
-PREPROCESSED_DIR = DATA_DIR / "preprocessed"  # 전처리 결과 세그먼트 저장
+PREPROCESSED_DIR = DATA_DIR / "preprocessed"  # 전처리 결과 세그먼트 저장 (WAV 또는 MP3)
 DB_PATH = DATA_DIR / "studio.db"
 CONFIG_PATH = DATA_DIR / "config.json"
 
@@ -64,6 +64,14 @@ chunk_uploads: dict = {}
 
 # 전처리 작업별 원본 파일 ID 추적 (완료 시 preprocessed=1 마킹용)
 preprocess_file_map: dict[str, list[int]] = {}
+
+def _list_preprocessed_files() -> list[Path]:
+    """전처리된 오디오 파일 목록 (WAV + MP3)."""
+    files: list[Path] = []
+    for ext in ("*.wav", "*.mp3"):
+        files.extend(PREPROCESSED_DIR.glob(ext))
+    return sorted(files)
+
 
 # RunPod payload 제한: 오디오 데이터 최대 7MB (base64 → ~10MB JSON)
 MAX_RUNPOD_AUDIO_BYTES = 7 * 1024 * 1024
@@ -570,8 +578,8 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
                 file_ids
             )
 
-    # 전체 전처리 세그먼트 수 (기존 + 새로 추가)
-    all_files = sorted(PREPROCESSED_DIR.glob("*.wav"))
+    # 전체 전처리 세그먼트 수 (기존 + 새로 추가, WAV + MP3)
+    all_files = _list_preprocessed_files()
 
     return {
         "segment_count": len(all_files),
@@ -960,7 +968,7 @@ async def start_training(
         raise HTTPException(400, "학습할 파일이 없습니다.")
 
     # 전처리된 세그먼트가 있으면 우선 사용 (용량 작음 → 10MB 이내)
-    preprocessed_files = sorted(PREPROCESSED_DIR.glob("*.wav"))
+    preprocessed_files = _list_preprocessed_files()
     if preprocessed_files:
         file_paths = [str(p) for p in preprocessed_files]
     else:
@@ -1109,7 +1117,7 @@ async def start_preprocess(
 async def preprocess_status():
     """전처리 상태 확인 — preprocessed/ 디렉토리에 세그먼트가 있는지 반환.
     세그먼트가 존재하면 DB의 preprocessed 플래그도 동기화."""
-    files = sorted(PREPROCESSED_DIR.glob("*.wav"))
+    files = _list_preprocessed_files()
     if not files:
         # 세그먼트 없으면 DB도 리셋
         with get_db() as db:
@@ -1125,13 +1133,17 @@ async def preprocess_status():
             db.execute("UPDATE training_files SET preprocessed=1")
 
     total_dur = 0.0
-    try:
-        import wave
-        for f in files:
-            with wave.open(str(f), "rb") as wf:
-                total_dur += wf.getnframes() / wf.getframerate()
-    except Exception:
-        pass
+    import wave
+    for f in files:
+        try:
+            if f.suffix.lower() == ".wav":
+                with wave.open(str(f), "rb") as wf:
+                    total_dur += wf.getnframes() / wf.getframerate()
+            elif f.suffix.lower() == ".mp3":
+                # MP3: estimate duration from file size (~192kbps = ~24KB/s)
+                total_dur += f.stat().st_size / 24000.0
+        except Exception:
+            pass
 
     return {
         "preprocessed": True,

@@ -211,18 +211,38 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         runpod.serverless.progress_update(job, "Segmenting audio clips... (6/6)")
         segments = _segment_audio(cleaned_paths, segment_dir)
 
-        # Encode segments as base64
+        # Compress segments to MP3 for transfer (RunPod response limit ~20MB)
+        # WAV: 24 segments × 10s × 44.1kHz × 16bit ≈ 25+ MB base64 → exceeds limit
+        # MP3 192kbps: same segments ≈ 5 MB base64 → fits safely
         segment_data = []
         total_duration = 0.0
+        mp3_dir = ensure_dir(work / "mp3_transfer")
+
         for seg_path in sorted(segment_dir.glob("*.wav")):
             dur = get_audio_duration(seg_path)
             total_duration += dur
+
+            # Convert WAV → MP3 192kbps mono for smaller transfer
+            mp3_path = mp3_dir / (seg_path.stem + ".mp3")
+            try:
+                run_ffmpeg([
+                    "-i", str(seg_path),
+                    "-codec:a", "libmp3lame", "-b:a", "192k",
+                    "-ar", "44100", "-ac", "1",
+                    str(mp3_path),
+                ])
+                encode_path = mp3_path
+            except Exception as e:
+                log.warning(f"MP3 encode failed for {seg_path.name}: {e}, using WAV")
+                encode_path = seg_path
+
             segment_data.append({
-                "filename": seg_path.name,
-                "data_base64": encode_file_b64(seg_path),
+                "filename": encode_path.name,
+                "data_base64": encode_file_b64(encode_path),
                 "duration_seconds": round(dur, 2),
             })
 
+        log.info(f"Returning {len(segment_data)} segments ({total_duration:.1f}s) as MP3")
         return {
             "segment_count": len(segment_data),
             "total_duration": round(total_duration, 2),
@@ -650,17 +670,26 @@ def task_train(job_input: dict, job: dict) -> dict:
                     str(out_wav),
                 ])
 
-        # --- Step 2: Preprocess (Applio's preprocess pipeline) ---
+        # --- Step 2: Preprocess (resample to target SR) ---
         runpod.serverless.progress_update(job, "Preprocessing audio (slicing, resampling)... (2/6)")
-        _rvc_preprocess(model_name, str(wav_dir), sample_rate, logs_dir)
+        try:
+            _rvc_preprocess(model_name, str(wav_dir), sample_rate, logs_dir)
+        except Exception as e:
+            raise RuntimeError(f"[2/6 전처리] {e}") from e
 
         # --- Step 3: Extract F0 ---
         runpod.serverless.progress_update(job, f"Extracting F0 ({f0_method})... (3/6)")
-        _rvc_extract_f0(model_name, f0_method, sample_rate, logs_dir)
+        try:
+            _rvc_extract_f0(model_name, f0_method, sample_rate, logs_dir)
+        except Exception as e:
+            raise RuntimeError(f"[3/6 F0추출] {e}") from e
 
         # --- Step 4: Extract features (ContentVec embeddings) ---
         runpod.serverless.progress_update(job, f"Extracting features ({embedder_model})... (4/6)")
-        _rvc_extract_features(model_name, embedder_model, sample_rate, logs_dir)
+        try:
+            _rvc_extract_features(model_name, embedder_model, sample_rate, logs_dir)
+        except Exception as e:
+            raise RuntimeError(f"[4/6 특징추출] {e}") from e
 
         # --- Step 5: Train ---
         runpod.serverless.progress_update(job, f"Training model ({epochs} epochs)... (5/6)")
@@ -718,46 +747,64 @@ def _rvc_preprocess(
     model_name: str, dataset_path: str, sample_rate: int, logs_dir: Path
 ) -> None:
     """
-    Applio preprocessing: slice audio, resample to target SR.
-    Uses Applio's core.preprocess_dataset or falls back to CLI.
+    RVC preprocessing: resample and organize audio for training.
+
+    Self-contained implementation using FFmpeg — avoids Applio's import chain
+    (core.py → launch_tensorboard → tensorboard, etc.) which frequently breaks.
+
+    Creates the directory structure RVC training expects:
+      - logs/{model_name}/0_gt_wavs/   → audio at target sample rate
+      - logs/{model_name}/1_16k_wavs/  → audio at 16kHz (for F0/feature extraction)
     """
-    try:
-        # Applio >= 3.x: Use the core training API
-        from core import run_preprocess_script
+    gt_dir = ensure_dir(logs_dir / "0_gt_wavs")
+    sr16k_dir = ensure_dir(logs_dir / "1_16k_wavs")
 
-        run_preprocess_script(
-            model_name=model_name,
-            dataset_path=dataset_path,
-            sample_rate=str(sample_rate),
-            cpu_cores=os.cpu_count() or 4,
-        )
-        log.info("RVC preprocess completed via core API")
-    except ImportError:
-        # Fallback: Use Applio's preprocess module directly
+    dataset = Path(dataset_path)
+    audio_files = sorted(
+        f for f in dataset.iterdir()
+        if f.suffix.lower() in AUDIO_EXTS
+    )
+
+    if not audio_files:
+        raise RuntimeError(f"전처리할 오디오 파일이 없습니다: {dataset_path}")
+
+    idx = 0
+    for audio_file in audio_files:
         try:
-            from rvc.train.preprocess.preprocess import PreProcess
+            duration = get_audio_duration(audio_file)
+            if duration < 0.5:
+                log.warning(f"Skipping too-short file ({duration:.1f}s): {audio_file.name}")
+                continue
 
-            pp = PreProcess(sample_rate, str(logs_dir))
-            # Walk the dataset directory
-            for wav_file in Path(dataset_path).glob("*.wav"):
-                pp.process_audio(str(wav_file))
-            log.info("RVC preprocess completed via PreProcess class")
-        except ImportError:
-            # Last resort: CLI invocation
-            log.info("Using CLI fallback for preprocessing")
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(APPLIO_ROOT / "core.py"),
-                    "preprocess",
-                    "--model_name", model_name,
-                    "--dataset_path", dataset_path,
-                    "--sample_rate", str(sample_rate),
-                ],
-                cwd=str(APPLIO_ROOT),
-                capture_output=True, text=True, timeout=3600, check=True,
-            )
-            log.info("RVC preprocess completed via CLI")
+            padded = f"{idx:07d}"
+
+            # Save at target sample rate (mono, 16-bit PCM)
+            gt_path = gt_dir / f"{padded}.wav"
+            run_ffmpeg([
+                "-i", str(audio_file),
+                "-ar", str(sample_rate), "-ac", "1",
+                "-acodec", "pcm_s16le",
+                str(gt_path),
+            ])
+
+            # Save at 16kHz for F0 & feature extraction
+            sr16k_path = sr16k_dir / f"{padded}.wav"
+            run_ffmpeg([
+                "-i", str(audio_file),
+                "-ar", "16000", "-ac", "1",
+                "-acodec", "pcm_s16le",
+                str(sr16k_path),
+            ])
+
+            idx += 1
+        except Exception as e:
+            log.warning(f"Failed to preprocess {audio_file.name}: {e}")
+            continue
+
+    if idx == 0:
+        raise RuntimeError("전처리에 성공한 오디오 파일이 없습니다")
+
+    log.info(f"RVC preprocess completed: {idx} files → {gt_dir} + {sr16k_dir}")
 
 
 def _rvc_extract_f0(
@@ -765,10 +812,13 @@ def _rvc_extract_f0(
 ) -> None:
     """
     Extract F0 (fundamental frequency) using RMVPE or other methods.
+    Tries multiple strategies with detailed error logging.
     """
+    errors: list[str] = []
+
+    # --- Strategy 1: Applio core API ---
     try:
         from core import run_extract_script
-
         run_extract_script(
             model_name=model_name,
             rvc_version="v2",
@@ -780,43 +830,70 @@ def _rvc_extract_f0(
             embedder_model_custom=None,
         )
         log.info(f"F0 extraction completed via core API (method={f0_method})")
-    except ImportError:
-        try:
-            # Direct module import (Applio current: rvc.train.extract.extract)
-            try:
-                from rvc.train.extract.extract import run_pitch_extraction
-                run_pitch_extraction(
-                    logs_dir=str(logs_dir),
-                    f0_method=f0_method,
-                )
-            except ImportError:
-                from rvc.train.extract.extract_f0_print import extract_f0
-                f0_dir = ensure_dir(logs_dir / "2a_f0")
-                f0_nsf_dir = ensure_dir(logs_dir / "2b-f0nsf")
-                wav_dir = logs_dir / "1_16k_wavs"
-                if not wav_dir.exists():
-                    wav_dir = logs_dir / "0_gt_wavs"
-                extract_f0(
-                    input_dir=str(wav_dir),
-                    f0_dir=str(f0_dir),
-                    f0nsf_dir=str(f0_nsf_dir),
-                    f0_method=f0_method,
-                )
-            log.info(f"F0 extraction completed via direct module (method={f0_method})")
-        except ImportError:
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(APPLIO_ROOT / "core.py"),
-                    "extract",
-                    "--model_name", model_name,
-                    "--f0_method", f0_method,
-                    "--sample_rate", str(sample_rate),
-                ],
-                cwd=str(APPLIO_ROOT),
-                capture_output=True, text=True, timeout=7200, check=True,
-            )
-            log.info("F0 extraction completed via CLI")
+        return
+    except Exception as e:
+        errors.append(f"core API: {type(e).__name__}: {e}")
+        log.warning(f"F0 via core API failed: {e}")
+
+    # --- Strategy 2: Direct module (rvc.train.extract) ---
+    try:
+        from rvc.train.extract.extract import run_pitch_extraction
+        run_pitch_extraction(
+            logs_dir=str(logs_dir),
+            f0_method=f0_method,
+        )
+        log.info(f"F0 extraction completed via direct module (method={f0_method})")
+        return
+    except Exception as e:
+        errors.append(f"direct module: {type(e).__name__}: {e}")
+        log.warning(f"F0 via direct module failed: {e}")
+
+    # --- Strategy 3: Legacy extract_f0_print ---
+    try:
+        from rvc.train.extract.extract_f0_print import extract_f0
+        f0_dir = ensure_dir(logs_dir / "2a_f0")
+        f0_nsf_dir = ensure_dir(logs_dir / "2b-f0nsf")
+        wav_dir = logs_dir / "1_16k_wavs"
+        if not wav_dir.exists():
+            wav_dir = logs_dir / "0_gt_wavs"
+        extract_f0(
+            input_dir=str(wav_dir),
+            f0_dir=str(f0_dir),
+            f0nsf_dir=str(f0_nsf_dir),
+            f0_method=f0_method,
+        )
+        log.info(f"F0 extraction completed via legacy module (method={f0_method})")
+        return
+    except Exception as e:
+        errors.append(f"legacy module: {type(e).__name__}: {e}")
+        log.warning(f"F0 via legacy module failed: {e}")
+
+    # --- Strategy 4: CLI fallback ---
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(APPLIO_ROOT / "core.py"),
+                "extract",
+                "--model_name", model_name,
+                "--f0_method", f0_method,
+                "--sample_rate", str(sample_rate),
+            ],
+            cwd=str(APPLIO_ROOT),
+            capture_output=True, text=True, timeout=7200, check=True,
+        )
+        log.info("F0 extraction completed via CLI")
+        return
+    except subprocess.CalledProcessError as e:
+        stderr_tail = (e.stderr or "")[-500:]
+        stdout_tail = (e.stdout or "")[-500:]
+        errors.append(f"CLI exit code {e.returncode}: {stderr_tail or stdout_tail}")
+        log.error(f"F0 CLI failed (exit {e.returncode}):\nSTDERR: {stderr_tail}\nSTDOUT: {stdout_tail}")
+    except Exception as e:
+        errors.append(f"CLI: {type(e).__name__}: {e}")
+        log.error(f"F0 via CLI failed: {e}")
+
+    raise RuntimeError(f"F0 추출 실패. 시도한 방법들: {'; '.join(errors)}")
 
 
 def _rvc_extract_features(
@@ -824,35 +901,73 @@ def _rvc_extract_features(
 ) -> None:
     """
     Extract speaker embeddings using ContentVec (HuBERT-based) or other embedder.
+    Note: If _rvc_extract_f0 used core API's run_extract_script, features may
+    already be extracted. Check for existing features before running.
     """
+    # Check if features were already extracted (by combined extract step)
+    feature_dir = logs_dir / "3_feature768"
+    if feature_dir.exists() and any(feature_dir.glob("*.npy")):
+        log.info(f"Features already extracted ({len(list(feature_dir.glob('*.npy')))} files)")
+        return
+
+    errors: list[str] = []
+
+    # --- Strategy 1: rvc.train.extract.extract ---
     try:
-        # The extraction is already handled by run_extract_script in _rvc_extract_f0
-        # if using core API. If called separately, use the feature extractor directly.
-        # Applio current: rvc.train.extract.extract
-        try:
-            from rvc.train.extract.extract import run_embedding_extraction
-            run_embedding_extraction(
-                logs_dir=str(logs_dir),
-                embedder_model=embedder_model,
-            )
-        except ImportError:
-            from rvc.train.extract.extract_feature_print import extract_features
-            wav_dir = logs_dir / "1_16k_wavs"
-            if not wav_dir.exists():
-                wav_dir = logs_dir / "0_gt_wavs"
-            feature_dir = ensure_dir(logs_dir / "3_feature768")
-            extract_features(
-                input_dir=str(wav_dir),
-                output_dir=str(feature_dir),
-                embedder_model=embedder_model,
-                device="cuda:0" if torch.cuda.is_available() else "cpu",
-            )
-        log.info(f"Feature extraction completed ({embedder_model})")
-    except ImportError:
-        # Already handled in the combined extract step above
-        log.info("Feature extraction assumed completed in extract step")
+        from rvc.train.extract.extract import run_embedding_extraction
+        run_embedding_extraction(
+            logs_dir=str(logs_dir),
+            embedder_model=embedder_model,
+        )
+        log.info(f"Feature extraction completed via run_embedding_extraction ({embedder_model})")
+        return
     except Exception as e:
-        log.warning(f"Feature extraction direct call failed: {e}, assuming it was done in extract step")
+        errors.append(f"run_embedding_extraction: {type(e).__name__}: {e}")
+        log.warning(f"Feature extraction via run_embedding_extraction failed: {e}")
+
+    # --- Strategy 2: Legacy extract_feature_print ---
+    try:
+        from rvc.train.extract.extract_feature_print import extract_features
+        wav_dir = logs_dir / "1_16k_wavs"
+        if not wav_dir.exists():
+            wav_dir = logs_dir / "0_gt_wavs"
+        ensure_dir(feature_dir)
+        extract_features(
+            input_dir=str(wav_dir),
+            output_dir=str(feature_dir),
+            embedder_model=embedder_model,
+            device="cuda:0" if torch.cuda.is_available() else "cpu",
+        )
+        log.info(f"Feature extraction completed via legacy module ({embedder_model})")
+        return
+    except Exception as e:
+        errors.append(f"extract_features: {type(e).__name__}: {e}")
+        log.warning(f"Feature extraction via legacy module failed: {e}")
+
+    # --- Strategy 3: CLI fallback ---
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(APPLIO_ROOT / "core.py"),
+                "extract",
+                "--model_name", model_name,
+                "--embedder_model", embedder_model,
+                "--sample_rate", str(sample_rate),
+            ],
+            cwd=str(APPLIO_ROOT),
+            capture_output=True, text=True, timeout=7200, check=True,
+        )
+        log.info("Feature extraction completed via CLI")
+        return
+    except subprocess.CalledProcessError as e:
+        stderr_tail = (e.stderr or "")[-500:]
+        errors.append(f"CLI exit code {e.returncode}: {stderr_tail}")
+        log.error(f"Feature CLI failed (exit {e.returncode}): {stderr_tail}")
+    except Exception as e:
+        errors.append(f"CLI: {type(e).__name__}: {e}")
+
+    raise RuntimeError(f"특징 추출 실패. 시도한 방법들: {'; '.join(errors)}")
 
 
 def _rvc_train(
@@ -978,7 +1093,10 @@ def _rvc_train(
 
             proc.wait(timeout=36000)  # 10-hour timeout
             if proc.returncode != 0:
-                raise RuntimeError(f"Training CLI exited with code {proc.returncode}")
+                raise RuntimeError(
+                    f"학습 프로세스 실패 (exit code {proc.returncode}). "
+                    f"마지막 출력을 확인하세요."
+                )
             log.info(f"Training completed via CLI ({epochs} epochs)")
 
 
