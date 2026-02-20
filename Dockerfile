@@ -153,18 +153,6 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
     || python -m pip install --no-cache-dir onnxruntime-gpu \
     || python -m pip install --no-cache-dir onnxruntime
 
-# -- Group 6: Applio implicit deps (not always in requirements.txt) --
-# tensorboard: core.py → launch_tensorboard.py → from tensorboard import program
-# wget: rvc/lib/utils.py → import wget
-# beautifulsoup4: core.py → rvc/lib/tools/model_download.py → from bs4 import BeautifulSoup
-# transformers: rvc/lib/utils.py → from transformers import HubertModel (ContentVec embedder)
-RUN python -m pip install --no-cache-dir \
-    tensorboard \
-    wget \
-    beautifulsoup4 \
-    transformers
-
-
 # ================================================================
 # LAYER 5: Audio ML Tools (Demucs + noisereduce)
 # ================================================================
@@ -181,9 +169,27 @@ RUN python -m pip install --no-cache-dir "numpy>=1.23.0,<2.0"
 
 
 # ================================================================
-# LAYER 6: RunPod SDK
+# LAYER 6: Applio implicit deps + RunPod SDK
 # ================================================================
+# MUST be installed AFTER demucs/noisereduce to survive pip dependency resolution.
+# beautifulsoup4: core.py → rvc/lib/tools/model_download.py → from bs4 import BeautifulSoup
+# transformers: rvc/lib/utils.py → from transformers import HubertModel (ContentVec embedder)
+# tensorboard: core.py → launch_tensorboard.py → from tensorboard import program
+# wget: rvc/lib/utils.py → import wget
+RUN python -m pip install --no-cache-dir \
+    beautifulsoup4 \
+    transformers \
+    tensorboard \
+    wget
+
 RUN python -m pip install --no-cache-dir runpod
+
+# -- Verify critical imports --
+RUN python -c "from bs4 import BeautifulSoup; print('bs4 OK')" \
+    && python -c "import transformers; print('transformers OK')" \
+    && python -c "import tensorboard; print('tensorboard OK')" \
+    && python -c "import torch; print('torch', torch.__version__)" \
+    && python -c "import numpy; print('numpy', numpy.__version__)"
 
 
 # ================================================================
