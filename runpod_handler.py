@@ -1126,30 +1126,38 @@ def _rvc_train(
     else:
         raise RuntimeError(f"Preprocessed directory missing: {gt_dir}")
 
-    # Use CLI for training (core API's run_train_script doesn't check subprocess exit)
+    # Call train.py DIRECTLY — bypassing core.py which swallows subprocess errors.
+    # train.py uses positional sys.argv arguments in this exact order:
+    #   1: model_name, 2: save_every_epoch, 3: total_epoch,
+    #   4: pretrainG, 5: pretrainD, 6: gpu, 7: batch_size, 8: sample_rate,
+    #   9: save_only_latest, 10: save_every_weights, 11: cache_data_in_gpu,
+    #   12: overtraining_detector, 13: overtraining_threshold, 14: cleanup,
+    #   15: vocoder, 16: checkpointing
+    pg = str(pretrained_g) if pretrained_g else ""
+    pd = str(pretrained_d) if pretrained_d else ""
     cmd = [
         sys.executable,
-        str(APPLIO_ROOT / "core.py"),
-        "train",
-        "--model_name", model_name,
-        "--total_epoch", str(epochs),
-        "--sample_rate", str(sample_rate),
-        "--batch_size", str(batch_size),
-        "--save_every_epoch", str(save_every_epoch),
-        "--save_every_weights", "True",
-        "--gpu", "0",
-        "--pretrained", "True",
-        "--overtraining_detector", "True",
-        "--overtraining_threshold", "50",
-        "--cleanup", "False",
+        str(APPLIO_ROOT / "rvc" / "train" / "train.py"),
+        model_name,               # 1
+        str(save_every_epoch),    # 2
+        str(epochs),              # 3
+        pg,                       # 4: pretrainG path
+        pd,                       # 5: pretrainD path
+        "0",                      # 6: gpu
+        str(batch_size),          # 7
+        str(sample_rate),         # 8
+        "False",                  # 9: save_only_latest
+        "True",                   # 10: save_every_weights
+        "False",                  # 11: cache_data_in_gpu
+        "True",                   # 12: overtraining_detector
+        "50",                     # 13: overtraining_threshold
+        "False",                  # 14: cleanup
+        "HiFi-GAN",              # 15: vocoder
+        "False",                  # 16: checkpointing
     ]
-    if pretrained_g:
-        cmd.extend(["--custom_pretrained", "True",
-                     "--g_pretrained_path", str(pretrained_g)])
-    if pretrained_d:
-        cmd.extend(["--d_pretrained_path", str(pretrained_d)])
 
-    log.info(f"Starting training via CLI: {epochs} epochs")
+    log.info(f"Starting training: {epochs} epochs, cmd={' '.join(cmd[:4])}...")
+    log.info(f"Full train args: {cmd[2:]}")
     proc = subprocess.Popen(
         cmd,
         cwd=str(APPLIO_ROOT),
