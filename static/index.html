@@ -927,7 +927,7 @@ input[type="range"]::-webkit-slider-thumb {
     <div id="train-error-area" style="display:none;margin-top:16px">
       <div class="card" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.05)">
         <div style="font-size:13px;font-weight:600;color:#ef4444;margin-bottom:8px">오류 상세</div>
-        <div id="train-error-msg" style="font-size:12px;color:var(--text3);max-height:120px;overflow-y:auto;word-break:break-all;line-height:1.5"></div>
+        <div id="train-error-msg" style="font-size:12px;color:var(--text2);max-height:120px;overflow-y:auto;word-break:break-all;line-height:1.5"></div>
       </div>
       <div class="flex gap-8" style="justify-content:center;margin-top:12px">
         <button class="btn btn-secondary" onclick="resetTraining()">돌아가기</button>
@@ -1046,7 +1046,7 @@ input[type="range"]::-webkit-slider-thumb {
     <div id="convert-error-area" style="display:none;margin-top:16px">
       <div class="card" style="border-color:rgba(239,68,68,0.3);background:rgba(239,68,68,0.05)">
         <div style="font-size:13px;font-weight:600;color:#ef4444;margin-bottom:8px">오류 상세</div>
-        <div id="convert-error-msg" style="font-size:12px;color:var(--text3);max-height:120px;overflow-y:auto;word-break:break-all;line-height:1.5"></div>
+        <div id="convert-error-msg" style="font-size:12px;color:var(--text2);max-height:120px;overflow-y:auto;word-break:break-all;line-height:1.5"></div>
       </div>
       <div class="flex gap-8" style="justify-content:center;margin-top:12px">
         <button class="btn btn-secondary" onclick="resetConversion()">돌아가기</button>
@@ -1808,8 +1808,10 @@ async function pollTrainingStatus() {
       document.getElementById('train-info-status').textContent = '실패';
       document.getElementById('train-cancel-area').style.display = 'none';
       document.getElementById('train-error-area').style.display = 'block';
-      document.getElementById('train-error-msg').textContent = extractErrorSummary(job.message || '');
-      toast('학습 실패', 'error');
+      var errMsg = extractErrorSummary(job.message || '');
+      document.getElementById('train-error-msg').textContent = errMsg;
+      document.getElementById('train-error-msg').title = job.message || '';
+      toast('학습 실패: ' + errMsg, 'error');
       return;
     }
 
@@ -1826,8 +1828,12 @@ function resetTraining() {
   document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
-  document.getElementById('btn-start-train').disabled = false;
-  checkPreprocessStatus();
+  // 파일 목록 & 전처리 상태 복원 (초기화하지 않음)
+  api('/files').then(function(r) {
+    uploadedFiles = r.files || [];
+    renderFileList();
+    checkPreprocessStatus();
+  }).catch(function() {});
 }
 
 async function cancelTraining() {
@@ -1839,18 +1845,19 @@ async function cancelTraining() {
   document.getElementById('train-progress').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
-  document.getElementById('btn-start-train').disabled = false;
   toast('학습을 취소했습니다', 'info');
+  // 파일 목록 & 전처리 상태 복원
+  api('/files').then(function(r) {
+    uploadedFiles = r.files || [];
+    renderFileList();
+    checkPreprocessStatus();
+  }).catch(function() {});
 }
 
 function retryTraining() {
-  document.getElementById('train-error-area').style.display = 'none';
-  document.getElementById('train-cancel-area').style.display = 'block';
-  document.getElementById('train-progress').style.display = 'none';
-  document.getElementById('train-upload').style.display = 'block';
-  document.getElementById('btn-start-train').disabled = false;
   currentTrainJobId = null;
-  checkPreprocessStatus();
+  // 바로 학습 재시작
+  startTraining();
 }
 
 function extractErrorSummary(msg) {

@@ -486,8 +486,21 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                 return
 
             elif status == "FAILED":
-                error = result.get("error", "알 수 없는 오류")
-                update_job(job_id, status="failed", message=f"오류: {error}")
+                raw_error = result.get("error", "알 수 없는 오류")
+                # RunPod 에러가 dict이면 error_message 추출
+                if isinstance(raw_error, dict):
+                    error = raw_error.get("error_message") or raw_error.get("message") or str(raw_error)
+                else:
+                    error = str(raw_error)
+                    # JSON 문자열이면 파싱 시도
+                    try:
+                        import json as _json
+                        parsed = _json.loads(error)
+                        if isinstance(parsed, dict):
+                            error = parsed.get("error_message") or parsed.get("message") or error
+                    except (ValueError, TypeError):
+                        pass
+                update_job(job_id, status="failed", message=error)
                 return
 
             elif status == "IN_QUEUE":
