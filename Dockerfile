@@ -89,6 +89,21 @@ RUN python -m pip install --no-cache-dir \
     torchaudio==2.1.0+cu121 \
     --index-url https://download.pytorch.org/whl/cu121
 
+# -- Compatibility shim: Applio uses torch.amp.GradScaler (PyTorch 2.3+ API) --
+# In PyTorch 2.1.x, GradScaler only lives in torch.cuda.amp.
+# Patch torch/amp/__init__.py so `torch.amp.GradScaler` resolves correctly.
+RUN python -c "\
+import torch, os; \
+amp_init = os.path.join(os.path.dirname(torch.__file__), 'amp', '__init__.py'); \
+f = open(amp_init, 'a'); \
+f.write('\n# Compat shim: GradScaler moved to torch.amp in PyTorch 2.3\n'); \
+f.write('try:\n    from torch.cuda.amp import GradScaler\nexcept ImportError:\n    pass\n'); \
+f.close(); \
+import importlib; importlib.reload(torch.amp); \
+assert hasattr(torch.amp, 'GradScaler'), 'Patch verification failed'; \
+print('torch.amp.GradScaler shim installed OK') \
+"
+
 
 # ================================================================
 # LAYER 3: Clone Applio (RVC v2)

@@ -1143,11 +1143,27 @@ def _rvc_train(
 
     # Stream output and report progress
     epoch_count = 0
+    last_lines: list[str] = []
+    child_error: str | None = None
     for line in iter(proc.stdout.readline, ""):
         line = line.strip()
         if not line:
             continue
         log.info(f"[train] {line}")
+        last_lines.append(line)
+        if len(last_lines) > 30:
+            last_lines.pop(0)
+
+        # Detect child process crash (train.py spawns multiprocessing.Process
+        # which can crash without setting a non-zero exit code on the parent)
+        if any(err in line for err in ("Error", "Exception", "Traceback")):
+            if "Traceback" in line:
+                child_error = ""  # start capturing
+            elif child_error is not None:
+                child_error += line + "\n"
+        if child_error and ("Error:" in line or "Exception:" in line):
+            child_error += line
+            # Keep it but don't raise yet — collect more context
 
         # Parse epoch progress from training output
         if "Epoch" in line or "epoch" in line:
@@ -1172,11 +1188,22 @@ def _rvc_train(
 
     proc.wait(timeout=36000)  # 10-hour timeout
     if proc.returncode != 0:
+        tail = "\n".join(last_lines[-10:])
         raise RuntimeError(
-            f"학습 프로세스 실패 (exit code {proc.returncode}). "
-            f"마지막 출력을 확인하세요."
+            f"학습 프로세스 실패 (exit code {proc.returncode}).\n"
+            f"마지막 출력:\n{tail}"
         )
-    log.info(f"Training completed via CLI ({epochs} epochs)")
+
+    # train.py uses multiprocessing.Process — the child can crash
+    # while the parent exits 0. Check for captured errors.
+    if child_error and epoch_count == 0:
+        raise RuntimeError(
+            f"학습 자식 프로세스가 에포크 시작 전 크래시. "
+            f"에러:\n{child_error}\n"
+            f"마지막 출력:\n" + "\n".join(last_lines[-10:])
+        )
+
+    log.info(f"Training completed via CLI ({epochs} epochs, reached epoch {epoch_count})")
 
 
 def _find_pretrained(gen_or_disc: str, sr_label: str) -> Optional[Path]:
