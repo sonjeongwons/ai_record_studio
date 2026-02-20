@@ -1107,10 +1107,22 @@ async def start_preprocess(
 
 @app.get("/api/preprocess/status")
 async def preprocess_status():
-    """전처리 상태 확인 — preprocessed/ 디렉토리에 세그먼트가 있는지 반환"""
+    """전처리 상태 확인 — preprocessed/ 디렉토리에 세그먼트가 있는지 반환.
+    세그먼트가 존재하면 DB의 preprocessed 플래그도 동기화."""
     files = sorted(PREPROCESSED_DIR.glob("*.wav"))
     if not files:
+        # 세그먼트 없으면 DB도 리셋
+        with get_db() as db:
+            db.execute("UPDATE training_files SET preprocessed=0 WHERE preprocessed=1")
         return {"preprocessed": False, "segment_count": 0, "total_duration": 0}
+
+    # 세그먼트가 존재하면 미처리 파일을 전처리 완료로 동기화
+    with get_db() as db:
+        unmarked = db.execute(
+            "SELECT COUNT(*) FROM training_files WHERE preprocessed=0"
+        ).fetchone()[0]
+        if unmarked > 0:
+            db.execute("UPDATE training_files SET preprocessed=1")
 
     total_dur = 0.0
     try:

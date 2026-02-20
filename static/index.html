@@ -1701,6 +1701,12 @@ async function resetPreprocess() {
   document.getElementById('preprocess-duration').textContent = '-';
   document.getElementById('btn-start-train').disabled = true;
   toast('전처리 초기화됨. 다시 전처리하거나 건너뛸 수 있습니다.', 'info');
+  // 파일 배지 새로고침 (모두 "미처리"로)
+  try {
+    var r = await api('/files');
+    uploadedFiles = r.files || [];
+    renderFileList();
+  } catch(e2) {}
 }
 
 async function checkPreprocessStatus() {
@@ -1714,6 +1720,12 @@ async function checkPreprocessStatus() {
       document.getElementById('preprocess-duration').textContent =
         res.total_duration > 0 ? formatDuration(res.total_duration) : '-';
       document.getElementById('btn-start-train').disabled = false;
+      // 서버가 DB 동기화했으므로 파일 목록 새로고침 (배지 업데이트)
+      try {
+        var r = await api('/files');
+        uploadedFiles = r.files || [];
+        renderFileList();
+      } catch(e2) {}
     }
   } catch(e) { /* ignore on load */ }
 }
