@@ -25,7 +25,7 @@ import uvicorn
 import requests
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -808,7 +808,7 @@ async def favicon():
     if favicon_path.exists():
         return FileResponse(str(favicon_path), media_type="image/x-icon")
     # Return empty 204 to suppress browser 404 warnings
-    return JSONResponse(content=None, status_code=204)
+    return Response(status_code=204)
 
 
 # ─── 설정 API ───
