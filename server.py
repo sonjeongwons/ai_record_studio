@@ -275,11 +275,14 @@ def init_db():
                 updated_at TEXT DEFAULT (datetime('now','localtime'))
             );
         """)
-        # 기존 DB 마이그레이션: preprocessed 컬럼 추가
-        try:
-            db.execute("ALTER TABLE training_files ADD COLUMN preprocessed INTEGER DEFAULT 0")
-        except Exception:
-            pass  # 이미 존재하면 무시
+        # 기존 DB 마이그레이션
+        for col, default in [("preprocessed", "INTEGER DEFAULT 0"),
+                             ("file_hash", "TEXT"),
+                             ("deleted", "INTEGER DEFAULT 0")]:
+            try:
+                db.execute(f"ALTER TABLE training_files ADD COLUMN {col} {default}")
+            except Exception:
+                pass  # 이미 존재하면 무시
         # voice_models에 R2 URL 컬럼 추가 (기존 DB 마이그레이션)
         for col in ("pth_url", "index_url", "training_files_json"):
             try:
@@ -980,23 +983,45 @@ async def upload_files(
     category: str = Form("vocal")
 ):
     saved = []
+    skipped = []
     for f in files:
         ext = Path(f.filename).suffix.lower()
         if ext not in [".wav", ".mp3", ".flac", ".ogg", ".m4a", ".mp4", ".mkv", ".webm"]:
             continue
 
+        content = await f.read()
+        file_hash = hashlib.sha256(content).hexdigest()
+
+        # 동일 파일 중복 체크 (활성 파일)
+        with get_db() as db:
+            live_dup = db.execute(
+                "SELECT id, original_name FROM training_files WHERE file_hash=? AND deleted=0",
+                (file_hash,)
+            ).fetchone()
+        if live_dup:
+            skipped.append({"filename": f.filename,
+                            "existing_name": live_dup["original_name"]})
+            continue
+
+        # 삭제된 파일 중 같은 해시의 전처리 상태 확인
+        with get_db() as db:
+            prev = db.execute(
+                "SELECT preprocessed FROM training_files WHERE file_hash=? AND deleted=1 ORDER BY id DESC LIMIT 1",
+                (file_hash,)
+            ).fetchone()
+        was_preprocessed = 1 if (prev and prev["preprocessed"]) else 0
+
         unique_name = f"{uuid.uuid4().hex[:8]}_{f.filename}"
         save_path = UPLOAD_DIR / unique_name
 
         with open(save_path, "wb") as fp:
-            content = await f.read()
             fp.write(content)
 
         with get_db() as db:
             db.execute("""
-                INSERT INTO training_files (filename, original_name, file_size, file_type, category)
-                VALUES (?, ?, ?, ?, ?)
-            """, (unique_name, f.filename, len(content), ext, category))
+                INSERT INTO training_files (filename, original_name, file_size, file_type, category, file_hash, preprocessed)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (unique_name, f.filename, len(content), ext, category, file_hash, was_preprocessed))
             file_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
         saved.append({
@@ -1005,16 +1030,17 @@ async def upload_files(
             "original_name": f.filename,
             "size": len(content),
             "type": ext,
-            "category": category
+            "category": category,
+            "preprocessed": was_preprocessed,
         })
 
-    return {"files": saved, "count": len(saved)}
+    return {"files": saved, "count": len(saved), "skipped": skipped}
 
 
 @app.get("/api/files")
 async def list_files():
     with get_db() as db:
-        rows = db.execute("SELECT * FROM training_files ORDER BY uploaded_at DESC").fetchall()
+        rows = db.execute("SELECT * FROM training_files WHERE deleted=0 ORDER BY uploaded_at DESC").fetchall()
     files = []
     for r in rows:
         d = dict(r)
@@ -1028,12 +1054,14 @@ async def list_files():
 @app.delete("/api/files/{file_id}")
 async def delete_file(file_id: int):
     with get_db() as db:
-        row = db.execute("SELECT filename FROM training_files WHERE id=?", (file_id,)).fetchone()
+        row = db.execute("SELECT filename FROM training_files WHERE id=? AND deleted=0",
+                         (file_id,)).fetchone()
         if row:
             filepath = UPLOAD_DIR / row["filename"]
             if filepath.exists():
                 filepath.unlink()
-            db.execute("DELETE FROM training_files WHERE id=?", (file_id,))
+            # Soft delete: 해시 기록을 보존하여 재업로드 시 전처리 상태 복원 가능
+            db.execute("UPDATE training_files SET deleted=1 WHERE id=?", (file_id,))
     return {"status": "ok"}
 
 
@@ -1082,9 +1110,11 @@ async def upload_chunk(
             chunk_uploads.pop(upload_id, None)
             raise HTTPException(400, f"지원하지 않는 파일 형식: {ext}")
 
+        # 청크 병합 → 임시 파일
         unique_name = f"{uuid.uuid4().hex[:8]}_{filename}"
         save_path = UPLOAD_DIR / unique_name
         total_size = 0
+        hash_obj = hashlib.sha256()
 
         with open(save_path, "wb") as out_f:
             for i in range(total_chunks):
@@ -1092,6 +1122,7 @@ async def upload_chunk(
                 with open(cp, "rb") as in_f:
                     data = in_f.read()
                     total_size += len(data)
+                    hash_obj.update(data)
                     out_f.write(data)
 
         if total_size > MAX_CHUNK_FILE_SIZE:
@@ -1100,14 +1131,29 @@ async def upload_chunk(
             chunk_uploads.pop(upload_id, None)
             raise HTTPException(413, RUNPOD_ERROR_MESSAGES["file_too_large"])
 
+        file_hash = hash_obj.hexdigest()
+
+        # 동일 파일 중복 체크
+        with get_db() as db:
+            dup = db.execute(
+                "SELECT id, original_name FROM training_files WHERE file_hash=? AND deleted=0",
+                (file_hash,)
+            ).fetchone()
+        if dup:
+            save_path.unlink(missing_ok=True)
+            shutil.rmtree(chunk_dir, ignore_errors=True)
+            chunk_uploads.pop(upload_id, None)
+            raise HTTPException(409,
+                f"동일한 파일이 이미 존재합니다: '{dup['original_name']}'")
+
         shutil.rmtree(chunk_dir, ignore_errors=True)
         chunk_uploads.pop(upload_id, None)
 
         with get_db() as db:
             db.execute("""
-                INSERT INTO training_files (filename, original_name, file_size, file_type, category)
-                VALUES (?, ?, ?, ?, ?)
-            """, (unique_name, filename, total_size, ext, category))
+                INSERT INTO training_files (filename, original_name, file_size, file_type, category, file_hash)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (unique_name, filename, total_size, ext, category, file_hash))
             file_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
         return {
@@ -1154,15 +1200,32 @@ async def start_training(
                 f"SELECT * FROM training_files WHERE id IN ({placeholders})", ids
             ).fetchall()
         else:
-            rows = db.execute("SELECT * FROM training_files").fetchall()
+            rows = db.execute("SELECT * FROM training_files WHERE deleted=0").fetchall()
 
     if not rows:
         raise HTTPException(400, "학습할 파일이 없습니다.")
 
     # 전처리된 세그먼트가 있으면 우선 사용 (용량 작음 → 10MB 이내)
     # mr_/vocal_ 파일은 학습용이 아니므로 제외
-    preprocessed_files = [f for f in _list_preprocessed_files()
-                          if not f.name.startswith(("mr_", "vocal_"))]
+    all_preprocessed = [f for f in _list_preprocessed_files()
+                        if not f.name.startswith(("mr_", "vocal_"))]
+
+    if all_preprocessed and file_ids:
+        # 선택된 파일의 세그먼트만 필터링 (파일명 stem 매칭)
+        selected_stems = set()
+        for r in rows:
+            # filename: "a1b2c3d4_song.mp3" → stem: "a1b2c3d4_song"
+            selected_stems.add(Path(r["filename"]).stem)
+        preprocessed_files = [
+            f for f in all_preprocessed
+            if any(f.name.startswith(stem) for stem in selected_stems)
+        ]
+        if not preprocessed_files:
+            # stem 매칭 실패 시 (이전 세그먼트 형식) 전체 사용
+            preprocessed_files = all_preprocessed
+    else:
+        preprocessed_files = all_preprocessed
+
     if preprocessed_files:
         file_paths = [str(p) for p in preprocessed_files]
     else:
@@ -1314,22 +1377,24 @@ async def start_preprocess(
 
 @app.get("/api/preprocess/status")
 async def preprocess_status():
-    """전처리 상태 확인 — preprocessed/ 디렉토리에 세그먼트가 있는지 반환.
-    세그먼트가 존재하면 DB의 preprocessed 플래그도 동기화.
-    반주(MR) 및 보컬 파일도 분류하여 반환."""
+    """전처리 상태 확인 — 모든 파일이 전처리되었는지 DB + 디스크 기반으로 판단."""
     files = _list_preprocessed_files()
-    if not files:
-        with get_db() as db:
-            db.execute("UPDATE training_files SET preprocessed=0 WHERE preprocessed=1")
-        return {"preprocessed": False, "segment_count": 0, "total_duration": 0,
-                "accompaniment_files": [], "vocal_files": []}
 
+    # DB에서 전처리되지 않은 파일 수 확인
     with get_db() as db:
-        unmarked = db.execute(
-            "SELECT COUNT(*) FROM training_files WHERE preprocessed=0"
+        total_files = db.execute("SELECT COUNT(*) FROM training_files WHERE deleted=0").fetchone()[0]
+        unprocessed = db.execute(
+            "SELECT COUNT(*) FROM training_files WHERE preprocessed=0 AND deleted=0"
         ).fetchone()[0]
-        if unmarked > 0:
-            db.execute("UPDATE training_files SET preprocessed=1")
+
+    # 세그먼트가 없거나 전처리되지 않은 파일이 있으면 미완료
+    has_segments = len(files) > 0
+    all_processed = total_files > 0 and unprocessed == 0
+
+    if not has_segments or not all_processed:
+        return {"preprocessed": False, "segment_count": 0, "total_duration": 0,
+                "unprocessed_count": unprocessed,
+                "accompaniment_files": [], "vocal_files": []}
 
     # Categorize files: training segments vs MR vs vocals
     training_segments = []
@@ -1359,6 +1424,7 @@ async def preprocess_status():
         "preprocessed": True,
         "segment_count": len(training_segments),
         "total_duration": round(total_dur, 2),
+        "unprocessed_count": 0,
         "accompaniment_files": accomp_files,
         "vocal_files": vocal_files,
     }
@@ -1682,10 +1748,10 @@ async def download_file(filename: str):
 @app.get("/api/stats")
 async def get_stats():
     with get_db() as db:
-        file_count = db.execute("SELECT COUNT(*) FROM training_files").fetchone()[0]
+        file_count = db.execute("SELECT COUNT(*) FROM training_files WHERE deleted=0").fetchone()[0]
         model_count = db.execute("SELECT COUNT(*) FROM voice_models WHERE status='ready'").fetchone()[0]
         conv_count = db.execute("SELECT COUNT(*) FROM conversions").fetchone()[0]
-        total_size = db.execute("SELECT COALESCE(SUM(file_size),0) FROM training_files").fetchone()[0]
+        total_size = db.execute("SELECT COALESCE(SUM(file_size),0) FROM training_files WHERE deleted=0").fetchone()[0]
     return {
         "files": file_count,
         "models": model_count,

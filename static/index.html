@@ -1634,7 +1634,15 @@ async function handleTrainFiles(fileList) {
     var res = await api('/upload', { method: 'POST', body: form });
     uploadedFiles = uploadedFiles.concat(res.files);
     renderFileList();
-    toast(res.files.length + '개 파일 업로드 완료', 'success');
+    if (res.skipped && res.skipped.length > 0) {
+      var dupNames = res.skipped.map(function(s) { return s.filename; }).join(', ');
+      toast('중복 파일 건너뜀: ' + dupNames, 'warning');
+    }
+    if (res.files.length > 0) {
+      toast(res.files.length + '개 파일 업로드 완료', 'success');
+    } else if (!res.skipped || res.skipped.length === 0) {
+      toast('업로드할 파일이 없습니다', 'info');
+    }
     // 이전 전처리 결과가 있으면 상태 동기화 (재시작 후 재업로드 시)
     checkPreprocessStatus();
   } catch(e) {
@@ -1685,6 +1693,10 @@ function renderFileList() {
       : '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(139,92,246,0.15);color:#a78bfa;margin-left:6px">미처리</span>';
 
     return '<div class="file-item" style="flex-wrap:wrap">' +
+      '<label style="display:flex;align-items:center;cursor:pointer;margin-right:4px" title="학습에 포함">' +
+        '<input type="checkbox" class="train-file-cb" data-file-id="' + f.id + '" checked ' +
+          'onchange="updateTrainSelection()" style="accent-color:#8b5cf6;width:15px;height:15px">' +
+      '</label>' +
       '<div class="file-icon">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
       '</div>' +
@@ -1704,6 +1716,25 @@ function renderFileList() {
       if (uid && !apWaveData[uid]) apDrawWaveform(uid);
     });
   }, 50);
+}
+
+function getSelectedFileIds() {
+  var ids = [];
+  document.querySelectorAll('.train-file-cb:checked').forEach(function(cb) {
+    ids.push(cb.dataset.fileId);
+  });
+  return ids;
+}
+
+function updateTrainSelection() {
+  var selected = getSelectedFileIds();
+  var total = document.querySelectorAll('.train-file-cb').length;
+  var label = document.getElementById('file-count-label');
+  if (label && selected.length < total) {
+    var totalSize = uploadedFiles.reduce(function(a, f) { return a + (f.size || f.file_size || 0); }, 0);
+    label.textContent = uploadedFiles.length + '개 파일 \u00B7 ' + formatSize(totalSize) +
+      ' (학습: ' + selected.length + '/' + total + '개 선택)';
+  }
 }
 
 async function deleteFile(id) {
@@ -1944,7 +1975,12 @@ async function startTraining() {
   var modelName = document.getElementById('model-name').value || 'My Voice';
   var epochs = document.getElementById('train-epochs').value;
   var sr = document.getElementById('train-sr').value;
-  var fileIds = uploadedFiles.map(function(f) { return f.id; }).join(',');
+  var selectedIds = getSelectedFileIds();
+  if (selectedIds.length === 0) {
+    toast('학습에 사용할 파일을 1개 이상 선택해 주세요', 'error');
+    return;
+  }
+  var fileIds = selectedIds.join(',');
 
   var f0Method = document.getElementById('train-f0').value;
   var batchSize = document.getElementById('train-batch').value;

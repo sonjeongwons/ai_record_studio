@@ -607,6 +607,12 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
     seg_idx = 0
 
     for ap in audio_paths:
+        # 원본 파일명에서 _vocals 접미사 제거하여 소스 stem 추출
+        source_stem = ap.stem
+        for suffix in ("_vocals", "_clean", "_diarized"):
+            if source_stem.endswith(suffix):
+                source_stem = source_stem[:-len(suffix)]
+
         audio_data, sr = sf.read(str(ap))
         total_samples = len(audio_data)
         total_duration = total_samples / sr
@@ -614,13 +620,13 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
         if total_duration <= SEGMENT_MAX:
             # File is already short enough, keep as-is if >= SEGMENT_MIN
             if total_duration >= SEGMENT_MIN:
-                out = output_dir / f"seg_{seg_idx:04d}.wav"
+                out = output_dir / f"{source_stem}_seg_{seg_idx:04d}.wav"
                 sf.write(str(out), audio_data, samplerate=sr, subtype="PCM_16")
                 all_segments.append(out)
                 seg_idx += 1
             elif total_duration >= 2.0:
                 # Keep very short clips too (will be less than 5s but still usable)
-                out = output_dir / f"seg_{seg_idx:04d}.wav"
+                out = output_dir / f"{source_stem}_seg_{seg_idx:04d}.wav"
                 sf.write(str(out), audio_data, samplerate=sr, subtype="PCM_16")
                 all_segments.append(out)
                 seg_idx += 1
@@ -644,7 +650,7 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
             end_s = min(int(end_sec * sr), total_samples)
             segment = audio_data[start_s:end_s]
 
-            out = output_dir / f"seg_{seg_idx:04d}.wav"
+            out = output_dir / f"{source_stem}_seg_{seg_idx:04d}.wav"
             sf.write(str(out), segment, samplerate=sr, subtype="PCM_16")
             all_segments.append(out)
             seg_idx += 1
