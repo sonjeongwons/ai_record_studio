@@ -750,11 +750,11 @@ def task_train(job_input: dict, job: dict) -> dict:
     audio_files: list[dict] = job_input.get("audio_files", [])
     audio_urls: list[dict] = job_input.get("audio_urls", [])
     sample_rate: int = job_input.get("sample_rate", 40000)  # 40k recommended for SVC
-    epochs: int = job_input.get("epochs", 300)
+    epochs: int = job_input.get("epochs", 500)
     batch_size: int = job_input.get("batch_size", 0)  # 0 = auto-detect
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    save_every_epoch: int = job_input.get("save_every_epoch", 25)  # finer checkpoints for optimal model selection
+    save_every_epoch: int = job_input.get("save_every_epoch", 50)
 
     if not audio_files and not audio_urls:
         raise ValueError("No audio_files or audio_urls provided for training")
@@ -1201,7 +1201,7 @@ def _rvc_train(
         "True",                   # 10: save_every_weights
         "False",                  # 11: cache_data_in_gpu
         "True",                   # 12: overtraining_detector
-        "50",                     # 13: overtraining_threshold
+        "75",                     # 13: overtraining_threshold
         "False",                  # 14: cleanup
         "HiFi-GAN",              # 15: vocoder
         "False",                  # 16: checkpointing
@@ -1512,13 +1512,13 @@ def task_convert(job_input: dict, job: dict) -> dict:
     audio_url: str = job_input.get("audio_url", "")
     audio_filename: str = job_input.get("audio_filename", "input.wav")
     pitch_shift: int = job_input.get("pitch_shift", 0)
-    index_rate: float = job_input.get("index_rate", 0.75)
+    index_rate: float = job_input.get("index_rate", 0.88)
     f0_method: str = job_input.get("f0_method", "rmvpe")
     filter_radius: int = job_input.get("filter_radius", 3)
-    rms_mix_rate: float = job_input.get("rms_mix_rate", 0.25)
-    protect: float = job_input.get("protect", 0.33)
+    rms_mix_rate: float = job_input.get("rms_mix_rate", 0.1)
+    protect: float = job_input.get("protect", 0.23)
     hop_length: int = job_input.get("hop_length", 128)
-    clean_audio: bool = job_input.get("clean_audio", False)
+    clean_audio: bool = job_input.get("clean_audio", True)
     clean_strength: float = job_input.get("clean_strength", 0.7)
     export_format: str = job_input.get("export_format", "wav")
     # SVC pipeline options
@@ -1636,6 +1636,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
             clean_audio=clean_audio,
             clean_strength=clean_strength,
             export_format=export_format,
+            filter_radius=filter_radius,
+            rms_mix_rate=rms_mix_rate,
         )
 
         if not converted_vocals_path.exists():
@@ -1745,12 +1747,14 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.75,
-    protect: float = 0.33,
+    index_rate: float = 0.88,
+    protect: float = 0.23,
     hop_length: int = 128,
-    clean_audio: bool = False,
+    clean_audio: bool = True,
     clean_strength: float = 0.7,
     export_format: str = "wav",
+    filter_radius: int = 3,
+    rms_mix_rate: float = 0.1,
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.
@@ -1907,10 +1911,10 @@ def _rvc_infer(
             file_index,
             index_rate,
             if_f0,
-            3,  # filter_radius
+            filter_radius,
             tgt_sr,
             0,  # resample_sr
-            0.25,  # rms_mix_rate
+            rms_mix_rate,
             version,
             protect,
             hop_length,
@@ -1942,6 +1946,8 @@ def _rvc_infer(
         "--pth_path", str(pth_path),
         "--index_path", index_str,
         "--split_audio", "True",
+        "--clean_audio", str(clean_audio),
+        "--clean_strength", str(clean_strength),
         "--export_format", export_format.upper(),
         "--embedder_model", "contentvec",
     ]

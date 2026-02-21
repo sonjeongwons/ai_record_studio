@@ -1259,7 +1259,7 @@ async def upload_chunk(
 @app.post("/api/train")
 async def start_training(
     model_name: str = Form(...),
-    epochs: int = Form(300),
+    epochs: int = Form(500),
     sample_rate: int = Form(40000),  # 40k recommended for SVC quality
     batch_size: int = Form(0),  # 0 = GPU auto-detect (RTX 4090 → 24)
     f0_method: str = Form("rmvpe"),
@@ -1637,9 +1637,14 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.75),
+    index_rate: float = Form(0.88),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
+    clean_audio: bool = Form(True),
+    clean_strength: float = Form(0.7),
+    protect: float = Form(0.23),
+    rms_mix_rate: float = Form(0.1),
+    filter_radius: int = Form(3),
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -1677,6 +1682,11 @@ async def start_conversion(
             "pitch_shift": pitch_shift,
             "index_rate": index_rate,
             "f0_method": "rmvpe",
+            "clean_audio": clean_audio,
+            "clean_strength": clean_strength,
+            "protect": protect,
+            "rms_mix_rate": rms_mix_rate,
+            "filter_radius": filter_radius,
             "separate_vocals": True,
             "vocal_volume": vocal_volume,
             "mr_volume": mr_volume,
