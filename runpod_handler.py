@@ -1773,7 +1773,107 @@ def _rvc_infer(
     finally:
         os.chdir(original_cwd)
 
-    # --- Strategy 3: CLI fallback ---
+    # --- Strategy 3: Low-level pipeline fallback ---
+    # If pedalboard is missing, core.py and VoiceConverter won't import.
+    # Use the inference pipeline directly, bypassing the infer.py wrapper.
+    try:
+        os.chdir(APPLIO_ROOT)
+        log.info("Attempting low-level pipeline inference (Strategy 3)")
+
+        # Import the pipeline directly (doesn't require pedalboard)
+        from rvc.infer.pipeline import Pipeline as VC
+        from rvc.lib.utils import load_embedding
+
+        import torch
+        import soundfile as sf
+        import numpy as np
+
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        is_half = device.startswith("cuda")
+
+        # Load model
+        cpt = torch.load(str(pth_path), map_location="cpu")
+        tgt_sr = cpt.get("config", [0] * 18)[-1]
+        if tgt_sr == 1:
+            tgt_sr = sample_rate if 'sample_rate' in dir() else 40000
+
+        cpt["config"][-3] = cpt["weight"]["emb_g.weight"].shape[0]
+        if_f0 = cpt.get("f0", 1)
+        version = cpt.get("version", "v2")
+
+        from rvc.lib.algorithm.synthesizers import Synthesizer
+        net_g = Synthesizer(*cpt["config"], use_f0=if_f0 == 1, text_enc_hidden_dim=768)
+        del net_g.enc_q
+        net_g.load_state_dict(cpt["weight"], strict=False)
+        net_g.eval().to(device)
+        if is_half:
+            net_g = net_g.half()
+
+        # Create pipeline
+        pipeline = VC(tgt_sr, device, is_half, False)
+
+        # Load embedding model
+        models, _, _ = load_embedding("contentvec", None)
+        hubert_model = models[0].to(device)
+        if is_half:
+            hubert_model = hubert_model.half()
+
+        # Load audio
+        audio_data, sr = sf.read(str(input_audio))
+        if len(audio_data.shape) > 1:
+            audio_data = audio_data.mean(axis=1)  # stereo → mono
+        audio_np = audio_data.astype(np.float32)
+        audio_max = np.abs(audio_np).max()
+        if audio_max > 1.0:
+            audio_np /= audio_max
+
+        # Resample to 16kHz for pipeline
+        import librosa
+        if sr != 16000:
+            audio_16k = librosa.resample(audio_np, orig_sr=sr, target_sr=16000)
+        else:
+            audio_16k = audio_np
+
+        # Load index
+        file_index = ""
+        if index_path and Path(index_str).exists():
+            file_index = index_str
+
+        # Run pipeline
+        sid = torch.tensor([0], dtype=torch.long, device=device)
+        audio_opt = pipeline.pipeline(
+            hubert_model,
+            net_g,
+            sid,
+            audio_16k,
+            input_audio,
+            [0, 0, 0],  # times (not used meaningfully)
+            pitch_shift,
+            f0_method,
+            file_index,
+            index_rate,
+            if_f0,
+            3,  # filter_radius
+            tgt_sr,
+            0,  # resample_sr
+            0.25,  # rms_mix_rate
+            version,
+            protect,
+            hop_length,
+            False,  # f0_autotune
+            1.0,  # f0_autotune_strength
+        )
+
+        # Save output
+        sf.write(str(output_path), audio_opt, tgt_sr, format="WAV")
+        log.info(f"Inference completed via low-level pipeline (output: {output_path.stat().st_size / 1024:.1f} KB)")
+        return
+    except Exception as e:
+        log.warning(f"Low-level pipeline failed: {e}", exc_info=True)
+    finally:
+        os.chdir(original_cwd)
+
+    # --- Strategy 4: CLI fallback (last resort) ---
     cmd = [
         sys.executable,
         str(APPLIO_ROOT / "core.py"),

@@ -178,7 +178,8 @@ RUN python -m pip install --no-cache-dir \
     librosa \
     soundfile \
     pydub \
-    numba
+    numba \
+    pedalboard
 
 # -- Group 5: ONNX Runtime (pin version compatible with CUDA 12.1) --
 RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
