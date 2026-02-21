@@ -585,21 +585,75 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                           message=f"GPU 대기 중... ({elapsed}초)")
 
             elif status == "IN_PROGRESS":
-                # 학습은 오래 걸리므로 예상 진행률 계산
+                # RunPod progress_update 메시지에서 실제 진행률 추출
+                pct = None
+                msg = None
+
+                # progress_update → output 필드 (IN_PROGRESS 상태)
+                # 또는 stream 배열에서 최신 메시지 확인
+                import re
+                progress_text = ""
+                output_field = result.get("output")
+                if isinstance(output_field, str) and output_field:
+                    progress_text = output_field
+                elif isinstance(output_field, dict):
+                    progress_text = output_field.get("progress", "")
+
+                # stream 필드도 확인
+                if not progress_text:
+                    stream = result.get("stream") or []
+                    if isinstance(stream, list):
+                        for entry in reversed(stream):
+                            text = entry.get("output", "") if isinstance(entry, dict) else str(entry)
+                            if text:
+                                progress_text = text
+                                break
+
+                if progress_text:
+                    # "Training epoch 50/300 (16%)" 파싱
+                    m = re.search(r'\((\d+)%\)', progress_text)
+                    if m:
+                        pct = int(m.group(1))
+                    else:
+                        m2 = re.search(r'(\d+)\s*/\s*(\d+)', progress_text)
+                        if m2:
+                            pct = min(95, int(int(m2.group(1)) / int(m2.group(2)) * 100))
+
+                    # 한국어 메시지 변환
+                    if "epoch" in progress_text.lower():
+                        m3 = re.search(r'epoch\s+(\d+)\s*/\s*(\d+)', progress_text, re.IGNORECASE)
+                        if m3:
+                            msg = f"학습 중... 에폭 {m3.group(1)}/{m3.group(2)}"
+                    elif "(" in progress_text and "/" in progress_text:
+                        # "(3/5)" 스텝 형태
+                        m4 = re.search(r'\((\d+)/(\d+)\)', progress_text)
+                        if m4:
+                            step, total_steps = int(m4.group(1)), int(m4.group(2))
+                            pct = min(90, int(step / total_steps * 90))
+                            msg = progress_text
+
+                if pct is None:
+                    # fallback: 경과 시간 기반 추정
+                    if job_type == "train":
+                        est_total = 900  # ~15분 예상
+                        pct = min(90, int((elapsed / est_total) * 100))
+                    elif job_type == "preprocess":
+                        pct = min(90, int(elapsed / 3))
+                    else:
+                        pct = min(90, int(elapsed / 0.6))
+
+                pct = min(95, max(5, pct))
+                mins = elapsed // 60
+
                 if job_type == "train":
-                    est_total = 5 * 3600  # 약 5시간 예상
-                    pct = min(90, int((elapsed / est_total) * 100))
-                    mins = elapsed // 60
                     update_job(job_id, status="running", progress=pct,
-                              message=f"학습 중... ({mins}분 경과)")
+                              message=msg or f"학습 중... ({mins}분 경과)")
                 elif job_type == "preprocess":
-                    pct = min(90, int(elapsed / 3))
                     update_job(job_id, status="running", progress=pct,
-                              message=f"전처리 중... ({elapsed}초)")
+                              message=msg or f"전처리 중... ({elapsed}초)")
                 else:
-                    pct = min(90, int(elapsed / 0.6))
                     update_job(job_id, status="running", progress=pct,
-                              message=f"변환 중... ({elapsed}초)")
+                              message=msg or f"변환 중... ({elapsed}초)")
 
             else:
                 # Unknown status — log and treat as transient
