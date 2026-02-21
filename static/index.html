@@ -31,6 +31,7 @@ body {
   overflow: hidden;
   display: flex;
 }
+body.busy, body.busy * { cursor: wait !important; }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
@@ -1793,6 +1794,7 @@ async function startPreprocess() {
   }
   var fileIds = selectedIds.join(',');
 
+  document.body.classList.add('busy');
   document.getElementById('preprocess-idle').style.display = 'none';
   document.getElementById('preprocess-running').style.display = 'block';
   document.getElementById('preprocess-done').style.display = 'none';
@@ -1801,6 +1803,8 @@ async function startPreprocess() {
     var form = new FormData();
     form.append('file_ids', fileIds);
     var res = await api('/preprocess', { method: 'POST', body: form });
+
+    document.body.classList.remove('busy');
 
     // 모든 파일이 이미 전처리됨
     if (!res.job_id) {
@@ -1819,6 +1823,7 @@ async function startPreprocess() {
     preprocessJobId = res.job_id;
     pollPreprocessStatus();
   } catch(e) {
+    document.body.classList.remove('busy');
     toast('전처리 시작 실패: ' + e.message, 'error');
     document.getElementById('preprocess-idle').style.display = 'block';
     document.getElementById('preprocess-running').style.display = 'none';
@@ -2044,8 +2049,10 @@ async function startTraining() {
   form.append('file_ids', fileIds);
 
   try {
+    document.body.classList.add('busy');
     document.getElementById('btn-start-train').disabled = true;
     var res = await api('/train', { method: 'POST', body: form });
+    document.body.classList.remove('busy');
     currentTrainJobId = res.job_id;
 
     document.getElementById('train-upload').style.display = 'none';
@@ -2059,6 +2066,7 @@ async function startTraining() {
     toast('학습이 시작되었습니다', 'info');
     pollTrainingStatus();
   } catch(e) {
+    document.body.classList.remove('busy');
     toast('학습 시작 실패: ' + e.message, 'error');
     document.getElementById('btn-start-train').disabled = false;
   }
@@ -2398,8 +2406,10 @@ async function startConversion() {
   form.append('audio', convertFile);
 
   try {
+    document.body.classList.add('busy');
     document.getElementById('btn-convert').disabled = true;
     var res = await api('/convert', { method: 'POST', body: form });
+    document.body.classList.remove('busy');
     currentConvertJobId = res.job_id;
 
     document.getElementById('convert-main').style.display = 'none';
@@ -2408,6 +2418,7 @@ async function startConversion() {
     toast('변환이 시작되었습니다', 'info');
     pollConvertStatus();
   } catch(e) {
+    document.body.classList.remove('busy');
     toast('변환 시작 실패: ' + e.message, 'error');
     document.getElementById('btn-convert').disabled = false;
   }
@@ -2528,6 +2539,7 @@ function toggleResultAudio() {
 async function startBatchConversion() {
   if (!selectedModelId || batchFiles.length === 0) return;
 
+  document.body.classList.add('busy');
   batchProcessing = true;
   batchResults = batchFiles.map(function(f) {
     return { file: f, jobId: null, status: 'pending', resultUrl: null, error: null };
@@ -2563,6 +2575,7 @@ async function startBatchConversion() {
     renderBatchProgress();
   }
 
+  document.body.classList.remove('busy');
   batchProcessing = false;
   document.getElementById('batch-progress').style.display = 'none';
   document.getElementById('batch-done').style.display = 'block';
