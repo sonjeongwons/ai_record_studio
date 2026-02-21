@@ -748,6 +748,7 @@ def task_train(job_input: dict, job: dict) -> dict:
     """
     model_name: str = job_input.get("model_name", "my_voice_model")
     audio_files: list[dict] = job_input.get("audio_files", [])
+    audio_urls: list[dict] = job_input.get("audio_urls", [])
     sample_rate: int = job_input.get("sample_rate", 40000)  # 40k recommended for SVC
     epochs: int = job_input.get("epochs", 300)
     batch_size: int = job_input.get("batch_size", 0)  # 0 = auto-detect
@@ -755,8 +756,8 @@ def task_train(job_input: dict, job: dict) -> dict:
     embedder_model: str = job_input.get("embedder_model", "contentvec")
     save_every_epoch: int = job_input.get("save_every_epoch", 25)  # finer checkpoints for optimal model selection
 
-    if not audio_files:
-        raise ValueError("No audio_files provided for training")
+    if not audio_files and not audio_urls:
+        raise ValueError("No audio_files or audio_urls provided for training")
 
     # Validate parameters — Applio only supports 32k, 40k, 48k
     if sample_rate not in (32000, 40000, 48000):
@@ -793,8 +794,22 @@ def task_train(job_input: dict, job: dict) -> dict:
     sr_label = sr_map.get(sample_rate, "40k")
 
     try:
-        # --- Step 1: Decode audio files to dataset directory ---
-        runpod.serverless.progress_update(job, f"Decoding {len(audio_files)} audio files... (1/5)")
+        # --- Step 1: Download/decode audio files to dataset directory ---
+        total_files = len(audio_files) + len(audio_urls)
+        runpod.serverless.progress_update(job, f"Downloading {total_files} audio files... (1/5)")
+
+        # R2 URL에서 다운로드
+        for i, uobj in enumerate(audio_urls):
+            fname = uobj.get("filename", f"audio_{i}.wav")
+            dest = dataset_dir / fname
+            import requests as _req
+            resp = _req.get(uobj["url"], timeout=120)
+            resp.raise_for_status()
+            with open(dest, "wb") as f:
+                f.write(resp.content)
+            log.info(f"Downloaded training file: {fname} ({len(resp.content) / 1024:.1f} KB)")
+
+        # base64 인라인 디코딩 (하위 호환)
         for i, fobj in enumerate(audio_files):
             fname = fobj.get("filename", f"audio_{i}.wav")
             dest = dataset_dir / fname

@@ -1231,8 +1231,7 @@ async def start_training(
     else:
         file_paths = [str(UPLOAD_DIR / r["filename"]) for r in rows]
 
-    batches = prepare_files_for_runpod(file_paths)
-    total_segments = sum(len(b) for b in batches)
+    total_segments = len(file_paths)
 
     # 학습에 사용된 원본 파일명 기록
     training_file_names = [r["original_name"] for r in rows]
@@ -1247,24 +1246,56 @@ async def start_training(
         """, (job_id,))
 
     try:
-        # 배치가 여러 개여도 학습은 모든 데이터가 한 번에 필요
-        # → 순차 업로드 불가, 반드시 단일 요청에 포함되어야 함
-        if len(batches) > 1:
-            raise HTTPException(
-                400,
-                f"학습 데이터가 너무 큽니다 ({total_segments}개 세그먼트, {len(batches)}개 배치). "
-                f"전처리를 먼저 실행하여 데이터를 줄이거나, 파일 수를 줄여주세요."
-            )
+        # 학습 데이터를 R2에 업로드하여 10MB 페이로드 한도 회피
+        audio_urls = []
+        total_size = sum(Path(p).stat().st_size for p in file_paths)
+        use_r2 = total_size > 5_000_000  # 5MB 이상이면 R2 사용
 
-        runpod_job_id = runpod_client.submit_job({
-            "task_type": "train",
-            "model_name": model_name,
-            "audio_files": batches[0],
-            "sample_rate": sample_rate,
-            "epochs": epochs,
-            "batch_size": batch_size,
-            "f0_method": f0_method,
-        })
+        if use_r2:
+            print(f"[Train] Uploading {len(file_paths)} files ({total_size:,} bytes) to R2...")
+            for i, fp in enumerate(file_paths):
+                r2_key = f"voice-studio/train/{job_id}/{Path(fp).name}"
+                try:
+                    url = upload_to_r2(Path(fp), r2_key)
+                    audio_urls.append({"filename": Path(fp).name, "url": url})
+                except Exception as e:
+                    print(f"[Train] R2 upload failed for {fp}: {e}")
+                    update_job(job_id, status="failed",
+                        message=f"학습 데이터 R2 업로드 실패: {e}")
+                    return {"job_id": job_id}
+            print(f"[Train] All {len(audio_urls)} files uploaded to R2")
+
+        if audio_urls:
+            # R2 URL 방식
+            payload = {
+                "task_type": "train",
+                "model_name": model_name,
+                "audio_urls": audio_urls,
+                "sample_rate": sample_rate,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "f0_method": f0_method,
+            }
+        else:
+            # base64 인라인 (소용량)
+            batches = prepare_files_for_runpod(file_paths)
+            if len(batches) > 1:
+                raise HTTPException(400,
+                    f"학습 데이터가 너무 큽니다. R2 스토리지를 설정하거나 파일 수를 줄여주세요.")
+            payload = {
+                "task_type": "train",
+                "model_name": model_name,
+                "audio_files": batches[0],
+                "sample_rate": sample_rate,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "f0_method": f0_method,
+            }
+
+        payload_size = len(json.dumps(payload))
+        print(f"[Train] Payload size: {payload_size:,} bytes, segments: {total_segments}")
+
+        runpod_job_id = runpod_client.submit_job(payload)
 
         msg = f"GPU에 작업 제출됨 ({total_segments}개 세그먼트)"
         update_job(job_id, status="running", progress=5,
