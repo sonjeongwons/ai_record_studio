@@ -1608,7 +1608,8 @@ async def clear_preprocess():
             f.unlink()
             count += 1
     with get_db() as db:
-        db.execute("UPDATE training_files SET preprocessed=0")
+        # 활성 파일만 리셋 (soft-deleted 파일은 유지 → 재업로드 시 전처리 상태 복원용)
+        db.execute("UPDATE training_files SET preprocessed=0 WHERE deleted=0")
     return {"cleared": count}
 
 
