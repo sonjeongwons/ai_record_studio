@@ -715,7 +715,7 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     # Save full vocal files for user download
     saved_vocals = _save_file_list(vocal_files, "vocal")
 
-    # 전처리 완료된 파일 마킹
+    # 전처리 완료된 파일 마킹 + 세그먼트 매핑 기록
     file_ids = preprocess_file_map.pop(job_id, [])
     if file_ids:
         with get_db() as db:
@@ -730,15 +730,26 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     training_files = [f for f in all_files if not f.name.startswith(("mr_", "vocal_"))]
 
     # 정확한 총 길이를 메타데이터 파일에 저장 (재시작 시 정확한 값 복원용)
+    # + 파일 ID → 세그먼트 매핑 저장 (선택적 학습 시 필터링용)
     meta_path = PREPROCESSED_DIR / "_metadata.json"
-    prev_dur = 0.0
+    meta = {}
     if meta_path.exists():
         try:
-            prev_dur = json.loads(meta_path.read_text()).get("total_duration", 0.0)
+            meta = json.loads(meta_path.read_text())
         except Exception:
             pass
+    prev_dur = meta.get("total_duration", 0.0)
     merged_dur = prev_dur + total_duration
-    meta_path.write_text(json.dumps({"total_duration": round(merged_dur, 2)}))
+    meta["total_duration"] = round(merged_dur, 2)
+
+    # file_id → segment filenames 매핑 업데이트
+    seg_map = meta.get("file_segments", {})
+    if file_ids and saved_files:
+        seg_names = [s["filename"] for s in saved_files]
+        for fid in file_ids:
+            seg_map[str(fid)] = seg_map.get(str(fid), []) + seg_names
+    meta["file_segments"] = seg_map
+    meta_path.write_text(json.dumps(meta))
 
     return {
         "segment_count": len(training_files),
@@ -1299,17 +1310,29 @@ async def start_training(
                         if not f.name.startswith(("mr_", "vocal_"))]
 
     if all_preprocessed and file_ids:
-        # 선택된 파일의 세그먼트만 필터링 (파일명 stem 매칭)
-        selected_stems = set()
-        for r in rows:
-            # filename: "a1b2c3d4_song.mp3" → stem: "a1b2c3d4_song"
-            selected_stems.add(Path(r["filename"]).stem)
-        preprocessed_files = [
-            f for f in all_preprocessed
-            if any(f.name.startswith(stem) for stem in selected_stems)
-        ]
-        if not preprocessed_files:
-            # stem 매칭 실패 시 (이전 세그먼트 형식) 전체 사용
+        # 메타데이터의 file_id → segment 매핑으로 필터링
+        meta_path = PREPROCESSED_DIR / "_metadata.json"
+        seg_map = {}
+        if meta_path.exists():
+            try:
+                seg_map = json.loads(meta_path.read_text()).get("file_segments", {})
+            except Exception:
+                pass
+
+        ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+        selected_seg_names = set()
+        for fid in ids:
+            selected_seg_names.update(seg_map.get(str(fid), []))
+
+        if selected_seg_names:
+            preprocessed_files = [
+                f for f in all_preprocessed
+                if f.name in selected_seg_names
+            ]
+            print(f"[Train] Segment filter: {len(selected_seg_names)} mapped → {len(preprocessed_files)} found on disk")
+        else:
+            # 매핑 없으면 (이전 전처리) 전체 사용
+            print(f"[Train] No segment mapping found, using all {len(all_preprocessed)} segments")
             preprocessed_files = all_preprocessed
     else:
         preprocessed_files = all_preprocessed
