@@ -2688,6 +2688,7 @@ function resetConversion() {
   batchFiles = [];
   batchResults = [];
   batchProcessing = false;
+  document.body.classList.remove('busy');
   document.getElementById('convert-main').style.display = 'block';
   document.getElementById('convert-progress').style.display = 'none';
   document.getElementById('convert-done').style.display = 'none';
@@ -2702,6 +2703,8 @@ function resetConversion() {
   var mixedBtn = document.getElementById('convert-mixed-btn');
   if (mixedBtn) mixedBtn.style.display = 'none';
   document.getElementById('btn-convert').disabled = false;
+  // file input 초기화 (같은 파일 재선택 시 change 이벤트 발생하도록)
+  document.getElementById('convert-file-input').value = '';
   loadModels();
   loadConversionHistory();
 }
