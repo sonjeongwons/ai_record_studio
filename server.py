@@ -860,8 +860,11 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                     db.execute("""
                         UPDATE conversions SET output_file=?, output_name=?,
                             processing_time=?, status='completed'
-                        WHERE status='processing'
-                        ORDER BY created_at DESC LIMIT 1
+                        WHERE rowid = (
+                            SELECT rowid FROM conversions
+                            WHERE status='processing'
+                            ORDER BY created_at DESC LIMIT 1
+                        )
                     """, (out_filename, result_data.get("mixed_file", out_filename),
                           output.get("processing_time_seconds", 0)))
 
