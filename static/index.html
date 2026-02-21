@@ -824,8 +824,14 @@ input[type="range"]::-webkit-slider-thumb {
     <input type="file" id="train-file-input" multiple accept=".wav,.mp3,.flac,.ogg,.m4a,.mp4,.mkv,.webm" style="display:none">
 
     <div class="flex-between mt-16 mb-16" id="file-list-header" style="display:none">
-      <span style="font-size:13px;color:var(--text2)" id="file-count-label"></span>
-      <button class="btn btn-danger" onclick="clearAllFiles()" style="padding:6px 12px;font-size:11px">전체 삭제</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="display:flex;align-items:center;cursor:pointer;gap:4px;font-size:12px;color:var(--text3)" title="전체 선택/해제">
+          <input type="checkbox" id="select-all-cb" checked onchange="toggleSelectAll(this.checked)" style="accent-color:#8b5cf6;width:15px;height:15px">
+          전체
+        </label>
+        <span style="font-size:13px;color:var(--text2)" id="file-count-label"></span>
+      </div>
+      <button class="btn btn-danger" onclick="deleteSelectedFiles()" style="padding:6px 12px;font-size:11px">선택 삭제</button>
     </div>
     <div id="file-list"></div>
 
@@ -845,12 +851,12 @@ input[type="range"]::-webkit-slider-thumb {
         <!-- Preprocess: idle -->
         <div id="preprocess-idle">
           <div class="alert alert-info" style="margin-bottom:14px">
-            <span>음원에서 보컬만 추출하고 학습에 적합한 구간으로 자동 분할합니다. 이미 깨끗한 보컬 파일이라면 건너뛸 수 있습니다.</span>
+            <span>체크된 파일만 전처리 및 학습에 사용됩니다. 체크 해제한 파일은 제외됩니다.</span>
           </div>
           <div class="flex gap-8">
             <button class="btn btn-primary" onclick="startPreprocess()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-              자동 전처리 시작
+              선택 파일 전처리
             </button>
             <button class="skip-link" onclick="skipPreprocess()">건너뛰기 (이미 정리된 보컬)</button>
           </div>
@@ -905,13 +911,16 @@ input[type="range"]::-webkit-slider-thumb {
             </div>
           </div>
           <button class="skip-link" onclick="resetPreprocess()" style="margin-top:8px">
-            다시 전처리
+            선택 파일 다시 전처리
           </button>
         </div>
       </div>
     </div>
 
     <div class="card mt-24" id="train-settings-card">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;padding:8px 12px;border-radius:6px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.15)">
+        위 파일 목록에서 체크된 파일만 학습에 사용됩니다. 학습에 포함하지 않을 파일은 체크를 해제하세요.
+      </div>
       <h2 style="margin-bottom:16px">학습 설정</h2>
       <div class="grid-3">
         <div>
@@ -1730,11 +1739,24 @@ function updateTrainSelection() {
   var selected = getSelectedFileIds();
   var total = document.querySelectorAll('.train-file-cb').length;
   var label = document.getElementById('file-count-label');
-  if (label && selected.length < total) {
-    var totalSize = uploadedFiles.reduce(function(a, f) { return a + (f.size || f.file_size || 0); }, 0);
-    label.textContent = uploadedFiles.length + '개 파일 \u00B7 ' + formatSize(totalSize) +
-      ' (학습: ' + selected.length + '/' + total + '개 선택)';
+  if (!label) return;
+  var totalSize = uploadedFiles.reduce(function(a, f) { return a + (f.size || f.file_size || 0); }, 0);
+  var base = uploadedFiles.length + '개 파일 \u00B7 ' + formatSize(totalSize);
+  if (total > 0 && selected.length < total) {
+    label.textContent = base + ' (학습: ' + selected.length + '/' + total + '개 선택)';
+  } else {
+    label.textContent = base;
   }
+  // 전체 선택 체크박스 동기화
+  var selectAllCb = document.getElementById('select-all-cb');
+  if (selectAllCb) selectAllCb.checked = (selected.length === total);
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.train-file-cb').forEach(function(cb) {
+    cb.checked = checked;
+  });
+  updateTrainSelection();
 }
 
 async function deleteFile(id) {
@@ -1743,23 +1765,33 @@ async function deleteFile(id) {
   renderFileList();
 }
 
-async function clearAllFiles() {
-  for (var i = 0; i < uploadedFiles.length; i++) {
-    await api('/files/' + uploadedFiles[i].id, { method: 'DELETE' });
+async function deleteSelectedFiles() {
+  var selected = getSelectedFileIds();
+  if (selected.length === 0) {
+    toast('삭제할 파일을 선택해 주세요', 'warning');
+    return;
   }
-  uploadedFiles = [];
+  var confirmMsg = selected.length + '개 파일을 삭제하시겠습니까?';
+  if (!confirm(confirmMsg)) return;
+  for (var i = 0; i < selected.length; i++) {
+    await api('/files/' + selected[i], { method: 'DELETE' });
+  }
+  var selectedSet = new Set(selected.map(String));
+  uploadedFiles = uploadedFiles.filter(function(f) { return !selectedSet.has(String(f.id)); });
   renderFileList();
+  toast(selected.length + '개 파일 삭제됨', 'info');
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Preprocess
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function startPreprocess() {
-  var fileIds = uploadedFiles.map(function(f) { return f.id; }).join(',');
-  if (!fileIds) {
-    toast('전처리할 파일이 없습니다', 'warning');
+  var selectedIds = getSelectedFileIds();
+  if (selectedIds.length === 0) {
+    toast('전처리할 파일을 선택해 주세요', 'warning');
     return;
   }
+  var fileIds = selectedIds.join(',');
 
   document.getElementById('preprocess-idle').style.display = 'none';
   document.getElementById('preprocess-running').style.display = 'block';
@@ -1871,9 +1903,26 @@ function cancelPreprocess() {
 }
 
 async function resetPreprocess() {
+  var selectedIds = getSelectedFileIds();
+  if (selectedIds.length === 0) {
+    toast('다시 전처리할 파일을 선택해 주세요', 'warning');
+    return;
+  }
+  var total = document.querySelectorAll('.train-file-cb').length;
+  var isAll = selectedIds.length === total;
+
   try {
-    await api('/preprocess', { method: 'DELETE' });
+    if (isAll) {
+      // 전체 초기화
+      await api('/preprocess', { method: 'DELETE' });
+    } else {
+      // 선택한 파일만 초기화
+      var form = new FormData();
+      form.append('file_ids', selectedIds.join(','));
+      await api('/preprocess/reset', { method: 'POST', body: form });
+    }
   } catch(e) { /* ignore */ }
+
   preprocessDone = false;
   preprocessJobId = null;
   document.getElementById('preprocess-done').style.display = 'none';
@@ -1883,8 +1932,9 @@ async function resetPreprocess() {
   var dlSection = document.getElementById('preprocess-downloads');
   if (dlSection) dlSection.style.display = 'none';
   document.getElementById('btn-start-train').disabled = true;
-  toast('전처리 초기화됨. 다시 전처리하거나 건너뛸 수 있습니다.', 'info');
-  // 파일 배지 새로고침 (모두 "미처리"로)
+  var msg = isAll ? '전처리 초기화됨.' : selectedIds.length + '개 파일 전처리 초기화됨.';
+  toast(msg + ' 다시 전처리하거나 건너뛸 수 있습니다.', 'info');
+  // 파일 배지 새로고침
   try {
     var r = await api('/files');
     uploadedFiles = r.files || [];

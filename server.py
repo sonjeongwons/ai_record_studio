@@ -675,9 +675,20 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     all_files = _list_preprocessed_files()
     training_files = [f for f in all_files if not f.name.startswith(("mr_", "vocal_"))]
 
+    # 정확한 총 길이를 메타데이터 파일에 저장 (재시작 시 정확한 값 복원용)
+    meta_path = PREPROCESSED_DIR / "_metadata.json"
+    prev_dur = 0.0
+    if meta_path.exists():
+        try:
+            prev_dur = json.loads(meta_path.read_text()).get("total_duration", 0.0)
+        except Exception:
+            pass
+    merged_dur = prev_dur + total_duration
+    meta_path.write_text(json.dumps({"total_duration": round(merged_dur, 2)}))
+
     return {
         "segment_count": len(training_files),
-        "total_duration": round(total_duration, 2),
+        "total_duration": round(merged_dur, 2),
         "segment_files": [f.name for f in training_files],
         "accompaniment_files": [s["filename"] for s in saved_accomp],
         "vocal_files": [s["filename"] for s in saved_vocals],
@@ -1439,17 +1450,33 @@ async def preprocess_status():
         else:
             training_segments.append(f)
 
+    # 메타데이터 파일에서 정확한 총 길이 읽기 (핸들러가 계산한 값)
     total_dur = 0.0
-    import wave
-    for f in training_segments:
+    meta_path = PREPROCESSED_DIR / "_metadata.json"
+    if meta_path.exists():
         try:
-            if f.suffix.lower() == ".wav":
-                with wave.open(str(f), "rb") as wf:
-                    total_dur += wf.getnframes() / wf.getframerate()
-            elif f.suffix.lower() == ".mp3":
-                total_dur += f.stat().st_size / 24000.0
+            total_dur = json.loads(meta_path.read_text()).get("total_duration", 0.0)
         except Exception:
             pass
+
+    # 메타데이터 없으면 WAV 파일에서 직접 계산 (폴백)
+    if total_dur == 0.0:
+        import wave
+        for f in training_segments:
+            try:
+                if f.suffix.lower() == ".wav":
+                    with wave.open(str(f), "rb") as wf:
+                        total_dur += wf.getnframes() / wf.getframerate()
+                elif f.suffix.lower() == ".mp3":
+                    # MP3: pydub 사용 가능하면 정확, 아니면 비트레이트 기반 추정
+                    try:
+                        from pydub import AudioSegment
+                        audio = AudioSegment.from_mp3(str(f))
+                        total_dur += len(audio) / 1000.0
+                    except Exception:
+                        total_dur += f.stat().st_size / 24000.0
+            except Exception:
+                pass
 
     return {
         "preprocessed": True,
@@ -1483,6 +1510,48 @@ async def clear_preprocess():
     with get_db() as db:
         db.execute("UPDATE training_files SET preprocessed=0")
     return {"cleared": count}
+
+
+@app.post("/api/preprocess/reset")
+async def reset_preprocess_selected(file_ids: str = Form(...)):
+    """선택한 파일의 전처리 상태만 초기화 — 해당 파일의 세그먼트 삭제 + DB 플래그 리셋"""
+    ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+    if not ids:
+        raise HTTPException(400, "초기화할 파일을 선택하세요.")
+
+    # 선택한 파일의 stem 목록 조회
+    with get_db() as db:
+        placeholders = ",".join("?" * len(ids))
+        rows = db.execute(
+            f"SELECT filename FROM training_files WHERE id IN ({placeholders}) AND deleted=0", ids
+        ).fetchall()
+
+    stems = set()
+    for r in rows:
+        stems.add(Path(r["filename"]).stem)
+
+    # 해당 stem으로 시작하는 전처리 세그먼트 삭제
+    removed = 0
+    if stems:
+        for f in PREPROCESSED_DIR.iterdir():
+            if f.is_file() and f.name != "_metadata.json":
+                if any(f.name.startswith(stem) for stem in stems):
+                    f.unlink()
+                    removed += 1
+
+    # DB 플래그 리셋
+    with get_db() as db:
+        placeholders = ",".join("?" * len(ids))
+        db.execute(
+            f"UPDATE training_files SET preprocessed=0 WHERE id IN ({placeholders})", ids
+        )
+
+    # 메타데이터 갱신 (남은 세그먼트 기준으로 재계산)
+    meta_path = PREPROCESSED_DIR / "_metadata.json"
+    if meta_path.exists():
+        meta_path.unlink()
+
+    return {"cleared": removed, "reset_files": len(rows)}
 
 
 # ─── 변환 API ───
