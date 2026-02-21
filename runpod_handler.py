@@ -1649,9 +1649,26 @@ def task_convert(job_input: dict, job: dict) -> dict:
             )
 
         # --- Step 4: Mix converted vocals + original accompaniment ---
+        mixed_path = None
+        if accomp_path and accomp_path.exists():
+            runpod.serverless.progress_update(job, "Mixing vocals + accompaniment... (4/4)")
+            mixed_path = work / f"mixed_output.{export_format}"
+            try:
+                _mix_audio(converted_vocals_path, accomp_path, mixed_path,
+                           vocal_volume=vocal_volume, mr_volume=mr_volume)
+                if mixed_path.exists():
+                    log.info("Mixed output created successfully")
+                else:
+                    mixed_path = None
+            except Exception as e:
+                log.error(f"Mixing failed (returning vocals only): {e}")
+                mixed_path = None
+
+        elapsed = time.time() - start_time
+
         result = {
-            "converted_audio": encode_file_b64(converted_vocals_path),
             "filename": f"converted_{Path(audio_filename).stem}.{export_format}",
+            "processing_time_seconds": round(elapsed, 2),
             "parameters": {
                 "pitch_shift": pitch_shift,
                 "f0_method": f0_method,
@@ -1662,21 +1679,58 @@ def task_convert(job_input: dict, job: dict) -> dict:
             },
         }
 
-        if accomp_path and accomp_path.exists():
-            runpod.serverless.progress_update(job, "Mixing vocals + accompaniment... (4/4)")
-            mixed_path = work / f"mixed_output.{export_format}"
+        # 결과 파일을 R2에 업로드 (RunPod 응답 한도 ~20MB 초과 방지)
+        # 소용량이면 inline base64, 대용량이면 R2 URL
+        vocals_size = converted_vocals_path.stat().st_size
+        mixed_size = mixed_path.stat().st_size if mixed_path else 0
+        total_b64_size = (vocals_size + mixed_size) * 4 / 3  # base64 overhead
+
+        if total_b64_size > 10_000_000:  # 10MB 이상이면 R2 업로드
+            log.info(f"Result too large for inline ({total_b64_size / 1024 / 1024:.1f} MB b64), uploading to R2")
             try:
-                _mix_audio(converted_vocals_path, accomp_path, mixed_path,
-                           vocal_volume=vocal_volume, mr_volume=mr_volume)
-                if mixed_path.exists():
+                from runpod.serverless.utils import upload_file_to_bucket
+                bucket_name = os.environ.get("BUCKET_NAME", "voice-studio")
+
+                vocals_url = upload_file_to_bucket(
+                    file_name=f"converted_{Path(audio_filename).stem}.{export_format}",
+                    file_location=str(converted_vocals_path),
+                    prefix=f"voice-studio/convert/{job_id}",
+                    bucket_name=bucket_name,
+                )
+                if vocals_url and vocals_url.startswith("http"):
+                    result["converted_audio_url"] = vocals_url
+                    log.info(f"Converted vocals uploaded to R2: {vocals_url[:80]}...")
+                else:
+                    # R2 미설정 → inline fallback
+                    result["converted_audio"] = encode_file_b64(converted_vocals_path)
+
+                if mixed_path:
+                    mixed_url = upload_file_to_bucket(
+                        file_name=f"mixed_{Path(audio_filename).stem}.{export_format}",
+                        file_location=str(mixed_path),
+                        prefix=f"voice-studio/convert/{job_id}",
+                        bucket_name=bucket_name,
+                    )
+                    if mixed_url and mixed_url.startswith("http"):
+                        result["mixed_audio_url"] = mixed_url
+                        result["mixed_filename"] = f"mixed_{Path(audio_filename).stem}.{export_format}"
+                        log.info(f"Mixed audio uploaded to R2: {mixed_url[:80]}...")
+                    else:
+                        result["mixed_audio"] = encode_file_b64(mixed_path)
+                        result["mixed_filename"] = f"mixed_{Path(audio_filename).stem}.{export_format}"
+            except Exception as e:
+                log.warning(f"R2 upload failed, trying inline base64: {e}")
+                result["converted_audio"] = encode_file_b64(converted_vocals_path)
+                if mixed_path:
                     result["mixed_audio"] = encode_file_b64(mixed_path)
                     result["mixed_filename"] = f"mixed_{Path(audio_filename).stem}.{export_format}"
-                    log.info("Mixed output created successfully")
-            except Exception as e:
-                log.error(f"Mixing failed (returning vocals only): {e}")
+        else:
+            # 소용량 → inline base64
+            result["converted_audio"] = encode_file_b64(converted_vocals_path)
+            if mixed_path:
+                result["mixed_audio"] = encode_file_b64(mixed_path)
+                result["mixed_filename"] = f"mixed_{Path(audio_filename).stem}.{export_format}"
 
-        elapsed = time.time() - start_time
-        result["processing_time_seconds"] = round(elapsed, 2)
         return result
 
     finally:

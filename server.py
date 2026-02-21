@@ -815,22 +815,42 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                       result_json=json.dumps({"model_name": model_name}))
 
         elif job_type == "convert":
-            # 변환 파일 저장 (보컬 + 믹스)
-            if output.get("converted_audio"):
-                out_filename = output.get("filename", f"converted_{job_id[:8]}.wav")
-                out_path = str(OUTPUT_DIR / out_filename)
+            # 변환 파일 저장 (보컬 + 믹스) — R2 URL 또는 inline base64
+            out_filename = output.get("filename", f"converted_{job_id[:8]}.wav")
+            out_path = OUTPUT_DIR / out_filename
+            has_vocals = False
+
+            # R2 URL → 다운로드
+            if output.get("converted_audio_url"):
+                resp = requests.get(output["converted_audio_url"], timeout=300)
+                resp.raise_for_status()
+                with open(out_path, "wb") as f:
+                    f.write(resp.content)
+                has_vocals = True
+                print(f"[Convert] Downloaded vocals from R2: {len(resp.content):,} bytes")
+            # inline base64
+            elif output.get("converted_audio"):
                 with open(out_path, "wb") as f:
                     f.write(base64.b64decode(output["converted_audio"]))
+                has_vocals = True
 
+            if has_vocals:
                 result_data = {
                     "output_file": out_filename,
                     "processing_time": output.get("processing_time_seconds", 0),
                 }
 
-                # 믹스 파일도 저장 (보컬+반주 합성)
-                if output.get("mixed_audio"):
-                    mixed_filename = output.get("mixed_filename", f"mixed_{job_id[:8]}.wav")
-                    mixed_path = str(OUTPUT_DIR / mixed_filename)
+                # 믹스 파일도 저장 — R2 URL 또는 inline base64
+                mixed_filename = output.get("mixed_filename", f"mixed_{job_id[:8]}.wav")
+                mixed_path = OUTPUT_DIR / mixed_filename
+                if output.get("mixed_audio_url"):
+                    resp = requests.get(output["mixed_audio_url"], timeout=300)
+                    resp.raise_for_status()
+                    with open(mixed_path, "wb") as f:
+                        f.write(resp.content)
+                    result_data["mixed_file"] = mixed_filename
+                    print(f"[Convert] Downloaded mixed from R2: {len(resp.content):,} bytes")
+                elif output.get("mixed_audio"):
                     with open(mixed_path, "wb") as f:
                         f.write(base64.b64decode(output["mixed_audio"]))
                     result_data["mixed_file"] = mixed_filename
