@@ -1012,19 +1012,27 @@ def _rvc_preprocess(
     model_name: str, dataset_path: str, sample_rate: int, logs_dir: Path
 ) -> None:
     """
-    RVC preprocessing: resample and organize audio for training.
+    RVC preprocessing: slice, resample and organize audio for training.
 
     Self-contained implementation using FFmpeg — avoids Applio's import chain
     (core.py → launch_tensorboard → tensorboard, etc.) which frequently breaks.
 
+    Steps:
+      1) Slice each audio file into ~1.5s segments (Applio's expected segment size)
+      2) Resample segments to target sample rate → sliced_audios/
+      3) Resample segments to 16kHz → sliced_audios_16k/
+
     Creates the directory structure current Applio expects:
-      - logs/{model_name}/sliced_audios/     → audio at target sample rate
-      - logs/{model_name}/sliced_audios_16k/ → audio at 16kHz (for extraction)
+      - logs/{model_name}/sliced_audios/     → sliced audio at target sample rate
+      - logs/{model_name}/sliced_audios_16k/ → sliced audio at 16kHz (for extraction)
 
     Also creates config.json from rvc/configs/{sample_rate}.json template.
     """
+    SLICE_DURATION = 1.5  # seconds — Applio's standard segment size
+
     gt_dir = ensure_dir(logs_dir / "sliced_audios")
     sr16k_dir = ensure_dir(logs_dir / "sliced_audios_16k")
+    tmp_slices = ensure_dir(logs_dir / "_tmp_slices")
 
     dataset = Path(dataset_path)
     audio_files = sorted(
@@ -1043,37 +1051,67 @@ def _rvc_preprocess(
                 log.warning(f"Skipping too-short file ({duration:.1f}s): {audio_file.name}")
                 continue
 
-            padded = f"{idx:07d}"
+            if duration <= SLICE_DURATION * 1.5:
+                # Short file — use as single segment (no slicing needed)
+                slice_paths = [audio_file]
+            else:
+                # Slice into ~1.5s segments using FFmpeg segment muxer
+                slice_prefix = tmp_slices / f"s{idx:04d}"
+                slice_pattern = f"{slice_prefix}_%05d.wav"
+                run_ffmpeg([
+                    "-i", str(audio_file),
+                    "-f", "segment",
+                    "-segment_time", str(SLICE_DURATION),
+                    "-ac", "1",
+                    "-acodec", "pcm_s16le",
+                    "-ar", "44100",
+                    slice_pattern,
+                ])
+                slice_paths = sorted(tmp_slices.glob(f"s{idx:04d}_*.wav"))
+                if not slice_paths:
+                    log.warning(f"Slicing produced 0 segments for {audio_file.name}")
+                    continue
 
-            # Save at target sample rate (mono, 16-bit PCM, soxr HQ resampler)
-            gt_path = gt_dir / f"{padded}.wav"
-            run_ffmpeg([
-                "-i", str(audio_file),
-                "-af", f"aresample=resampler=soxr:precision=28:osr={sample_rate}",
-                "-ac", "1",
-                "-acodec", "pcm_s16le",
-                str(gt_path),
-            ])
+            for sp in slice_paths:
+                seg_dur = get_audio_duration(sp)
+                if seg_dur < 0.3:
+                    continue  # skip very short tail segments
 
-            # Save at 16kHz for F0 & feature extraction (soxr HQ resampler)
-            sr16k_path = sr16k_dir / f"{padded}.wav"
-            run_ffmpeg([
-                "-i", str(audio_file),
-                "-af", "aresample=resampler=soxr:precision=28:osr=16000",
-                "-ac", "1",
-                "-acodec", "pcm_s16le",
-                str(sr16k_path),
-            ])
+                padded = f"{idx:07d}"
 
-            idx += 1
+                # Save at target sample rate (mono, 16-bit PCM, soxr HQ resampler)
+                gt_path = gt_dir / f"{padded}.wav"
+                run_ffmpeg([
+                    "-i", str(sp),
+                    "-af", f"aresample=resampler=soxr:precision=28:osr={sample_rate}",
+                    "-ac", "1",
+                    "-acodec", "pcm_s16le",
+                    str(gt_path),
+                ])
+
+                # Save at 16kHz for F0 & feature extraction (soxr HQ resampler)
+                sr16k_path = sr16k_dir / f"{padded}.wav"
+                run_ffmpeg([
+                    "-i", str(sp),
+                    "-af", "aresample=resampler=soxr:precision=28:osr=16000",
+                    "-ac", "1",
+                    "-acodec", "pcm_s16le",
+                    str(sr16k_path),
+                ])
+
+                idx += 1
+
         except Exception as e:
             log.warning(f"Failed to preprocess {audio_file.name}: {e}")
             continue
 
+    # Cleanup temp slices
+    cleanup_dir(tmp_slices)
+
     if idx == 0:
         raise RuntimeError("전처리에 성공한 오디오 파일이 없습니다")
 
-    log.info(f"RVC preprocess completed: {idx} files → {gt_dir} + {sr16k_dir}")
+    log.info(f"RVC preprocess completed: {idx} sliced segments → {gt_dir} + {sr16k_dir}")
 
     # Create config.json from Applio's sample-rate template
     config_src = APPLIO_ROOT / "rvc" / "configs" / f"{sample_rate}.json"
