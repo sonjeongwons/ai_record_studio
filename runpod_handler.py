@@ -1383,28 +1383,41 @@ def _rvc_train(
             child_error += line
             # Keep it but don't raise yet — collect more context
 
-        # Parse epoch progress from training output
-        # Formats: "Epoch: 50/300", "Epoch 50/300", tqdm "50/300 [00:01<..."
-        if "Epoch" in line or "epoch" in line or ("/" in line and "|" in line):
+        # Parse epoch progress from training output.
+        # Applio outputs: "model | epoch=394 | step=14578 | ..."
+        # Also tqdm batch bars: "35%|███▌ | 13/37 [00:03<00:05, 4.49it/s]"
+        # We must distinguish epoch lines from tqdm batch bars.
+        import re as _re
+        prev_epoch = epoch_count
+        epoch_match = _re.search(r'epoch[=:\s]+(\d+)', line, _re.IGNORECASE)
+        if epoch_match:
+            parsed_epoch = int(epoch_match.group(1))
+            if parsed_epoch > epoch_count:
+                epoch_count = parsed_epoch
+        elif ("Epoch" in line or "epoch" in line) and "/" in line and "it/s" not in line:
+            # Fallback: "Epoch 50/300" format (NOT tqdm batch bars)
             try:
                 for part in line.replace(":", " ").split():
                     if "/" in part:
                         current, total = part.split("/")[:2]
                         current = current.strip().lstrip("|").strip()
                         if current.isdigit() and total.strip().isdigit():
-                            epoch_count = int(current)
+                            parsed_epoch = int(current)
+                            if parsed_epoch > epoch_count:
+                                epoch_count = parsed_epoch
                             break
             except (ValueError, IndexError):
                 pass
 
-            if epoch_count > 0:
-                pct = min(95, int((epoch_count / epochs) * 100))
-                try:
-                    runpod.serverless.progress_update(
-                        job, f"Training epoch {epoch_count}/{epochs} ({pct}%)"
-                    )
-                except Exception:
-                    pass
+        # Only send progress_update when epoch actually advances (avoid spam)
+        if epoch_count > prev_epoch:
+            pct = min(95, int((epoch_count / epochs) * 100))
+            try:
+                runpod.serverless.progress_update(
+                    job, f"Training epoch {epoch_count}/{epochs} ({pct}%)"
+                )
+            except Exception:
+                pass
 
     proc.wait(timeout=36000)  # 10-hour timeout
     if proc.returncode != 0:
