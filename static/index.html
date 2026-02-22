@@ -586,11 +586,39 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .audio-play-btn:hover { background: rgba(139,92,246,0.25); }
 .audio-play-btn svg { width: 12px; height: 12px; fill: currentColor; }
-.audio-waveform {
+.audio-progress-wrap {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.audio-waveform {
+  width: 100%;
   height: 28px;
   border-radius: 4px;
   cursor: pointer;
+}
+.audio-seekbar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.08);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.audio-seekbar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--violet);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+.audio-time-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 .audio-time {
   font-size: 10px;
@@ -1217,8 +1245,16 @@ input[type="range"]::-webkit-slider-thumb {
         <button class="audio-play-btn" id="result-play-btn" onclick="toggleResultAudio()">
           <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
         </button>
-        <canvas class="audio-waveform" id="result-waveform"></canvas>
-        <span class="audio-time" id="result-audio-time">0:00</span>
+        <div class="audio-progress-wrap">
+          <canvas class="audio-waveform" id="result-waveform"></canvas>
+          <div class="audio-seekbar" id="result-seekbar" onclick="resultSeek(event)">
+            <div class="audio-seekbar-fill" id="result-seekbar-fill"></div>
+          </div>
+        </div>
+        <div class="audio-time-row" style="flex-direction:column;gap:0">
+          <span class="audio-time" id="result-audio-time">0:00</span>
+          <span class="audio-time" id="result-audio-dur" style="color:var(--text3);opacity:0.6">0:00</span>
+        </div>
         <audio id="result-audio" preload="auto"></audio>
       </div>
       <div class="flex mt-16 gap-8" style="flex-wrap:wrap">
@@ -1466,9 +1502,17 @@ function createAudioPlayer(audioUrl, containerId) {
     '<button class="audio-play-btn" onclick="apToggle(\'' + uid + '\')">' +
       '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>' +
     '</button>' +
-    '<canvas class="audio-waveform" id="' + uid + '_wave"></canvas>' +
-    '<span class="audio-time" id="' + uid + '_time">0:00</span>' +
-    '<audio id="' + uid + '_audio" src="' + audioUrl + '" preload="metadata"></audio>' +
+    '<div class="audio-progress-wrap">' +
+      '<canvas class="audio-waveform" id="' + uid + '_wave"></canvas>' +
+      '<div class="audio-seekbar" id="' + uid + '_seekbar" onclick="apSeek(event,\'' + uid + '\')">' +
+        '<div class="audio-seekbar-fill" id="' + uid + '_fill"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="audio-time-row" style="flex-direction:column;gap:0">' +
+      '<span class="audio-time" id="' + uid + '_time">0:00</span>' +
+      '<span class="audio-time" id="' + uid + '_dur" style="color:var(--text3);opacity:0.6">0:00</span>' +
+    '</div>' +
+    '<audio id="' + uid + '_audio" src="' + encodeURI(audioUrl) + '" preload="metadata"></audio>' +
   '</div>';
 }
 
@@ -1514,7 +1558,27 @@ function apUpdateTime(uid) {
   var m = Math.floor(t / 60);
   var s = Math.floor(t % 60);
   timeEl.textContent = m + ':' + s.toString().padStart(2, '0');
-  apRedraw(uid, audio.currentTime / (audio.duration || 1));
+  var progress = audio.currentTime / (audio.duration || 1);
+  apRedraw(uid, progress);
+  // Update seekbar fill
+  var fill = document.getElementById(uid + '_fill');
+  if (fill) fill.style.width = (progress * 100) + '%';
+  // Update duration display
+  var durEl = document.getElementById(uid + '_dur');
+  if (durEl && audio.duration && isFinite(audio.duration)) {
+    var dm = Math.floor(audio.duration / 60);
+    var ds = Math.floor(audio.duration % 60);
+    durEl.textContent = dm + ':' + ds.toString().padStart(2, '0');
+  }
+}
+
+function apSeek(e, uid) {
+  var audio = document.getElementById(uid + '_audio');
+  var bar = document.getElementById(uid + '_seekbar');
+  if (!audio || !bar || !audio.duration) return;
+  var rect = bar.getBoundingClientRect();
+  var pct = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = pct * audio.duration;
 }
 
 function apDrawWaveform(uid) {
@@ -1607,13 +1671,15 @@ async function api(path, opts) {
 }
 
 function downloadFile(url, filename) {
-  fetch(url).then(function(res) {
-    if (!res.ok) throw new Error('Download failed');
+  // URL이 이미 인코딩된 경우(%가 포함) 그대로, 아니면 인코딩
+  var fetchUrl = url.indexOf('%') >= 0 ? url : encodeURI(url);
+  fetch(fetchUrl).then(function(res) {
+    if (!res.ok) throw new Error('Download failed (' + res.status + ')');
     return res.blob();
   }).then(function(blob) {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = filename || url.split('/').pop();
+    a.download = filename || decodeURIComponent(url.split('/').pop());
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2514,7 +2580,7 @@ async function pollConvertStatus() {
         '처리 시간: ' + (time ? time.toFixed(1) + '초' : '-');
 
       if (outFile) {
-        var dlUrl = '/api/download/' + outFile;
+        var dlUrl = '/api/download/' + encodeURIComponent(outFile);
         var dlBtn = document.getElementById('convert-download-btn');
         dlBtn.dataset.url = dlUrl;
         dlBtn.dataset.fname = outFile;
@@ -2523,7 +2589,7 @@ async function pollConvertStatus() {
         var mixedFile = job.result ? job.result.mixed_file : null;
         var mixedBtn = document.getElementById('convert-mixed-btn');
         if (mixedFile && mixedBtn) {
-          mixedBtn.dataset.url = '/api/download/' + mixedFile;
+          mixedBtn.dataset.url = '/api/download/' + encodeURIComponent(mixedFile);
           mixedBtn.dataset.fname = mixedFile;
           mixedBtn.style.display = 'inline-flex';
         } else if (mixedBtn) {
@@ -2534,7 +2600,7 @@ async function pollConvertStatus() {
         var playerEl = document.getElementById('convert-result-player');
         var audioEl = document.getElementById('result-audio');
         if (playerEl && audioEl) {
-          audioEl.src = mixedFile ? '/api/download/' + mixedFile : dlUrl;
+          audioEl.src = mixedFile ? '/api/download/' + encodeURIComponent(mixedFile) : dlUrl;
           playerEl.style.display = 'flex';
           setTimeout(function() {
             var canvas = document.getElementById('result-waveform');
@@ -2563,7 +2629,16 @@ async function pollConvertStatus() {
                 var m = Math.floor(t / 60);
                 var s = Math.floor(t % 60);
                 document.getElementById('result-audio-time').textContent = m + ':' + s.toString().padStart(2, '0');
-                apRedraw('result_player', audioEl.currentTime / (audioEl.duration || 1));
+                var progress = audioEl.currentTime / (audioEl.duration || 1);
+                apRedraw('result_player', progress);
+                var fill = document.getElementById('result-seekbar-fill');
+                if (fill) fill.style.width = (progress * 100) + '%';
+                var durEl = document.getElementById('result-audio-dur');
+                if (durEl && audioEl.duration && isFinite(audioEl.duration)) {
+                  var dm = Math.floor(audioEl.duration / 60);
+                  var ds = Math.floor(audioEl.duration % 60);
+                  durEl.textContent = dm + ':' + ds.toString().padStart(2, '0');
+                }
               };
             }
           }, 100);
@@ -2592,6 +2667,15 @@ function toggleResultAudio() {
   var audio = document.getElementById('result-audio');
   var btn = document.getElementById('result-play-btn');
   if (!audio) return;
+  // Pause all other players
+  document.querySelectorAll('.audio-player audio').forEach(function(a) {
+    if (a.id !== 'result-audio' && !a.paused) {
+      a.pause();
+      var otherUid = a.id.replace('_audio', '');
+      var otherBtn = document.querySelector('#' + otherUid + ' .audio-play-btn');
+      if (otherBtn) otherBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+    }
+  });
   if (audio.paused) {
     audio.play();
     btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/></svg>';
@@ -2602,6 +2686,15 @@ function toggleResultAudio() {
     audio.pause();
     btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
   }
+}
+
+function resultSeek(e) {
+  var audio = document.getElementById('result-audio');
+  var bar = document.getElementById('result-seekbar');
+  if (!audio || !bar || !audio.duration) return;
+  var rect = bar.getBoundingClientRect();
+  var pct = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = pct * audio.duration;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2805,25 +2898,29 @@ async function loadConversionHistory() {
     container.style.display = 'block';
     document.getElementById('conversion-history-count').textContent = list.length + '개';
     listEl.innerHTML = list.map(function(c) {
-      var displayName = c.output_name || c.output_file || '-';
-      return '<div class="conversion-item">' +
-        '<div class="file-icon" style="flex-shrink:0">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
-        '</div>' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (c.input_file || '-') + '</div>' +
-          '<div style="font-size:10px;color:var(--text3)">' +
-            (c.model_name || '삭제된 모델') +
-            (c.processing_time ? ' · ' + c.processing_time.toFixed(1) + '초' : '') +
-            ' · ' + (c.created_at || '') +
+      var audioUrl = '/api/download/' + encodeURIComponent(c.output_file);
+      var playerHtml = createAudioPlayer(audioUrl);
+      return '<div class="conversion-item" style="flex-direction:column;align-items:stretch">' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<div class="file-icon" style="flex-shrink:0">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
           '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (c.input_file || '-') + '</div>' +
+            '<div style="font-size:10px;color:var(--text3)">' +
+              (c.model_name || '삭제된 모델') +
+              (c.processing_time ? ' · ' + c.processing_time.toFixed(1) + '초' : '') +
+              ' · ' + (c.created_at || '') +
+            '</div>' +
+          '</div>' +
+          '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + encodeURIComponent(c.output_file) + '\', \'' + c.output_file.replace(/'/g, "\\'") + '\')" title="다운로드">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
+          '</button>' +
+          '<button class="btn-conv-action btn-conv-delete" onclick="deleteConversion(' + c.id + ')" title="삭제">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+          '</button>' +
         '</div>' +
-        '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + c.output_file + '\', \'' + c.output_file + '\')" title="다운로드">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
-        '</button>' +
-        '<button class="btn-conv-action btn-conv-delete" onclick="deleteConversion(' + c.id + ')" title="삭제">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
-        '</button>' +
+        playerHtml +
       '</div>';
     }).join('');
   } catch(e) {}

@@ -1946,12 +1946,14 @@ async def delete_conversion(conv_id: int):
     return {"status": "ok"}
 
 
-@app.get("/api/download/{filename}")
+@app.get("/api/download/{filename:path}")
 async def download_file(filename: str):
-    filepath = OUTPUT_DIR / filename
+    # Path traversal 방지
+    safe_name = Path(filename).name
+    filepath = OUTPUT_DIR / safe_name
     if not filepath.exists():
         raise HTTPException(404, "파일을 찾을 수 없습니다.")
-    return FileResponse(str(filepath), filename=filename)
+    return FileResponse(str(filepath), filename=safe_name)
 
 
 # ─── 대시보드 통계 API ───
