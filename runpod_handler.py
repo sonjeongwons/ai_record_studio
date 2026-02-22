@@ -845,7 +845,7 @@ def task_train(job_input: dict, job: dict) -> dict:
 
         # --- Step 4: Train ---
         runpod.serverless.progress_update(job, f"Training model ({epochs} epochs)... (4/5)")
-        _rvc_train(
+        train_info = _rvc_train(
             model_name=model_name,
             sample_rate=sample_rate,
             epochs=epochs,
@@ -873,6 +873,10 @@ def task_train(job_input: dict, job: dict) -> dict:
                 # Log directory tree for debugging
                 dirs = sorted(set(f.parent for f in all_files))
                 log.error(f"No .pth files found! Directory tree: {[str(d) for d in dirs]}")
+                # Also list actual files for more detail
+                for af in sorted(all_files):
+                    if af.is_file():
+                        log.error(f"  File: {af} ({af.stat().st_size:,} bytes)")
         else:
             log.error(f"Logs directory does not exist: {logs_dir}")
 
@@ -880,9 +884,12 @@ def task_train(job_input: dict, job: dict) -> dict:
         index_path = _find_index(logs_dir, model_name)
 
         if pth_path is None:
+            train_tail = "\n".join(train_info.get("last_lines", []))
+            epoch_count = train_info.get("epoch_count", 0)
             raise RuntimeError(
                 f"Training completed but no .pth model found in {logs_dir}. "
-                f"Check RunPod logs for training subprocess output."
+                f"Epochs detected: {epoch_count}/{epochs}. "
+                f"Training subprocess output (last 15 lines):\n{train_tail}"
             )
 
         elapsed = time.time() - start_time
@@ -1151,7 +1158,7 @@ def _rvc_train(
     logs_dir: Path,
     sr_label: str,
     job: dict,
-) -> None:
+) -> dict:
     """
     Run RVC v2 training loop via Applio CLI.
     Uses CLI (subprocess) instead of core API because core API
@@ -1176,6 +1183,27 @@ def _rvc_train(
             raise RuntimeError("No preprocessed audio files found — cannot train")
     else:
         raise RuntimeError(f"Preprocessed directory missing: {gt_dir}")
+
+    # Ensure batch_size doesn't exceed dataset size (causes silent training failure)
+    if batch_size > gt_count:
+        old_bs = batch_size
+        batch_size = max(2, gt_count)
+        log.warning(f"batch_size {old_bs} > dataset size {gt_count}, "
+                    f"reduced to {batch_size}")
+
+    # Also verify filelist.txt exists and has entries
+    filelist_txt = logs_dir / "filelist.txt"
+    if filelist_txt.exists():
+        with open(filelist_txt, "r") as f:
+            fl_lines = [l.strip() for l in f if l.strip() and "mute" not in l.lower()]
+        log.info(f"filelist.txt before training: {len(fl_lines)} entries")
+        if not fl_lines:
+            raise RuntimeError(
+                "filelist.txt is empty (no training data entries). "
+                "Check that preprocessing and extraction produced matching files."
+            )
+    else:
+        log.error(f"filelist.txt not found at {filelist_txt} — training will likely fail")
 
     # Call train.py DIRECTLY — bypassing core.py which swallows subprocess errors.
     # train.py uses positional sys.argv arguments in this exact order:
@@ -1242,14 +1270,16 @@ def _rvc_train(
             # Keep it but don't raise yet — collect more context
 
         # Parse epoch progress from training output
-        if "Epoch" in line or "epoch" in line:
+        # Formats: "Epoch: 50/300", "Epoch 50/300", tqdm "50/300 [00:01<..."
+        if "Epoch" in line or "epoch" in line or ("/" in line and "|" in line):
             try:
-                # Typical format: "Epoch 50/300" or "Training epoch 50"
-                for part in line.split():
+                for part in line.replace(":", " ").split():
                     if "/" in part:
-                        current, total = part.split("/")
-                        epoch_count = int(current)
-                        break
+                        current, total = part.split("/")[:2]
+                        current = current.strip().lstrip("|").strip()
+                        if current.isdigit() and total.strip().isdigit():
+                            epoch_count = int(current)
+                            break
             except (ValueError, IndexError):
                 pass
 
@@ -1272,14 +1302,27 @@ def _rvc_train(
 
     # train.py uses multiprocessing.Process — the child can crash
     # while the parent exits 0. Check for captured errors.
+    tail = "\n".join(last_lines[-15:])
     if child_error and epoch_count == 0:
         raise RuntimeError(
             f"학습 자식 프로세스가 에포크 시작 전 크래시. "
             f"에러:\n{child_error}\n"
-            f"마지막 출력:\n" + "\n".join(last_lines[-10:])
+            f"마지막 출력:\n{tail}"
+        )
+
+    # If training exited with 0 but no epochs detected, the training loop
+    # likely never ran (multiprocessing child crash, CUDA error, empty dataset).
+    # This is a warning — the definitive check is .pth existence in the caller.
+    if epoch_count == 0:
+        log.error(
+            f"Training subprocess exited 0 but no epochs detected! "
+            f"This usually means train.py crashed silently via multiprocessing. "
+            f"Last output:\n{tail}"
         )
 
     log.info(f"Training completed via CLI ({epochs} epochs, reached epoch {epoch_count})")
+
+    return {"epoch_count": epoch_count, "last_lines": last_lines[-15:]}
 
 
 def _find_pretrained(gen_or_disc: str, sr_label: str) -> Optional[Path]:
