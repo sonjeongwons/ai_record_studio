@@ -1764,22 +1764,19 @@ async function api(path, opts) {
 }
 
 function downloadFile(url, filename) {
-  // URL이 이미 인코딩된 경우(%가 포함) 그대로, 아니면 인코딩
+  if (!url) { toast('다운로드 URL이 없습니다', 'error'); return; }
   var fetchUrl = url.indexOf('%') >= 0 ? url : encodeURI(url);
-  fetch(fetchUrl).then(function(res) {
-    if (!res.ok) throw new Error('Download failed (' + res.status + ')');
-    return res.blob();
-  }).then(function(blob) {
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename || decodeURIComponent(url.split('/').pop());
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-  }).catch(function(e) {
-    toast('다운로드 실패: ' + e.message, 'error');
-  });
+
+  // 직접 anchor 클릭으로 다운로드 (blob 방식은 대용량 파일에서 실패 가능)
+  // FileResponse가 Content-Disposition: attachment 헤더를 설정하므로
+  // 브라우저가 파일을 직접 스트리밍 다운로드함
+  var a = document.createElement('a');
+  a.href = fetchUrl;
+  a.download = filename || '';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { document.body.removeChild(a); }, 1000);
 }
 
 function formatSize(bytes) {

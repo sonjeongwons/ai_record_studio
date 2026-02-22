@@ -2041,7 +2041,8 @@ async def download_file(filename: str):
     filepath = OUTPUT_DIR / safe_name
     if not filepath.exists():
         raise HTTPException(404, "파일을 찾을 수 없습니다.")
-    return FileResponse(str(filepath), filename=safe_name)
+    # application/octet-stream forces browser download (prevents in-browser audio playback)
+    return FileResponse(str(filepath), filename=safe_name, media_type="application/octet-stream")
 
 
 # ─── 대시보드 통계 API ───
@@ -2127,7 +2128,7 @@ def open_browser():
     webbrowser.open("http://localhost:8000")
 
 if __name__ == "__main__":
-    print("\n🎤 AI Voice Studio 시작 중...")
+    print("\nAI Voice Studio 시작 중...")
     print("   http://localhost:8000 에서 접속하세요\n")
 
     if not FROZEN:
