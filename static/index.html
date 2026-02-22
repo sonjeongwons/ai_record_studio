@@ -2158,25 +2158,22 @@ function updatePreprocessStatsBar(segCount, totalDuration, preprocessedFileCount
 async function checkPreprocessStatus() {
   try {
     var res = await api('/preprocess/status');
-    // Always update stats bar if there are segments (even if not all files are preprocessed)
-    if (res.segment_count > 0) {
-      updatePreprocessStatsBar(res.segment_count, res.total_duration,
-        res.processed_count || 0);
-    } else {
-      updatePreprocessStatsBar(0, 0, 0);
-    }
-    if (res.preprocessed && res.segment_count > 0) {
-      // 서버가 DB 동기화했으므로 파일 목록 먼저 새로고침
+    // Always update stats bar with current data
+    updatePreprocessStatsBar(res.segment_count, res.total_duration,
+      res.processed_count || 0);
+
+    if (res.preprocessed) {
+      // DB says all files are preprocessed — enable training
       try {
         var r = await api('/files');
         uploadedFiles = r.files || [];
       } catch(e2) {}
-      // 모든 상태를 한번에 설정 (renderFileList 호출 전에 preprocessDone 설정)
       preprocessDone = true;
       document.getElementById('preprocess-idle').style.display = 'none';
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-done').style.display = 'block';
-      document.getElementById('preprocess-segments').textContent = res.segment_count;
+      document.getElementById('preprocess-segments').textContent =
+        res.segment_count > 0 ? res.segment_count : '-';
       document.getElementById('preprocess-duration').textContent =
         res.total_duration > 0 ? formatDuration(res.total_duration) : '-';
       document.getElementById('btn-start-train').disabled = false;

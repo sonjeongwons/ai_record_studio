@@ -1599,7 +1599,8 @@ async def preprocess_status():
                 pass
 
     return {
-        "preprocessed": has_segments and all_processed,
+        "preprocessed": all_processed,
+        "has_segments": has_segments,
         "segment_count": len(training_segments),
         "total_duration": round(total_dur, 2),
         "unprocessed_count": unprocessed,
