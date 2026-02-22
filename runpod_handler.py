@@ -1094,7 +1094,12 @@ def _rvc_preprocess(
                 if seg_dur < 0.3:
                     continue  # skip very short tail segments
 
-                padded = f"{idx:07d}"
+                # CRITICAL: Prefix with "0_" so Applio's generate_filelist()
+                # assigns speaker_id=0 to ALL segments (single-speaker training).
+                # Applio extracts sid via: name.split("_")[0]
+                # Without prefix, "0000001" → sid=1 → multiple speaker IDs
+                # → CUDA assert when segment count > spk_embed_dim (109)
+                padded = f"0_{idx:07d}"
 
                 # Save at target sample rate (mono, 16-bit PCM, soxr HQ resampler)
                 gt_path = gt_dir / f"{padded}.wav"
@@ -1106,7 +1111,7 @@ def _rvc_preprocess(
                     str(gt_path),
                 ])
 
-                # Save at 16kHz for F0 & feature extraction (soxr HQ resampler)
+                # Save at 16kHz for F0 & feature extraction (matching naming)
                 sr16k_path = sr16k_dir / f"{padded}.wav"
                 run_ffmpeg([
                     "-i", str(sp),
@@ -1340,12 +1345,18 @@ def _rvc_train(
 
     log.info(f"Starting training: {epochs} epochs, cmd={' '.join(cmd[:4])}...")
     log.info(f"Full train args: {cmd[2:]}")
+
+    # CUDA_LAUNCH_BLOCKING=1 for synchronous CUDA errors (better diagnostics)
+    train_env = os.environ.copy()
+    train_env["CUDA_LAUNCH_BLOCKING"] = "1"
+
     proc = subprocess.Popen(
         cmd,
         cwd=str(APPLIO_ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        env=train_env,
     )
 
     # Stream output and report progress
