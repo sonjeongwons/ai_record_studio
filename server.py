@@ -108,6 +108,27 @@ def _get_ffmpeg_path() -> Optional[str]:
 FFMPEG_PATH: Optional[str] = None  # 지연 초기화
 
 
+def _get_audio_duration(file_path: Path) -> Optional[float]:
+    """FFprobe로 오디오 길이(초) 측정. 실패 시 None."""
+    try:
+        ffmpeg = _get_ffmpeg_path()
+        # ffprobe는 ffmpeg와 같은 디렉토리에 있음
+        if ffmpeg and ffmpeg != "ffmpeg":
+            ffprobe = str(Path(ffmpeg).parent / "ffprobe.exe")
+            if not Path(ffprobe).exists():
+                ffprobe = "ffprobe"
+        else:
+            ffprobe = "ffprobe"
+        result = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(file_path)],
+            capture_output=True, text=True, timeout=30
+        )
+        return round(float(result.stdout.strip()), 2)
+    except Exception:
+        return None
+
+
 def _get_ffmpeg() -> str:
     """FFmpeg 경로 반환 (캐시). 없으면 HTTPException."""
     global FFMPEG_PATH
@@ -289,6 +310,16 @@ def init_db():
                 db.execute(f"ALTER TABLE voice_models ADD COLUMN {col} TEXT")
             except Exception:
                 pass
+        # conversions에 job_id 컬럼 추가 (정확한 작업-변환 매핑)
+        try:
+            db.execute("ALTER TABLE conversions ADD COLUMN job_id TEXT")
+        except Exception:
+            pass
+        # file_hash 인덱스 (중복 체크 성능)
+        try:
+            db.execute("CREATE INDEX IF NOT EXISTS idx_training_files_hash ON training_files(file_hash)")
+        except Exception:
+            pass
 
 
 def cleanup_stale_jobs():
@@ -549,12 +580,24 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                     update_job(job_id, status="failed",
                               message="RunPod 작업은 완료되었지만 결과 데이터가 비어있습니다. "
                                       "페이로드 크기 제한(413) 초과일 수 있습니다.")
+                    if job_type == "convert":
+                        try:
+                            with get_db() as db:
+                                db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
+                        except Exception:
+                            pass
                     return
                 try:
                     handle_job_result(job_id, job_type, output)
                 except Exception as e:
                     update_job(job_id, status="failed",
                               message=f"결과 처리 실패: {e}")
+                    if job_type == "convert":
+                        try:
+                            with get_db() as db:
+                                db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
+                        except Exception:
+                            pass
                 return
 
             elif status in ("FAILED", "TIMED_OUT", "CANCELLED"):
@@ -577,6 +620,13 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                 elif status == "CANCELLED":
                     error = f"RunPod 작업 취소됨: {error}"
                 update_job(job_id, status="failed", message=error)
+                # 변환 실패 시 conversions 테이블도 업데이트
+                if job_type == "convert":
+                    try:
+                        with get_db() as db:
+                            db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
+                    except Exception:
+                        pass
                 return
 
             elif status == "IN_QUEUE":
@@ -892,18 +942,14 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                         f.write(base64.b64decode(output["mixed_audio"]))
                     result_data["mixed_file"] = mixed_filename
 
-                # conversions 테이블에 결과 파일 업데이트
+                # conversions 테이블에 결과 파일 업데이트 (job_id 기반으로 정확한 row 매칭)
                 with get_db() as db:
                     db.execute("""
                         UPDATE conversions SET output_file=?, output_name=?,
                             processing_time=?, status='completed'
-                        WHERE rowid = (
-                            SELECT rowid FROM conversions
-                            WHERE status='processing'
-                            ORDER BY created_at DESC LIMIT 1
-                        )
+                        WHERE job_id=?
                     """, (out_filename, result_data.get("mixed_file", out_filename),
-                          output.get("processing_time_seconds", 0)))
+                          output.get("processing_time_seconds", 0), job_id))
 
                 update_job(job_id, status="completed", progress=100,
                           message="변환 완료!",
@@ -1031,6 +1077,7 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 @app.on_event("startup")
 async def startup():
@@ -1142,11 +1189,14 @@ async def upload_files(
         with open(save_path, "wb") as fp:
             fp.write(content)
 
+        # 오디오 길이 측정
+        duration = _get_audio_duration(save_path)
+
         with get_db() as db:
             db.execute("""
-                INSERT INTO training_files (filename, original_name, file_size, file_type, category, file_hash, preprocessed)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (unique_name, f.filename, len(content), ext, category, file_hash, was_preprocessed))
+                INSERT INTO training_files (filename, original_name, file_size, duration_seconds, file_type, category, file_hash, preprocessed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (unique_name, f.filename, len(content), duration, ext, category, file_hash, was_preprocessed))
             file_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
         saved.append({
@@ -1157,6 +1207,7 @@ async def upload_files(
             "type": ext,
             "category": category,
             "preprocessed": was_preprocessed,
+            "url": f"/uploads/{unique_name}",
         })
 
     return {"files": saved, "count": len(saved), "skipped": skipped}
@@ -1172,6 +1223,7 @@ async def list_files():
         # 프론트엔드 필드명 통일 (DB: file_size/file_type → size/type)
         d["size"] = d.get("file_size") or 0
         d["type"] = d.get("file_type") or ""
+        d["url"] = f"/uploads/{d['filename']}"
         files.append(d)
     return {"files": files}
 
@@ -1274,11 +1326,13 @@ async def upload_chunk(
         shutil.rmtree(chunk_dir, ignore_errors=True)
         chunk_uploads.pop(upload_id, None)
 
+        duration = _get_audio_duration(save_path)
+
         with get_db() as db:
             db.execute("""
-                INSERT INTO training_files (filename, original_name, file_size, file_type, category, file_hash)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (unique_name, filename, total_size, ext, category, file_hash))
+                INSERT INTO training_files (filename, original_name, file_size, duration_seconds, file_type, category, file_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (unique_name, filename, total_size, duration, ext, category, file_hash))
             file_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
         return {
@@ -1322,7 +1376,7 @@ async def start_training(
             ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
             placeholders = ",".join("?" * len(ids))
             rows = db.execute(
-                f"SELECT * FROM training_files WHERE id IN ({placeholders})", ids
+                f"SELECT * FROM training_files WHERE id IN ({placeholders}) AND deleted=0", ids
             ).fetchall()
         else:
             rows = db.execute("SELECT * FROM training_files WHERE deleted=0").fetchall()
@@ -1451,6 +1505,7 @@ async def start_training(
     except Exception as e:
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
+        _training_file_map.pop(job_id, None)
 
     return {"job_id": job_id, "segments": total_segments}
 
@@ -1538,6 +1593,7 @@ async def start_preprocess(
     except Exception as e:
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
+        preprocess_file_map.pop(job_id, None)
 
     return {"job_id": job_id, "segments": total_segments, "batches": len(batches),
             "skipped": skipped, "processing": len(unprocessed)}
@@ -1594,7 +1650,13 @@ async def preprocess_status():
                         audio = AudioSegment.from_mp3(str(f))
                         total_dur += len(audio) / 1000.0
                     except Exception:
+                        # MP3 192kbps ≈ 24000 bytes/sec
                         total_dur += f.stat().st_size / 24000.0
+                else:
+                    # Fallback for other formats: try ffprobe
+                    dur = _get_audio_duration(f)
+                    if dur:
+                        total_dur += dur
             except Exception:
                 pass
 
@@ -1803,12 +1865,12 @@ async def start_conversion(
         update_job(job_id, status="running", progress=10,
                   message="GPU 변환 시작", runpod_job_id=runpod_job_id)
 
-        # DB에 변환 기록
+        # DB에 변환 기록 (job_id로 정확한 매핑)
         with get_db() as db:
             db.execute("""
-                INSERT INTO conversions (model_id, input_file, status)
-                VALUES (?, ?, 'processing')
-            """, (model_id, audio.filename))
+                INSERT INTO conversions (model_id, input_file, status, job_id)
+                VALUES (?, ?, 'processing', ?)
+            """, (model_id, audio.filename, job_id))
 
         thread = threading.Thread(
             target=poll_runpod_job,
@@ -1917,12 +1979,16 @@ async def rename_model(model_id: int, name: str = Form(...)):
     """모델 이름 변경"""
     if not name or not name.strip():
         raise HTTPException(400, "모델 이름을 입력하세요.")
+    clean_name = name.strip()
     with get_db() as db:
         row = db.execute("SELECT * FROM voice_models WHERE id=?", (model_id,)).fetchone()
         if not row:
             raise HTTPException(404, "모델을 찾을 수 없습니다.")
-        db.execute("UPDATE voice_models SET name=? WHERE id=?", (name.strip(), model_id))
-    return {"status": "ok", "name": name.strip()}
+        dup = db.execute("SELECT id FROM voice_models WHERE name=? AND id!=?", (clean_name, model_id)).fetchone()
+        if dup:
+            raise HTTPException(400, f'이미 "{clean_name}" 이름의 모델이 존재합니다.')
+        db.execute("UPDATE voice_models SET name=? WHERE id=?", (clean_name, model_id))
+    return {"status": "ok", "name": clean_name}
 
 
 @app.post("/api/models/{model_id}/quality")

@@ -20,6 +20,8 @@
   --emerald: #10b981;
   --amber: #f59e0b;
   --red: #ef4444;
+  --rose: #f43f5e;
+  --text1: #d0d0e0;
   --radius: 16px;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -83,7 +85,6 @@ body.busy, body.busy * { cursor: wait !important; }
 }
 .nav-btn svg { width: 20px; height: 20px; }
 .nav-btn .tooltip {
-  display: none;
   position: absolute;
   left: 56px; top: 50%;
   transform: translateY(-50%);
@@ -95,8 +96,11 @@ body.busy, body.busy * { cursor: wait !important; }
   color: var(--text);
   white-space: nowrap;
   z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
 }
-.nav-btn:hover .tooltip { display: block; }
+.nav-btn:hover .tooltip { opacity: 1; }
 
 /* ─── Main Content ─── */
 .main {
@@ -425,6 +429,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .job-icon.train { background: rgba(139,92,246,0.1); color: var(--violet); }
 .job-icon.convert { background: rgba(6,182,212,0.1); color: var(--cyan); }
+.job-icon.preprocess { background: rgba(245,158,11,0.1); color: var(--amber); }
 
 /* ─── Spinner ─── */
 .spinner {
@@ -547,7 +552,6 @@ input[type="range"]::-webkit-slider-thumb {
   line-height: 1.2;
 }
 .connection-status .tooltip {
-  display: none;
   position: absolute;
   left: 56px; top: 50%;
   transform: translateY(-50%);
@@ -559,8 +563,11 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--text);
   white-space: nowrap;
   z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
 }
-.connection-status:hover .tooltip { display: block; }
+.connection-status:hover .tooltip { opacity: 1; }
 
 /* ─── Inline Audio Player ─── */
 .audio-player {
@@ -753,6 +760,45 @@ input[type="range"]::-webkit-slider-thumb {
   transition: width 0.5s ease;
   width: 0%;
 }
+
+/* ─── Hover & Focus Refinements ─── */
+.file-item:hover { background: rgba(255,255,255,0.04); }
+.job-item:hover { background: rgba(255,255,255,0.04); }
+.conversion-item:hover { background: rgba(255,255,255,0.04); }
+.card { transition: border-color 0.2s; }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Focus-visible for keyboard accessibility */
+.btn:focus-visible, .nav-btn:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
+.model-card:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .sidebar { width: 56px; padding: 12px 0; }
+  .sidebar .logo { width: 32px; height: 32px; border-radius: 10px; margin-bottom: 16px; }
+  .sidebar .logo svg { width: 16px; height: 16px; }
+  .nav-btn { width: 38px; height: 38px; }
+  .main { padding: 20px 16px; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .preprocess-results { grid-template-columns: 1fr 1fr; }
+  h1 { font-size: 18px; }
+  .dropzone { padding: 24px 16px; }
+}
+@media (max-width: 480px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-card { padding: 12px; }
+  .stat-value { font-size: 20px; }
+  .main { padding: 16px 12px; }
+  .toast-container { left: 12px; right: 12px; bottom: 12px; }
+  .toast { min-width: 0; }
+}
 </style>
 </head>
 <body>
@@ -809,11 +855,28 @@ input[type="range"]::-webkit-slider-thumb {
   <h1>AI Voice Studio</h1>
   <p class="subtitle">음원을 업로드하고, AI 보이스 모델을 학습시키고, 새로운 음원을 만드세요</p>
 
+  <div id="config-alert" class="alert alert-warn" style="display:none">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    RunPod API가 설정되지 않았습니다. <a href="#" onclick="showPage('settings')" style="color:var(--amber);text-decoration:underline">설정 페이지</a>에서 API Key를 입력해주세요.
+  </div>
+
   <div class="stat-grid" id="stats-grid">
     <div class="stat-card"><div class="stat-value" style="color:var(--violet)" id="stat-files">-</div><div class="stat-label">업로드 파일</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--cyan)" id="stat-models">-</div><div class="stat-label">학습된 모델</div></div>
-    <div class="stat-card"><div class="stat-value" style="color:var(--emerald)" id="stat-converts">-</div><div class="stat-label">변환한 곡</div></div>
+    <div class="stat-card"><div class="stat-value" style="color:var(--emerald)" id="stat-converts">-</div><div class="stat-label">변환 완료</div></div>
     <div class="stat-card"><div class="stat-value" style="color:var(--amber)" id="stat-size">-</div><div class="stat-label">총 데이터</div></div>
+  </div>
+
+  <!-- Active job banner -->
+  <div id="active-job-banner" style="display:none;margin-bottom:16px;padding:14px 18px;border-radius:var(--radius);background:linear-gradient(135deg,rgba(139,92,246,0.12),rgba(6,182,212,0.08));border:1px solid rgba(139,92,246,0.2);cursor:pointer" onclick="goToActiveJob()">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="spinner" style="border-top-color:var(--violet)"></div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:500" id="active-job-title">작업 진행 중...</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px" id="active-job-detail"></div>
+      </div>
+      <div style="font-size:20px;font-weight:700;color:var(--violet);font-family:'JetBrains Mono',monospace" id="active-job-pct"></div>
+    </div>
   </div>
 
   <div class="flex gap-16 mb-16">
@@ -825,10 +888,6 @@ input[type="range"]::-webkit-slider-thumb {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
       음원 변환
     </button>
-  </div>
-
-  <div id="config-alert" class="alert alert-warn" style="display:none">
-    RunPod API가 설정되지 않았습니다. <a href="#" onclick="showPage('settings')" style="color:var(--amber);text-decoration:underline">설정 페이지</a>에서 API Key를 입력해주세요.
   </div>
 
   <h2>최근 작업</h2>
@@ -994,7 +1053,7 @@ input[type="range"]::-webkit-slider-thumb {
           </select>
         </div>
       </div>
-      <div class="grid-3 mt-16">
+      <div class="grid-2 mt-16">
         <div>
           <label class="label">피치 추출 (F0)</label>
           <select id="train-f0">
@@ -1012,10 +1071,10 @@ input[type="range"]::-webkit-slider-thumb {
             <option value="24">24 (RTX 4090)</option>
           </select>
         </div>
-        <div></div>
       </div>
-      <div class="alert alert-info mt-16">
-        예상 비용: ~$2~5 / 예상 시간: 500 에폭 기준 약 5~10분 / GPU: RTX 4090
+      <div class="alert alert-info mt-16" style="line-height:1.6">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <div>RTX 4090 기준 500 에폭 약 5~10분 · 비용 약 $2~5 · 에폭 수가 많을수록 품질이 좋아지지만 과적합에 주의</div>
       </div>
     </div>
 
@@ -1105,6 +1164,9 @@ input[type="range"]::-webkit-slider-thumb {
     <div class="card">
       <label class="label">변환할 음원 업로드 (여러 파일 가능)</label>
       <div class="dropzone" id="convert-dropzone" style="padding:24px">
+        <div class="dropzone-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        </div>
         <div class="dropzone-text">변환할 원곡 파일을 업로드 (자동 보컬 분리)</div>
         <div class="dropzone-sub">원곡을 업로드하면 자동으로 보컬을 분리하여 변환합니다 -- WAV, MP3, FLAC 지원</div>
       </div>
@@ -1191,7 +1253,7 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
 
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:10px">믹스 볼륨 (보컬 + 반주)</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:10px">믹스 볼륨 (변환된 보컬 + 원곡 반주)</div>
         <div class="slider-group">
           <div class="slider-header">
             <span class="slider-label">보컬 볼륨</span>
@@ -1261,6 +1323,13 @@ input[type="range"]::-webkit-slider-thumb {
           <div style="font-size:12px;color:var(--text3);margin-top:4px" id="convert-done-detail"></div>
         </div>
       </div>
+      <!-- Audio source toggle (vocals vs mix) -->
+      <div id="convert-result-toggle" class="mt-16" style="display:none">
+        <div style="display:flex;gap:4px;background:var(--bg3);padding:3px;border-radius:10px;display:inline-flex">
+          <button class="btn" id="toggle-mix" onclick="switchResultAudio('mix')" style="padding:6px 14px;font-size:12px;border-radius:8px;background:var(--violet);color:white">최종 믹스</button>
+          <button class="btn" id="toggle-vocal" onclick="switchResultAudio('vocal')" style="padding:6px 14px;font-size:12px;border-radius:8px;background:transparent;color:var(--text2)">변환 보컬만</button>
+        </div>
+      </div>
       <!-- Inline audio player for the result -->
       <div id="convert-result-player" class="audio-player mt-16" style="display:none">
         <button class="audio-play-btn" id="result-play-btn" onclick="toggleResultAudio()">
@@ -1279,13 +1348,13 @@ input[type="range"]::-webkit-slider-thumb {
         <audio id="result-audio" preload="auto"></audio>
       </div>
       <div class="flex mt-16 gap-8" style="flex-wrap:wrap">
-        <button class="btn btn-primary" id="convert-download-btn" onclick="downloadFile(this.dataset.url, this.dataset.fname)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-          변환된 보컬
-        </button>
         <button class="btn btn-gradient" id="convert-mixed-btn" onclick="downloadFile(this.dataset.url, this.dataset.fname)" style="display:none">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-          최종 믹스 (보컬+반주)
+          최종 믹스 다운로드
+        </button>
+        <button class="btn btn-primary" id="convert-download-btn" onclick="downloadFile(this.dataset.url, this.dataset.fname)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          변환 보컬 다운로드
         </button>
         <button class="btn btn-secondary" onclick="resetConversion()">다른 곡 변환</button>
       </div>
@@ -1359,7 +1428,10 @@ input[type="range"]::-webkit-slider-thumb {
       <label class="label">Serverless Endpoint ID</label>
       <input type="text" id="cfg-endpoint-id" placeholder="xxxxxxxxxxxxxxxx">
     </div>
-    <button class="btn btn-primary mt-16" onclick="saveSettings()">설정 저장</button>
+    <div class="flex gap-8 mt-16">
+      <button class="btn btn-primary" onclick="saveSettings()">설정 저장</button>
+      <button class="btn btn-secondary" onclick="testRunPodConnection()">연결 테스트</button>
+    </div>
     <div id="settings-msg" style="font-size:12px;margin-top:8px"></div>
   </div>
 
@@ -1394,7 +1466,7 @@ input[type="range"]::-webkit-slider-thumb {
     <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
       멈춘 작업이 있거나 UI 상태가 이상한 경우 아래 버튼으로 정리할 수 있습니다.
     </p>
-    <button class="btn" onclick="cleanupStuckJobs()" style="background:var(--rose);color:white">
+    <button class="btn btn-danger" onclick="cleanupStuckJobs()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
       멈춘 작업 모두 정리
     </button>
@@ -1726,13 +1798,17 @@ function formatDuration(seconds) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Dashboard
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var _dashboardTimer = null;
+
 async function loadDashboard() {
   try {
     var stats = await api('/stats');
     document.getElementById('stat-files').textContent = stats.files;
     document.getElementById('stat-models').textContent = stats.models;
     document.getElementById('stat-converts').textContent = stats.conversions;
-    document.getElementById('stat-size').textContent = stats.total_size_mb + 'MB';
+    document.getElementById('stat-size').textContent = stats.total_size_mb > 0
+      ? (stats.total_size_mb >= 1024 ? (stats.total_size_mb / 1024).toFixed(1) + 'GB' : stats.total_size_mb + 'MB')
+      : '0';
   } catch(e) {}
 
   try {
@@ -1744,28 +1820,76 @@ async function loadDashboard() {
     var data = await api('/jobs');
     var jobs = data.jobs;
     var el = document.getElementById('recent-jobs');
+
+    // Active job banner
+    var activeJob = jobs.find(function(j) { return j.status === 'running' || j.status === 'submitting'; });
+    var banner = document.getElementById('active-job-banner');
+    if (activeJob) {
+      banner.style.display = 'block';
+      var typeLabels = { train: '모델 학습', convert: '음원 변환', preprocess: '전처리' };
+      document.getElementById('active-job-title').textContent =
+        (typeLabels[activeJob.job_type] || activeJob.job_type) + ' 진행 중';
+      document.getElementById('active-job-detail').textContent = activeJob.message || '';
+      document.getElementById('active-job-pct').textContent =
+        activeJob.progress > 0 ? activeJob.progress + '%' : '';
+      banner.dataset.jobType = activeJob.job_type;
+      // Auto-refresh while job is active
+      if (!_dashboardTimer) {
+        _dashboardTimer = setInterval(function() {
+          if (document.getElementById('page-home').classList.contains('active')) loadDashboard();
+        }, 5000);
+      }
+    } else {
+      banner.style.display = 'none';
+      if (_dashboardTimer) { clearInterval(_dashboardTimer); _dashboardTimer = null; }
+    }
+
     if (!jobs.length) {
-      el.innerHTML = '<div class="empty-state"><p>아직 작업이 없습니다</p></div>';
+      el.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><p>아직 작업이 없습니다</p><p style="font-size:12px;margin-top:4px">학습 또는 변환을 시작해보세요</p></div>';
       return;
     }
-    el.innerHTML = jobs.slice(0, 10).map(function(j) {
+
+    var typeIcons = {
+      train: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>',
+      convert: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>',
+      preprocess: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'
+    };
+    var typeLabels = { train: '모델 학습', convert: '음원 변환', preprocess: '전처리' };
+    var typeClasses = { train: 'train', convert: 'convert', preprocess: 'preprocess' };
+    var statusBadge = function(s) {
+      if (s === 'completed') return '<span class="badge badge-green">완료</span>';
+      if (s === 'failed') return '<span class="badge badge-red">실패</span>';
+      return '<span class="badge badge-amber">진행중</span>';
+    };
+    var formatDate = function(d) {
+      if (!d) return '';
+      var parts = d.split(' ');
+      if (parts.length >= 2) return parts[0].slice(5) + ' ' + parts[1].slice(0, 5);
+      return d;
+    };
+
+    el.innerHTML = jobs.slice(0, 15).map(function(j) {
       return '<div class="job-item">' +
-        '<div class="job-icon ' + j.job_type + '">' +
-          (j.job_type === 'train'
-            ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>'
-            : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>') +
+        '<div class="job-icon ' + (typeClasses[j.job_type] || 'train') + '">' +
+          (typeIcons[j.job_type] || typeIcons.train) +
         '</div>' +
-        '<div style="flex:1">' +
-          '<div style="font-size:13px">' + (j.job_type === 'train' ? '모델 학습' : '음원 변환') + '</div>' +
-          '<div style="font-size:11px;color:var(--text3)">' + (j.message || '') + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px">' + (typeLabels[j.job_type] || j.job_type) + '</div>' +
+          '<div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (j.message || '') + '</div>' +
         '</div>' +
-        '<span class="badge ' + (j.status === 'completed' ? 'badge-green' : j.status === 'failed' ? 'badge-red' : 'badge-amber') + '">' +
-          (j.status === 'completed' ? '완료' : j.status === 'failed' ? '실패' : '진행중') +
-        '</span>' +
-        '<span style="font-size:11px;color:var(--text3)">' + (j.created_at || '') + '</span>' +
+        statusBadge(j.status) +
+        '<span style="font-size:10px;color:var(--text3);white-space:nowrap">' + formatDate(j.created_at) + '</span>' +
       '</div>';
     }).join('');
   } catch(e) {}
+}
+
+function goToActiveJob() {
+  var banner = document.getElementById('active-job-banner');
+  var type = banner.dataset.jobType;
+  if (type === 'train') showPage('train');
+  else if (type === 'convert') showPage('convert');
+  else showPage('train');
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1842,6 +1966,12 @@ function renderFileList() {
   // Enable train button only if preprocess is done or skipped
   btnTrain.disabled = !preprocessDone;
 
+  // 체크박스 상태 보존
+  var prevChecked = {};
+  document.querySelectorAll('.train-file-cb').forEach(function(cb) {
+    prevChecked[cb.dataset.fileId] = cb.checked;
+  });
+
   var audioExts = ['.wav', '.mp3', '.flac', '.ogg', '.m4a'];
   listEl.innerHTML = uploadedFiles.map(function(f) {
     var isAudio = audioExts.some(function(ext) { return f.original_name.toLowerCase().endsWith(ext); });
@@ -1851,9 +1981,21 @@ function renderFileList() {
       ? '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(16,185,129,0.15);color:#10b981;margin-left:6px">전처리 완료</span>'
       : '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(139,92,246,0.15);color:#a78bfa;margin-left:6px">미처리</span>';
 
+    // Duration display
+    var dur = f.duration_seconds;
+    var durText = dur ? formatDuration(dur) : '';
+    var metaParts = [formatSize(f.size || f.file_size)];
+    if (durText) metaParts.push(durText);
+    metaParts.push(f.type || f.file_type || '');
+    var metaStr = metaParts.filter(Boolean).join(' \u00B7 ');
+
+    // 체크박스 상태 복원 (이전에 체크 해제했으면 유지)
+    var isChecked = (f.id in prevChecked) ? prevChecked[f.id] : true;
+
     return '<div class="file-item" style="flex-wrap:wrap">' +
       '<label style="display:flex;align-items:center;cursor:pointer;margin-right:4px" title="학습에 포함">' +
-        '<input type="checkbox" class="train-file-cb" data-file-id="' + f.id + '" checked ' +
+        '<input type="checkbox" class="train-file-cb" data-file-id="' + f.id + '" ' +
+          (isChecked ? 'checked ' : '') +
           'onchange="updateTrainSelection()" style="accent-color:#8b5cf6;width:15px;height:15px">' +
       '</label>' +
       '<div class="file-icon">' +
@@ -1861,7 +2003,7 @@ function renderFileList() {
       '</div>' +
       '<div class="file-info">' +
         '<div class="file-name">' + f.original_name + ppBadge + '</div>' +
-        '<div class="file-meta">' + formatSize(f.size || f.file_size) + ' \u00B7 ' + (f.type || f.file_type || '') + '</div>' +
+        '<div class="file-meta">' + metaStr + '</div>' +
       '</div>' +
       '<button class="file-delete" onclick="deleteFile(' + f.id + ')">&#x2715;</button>' +
       (playerHtml ? '<div style="width:100%;padding-left:48px">' + playerHtml + '</div>' : '') +
@@ -2318,7 +2460,7 @@ async function pollTrainingStatus() {
 function resetTraining() {
   // Cancel any active job first
   if (currentTrainJobId) {
-    try { api('/jobs/' + currentTrainJobId + '/cancel', { method: 'POST' }); } catch(e) {}
+    api('/jobs/' + currentTrainJobId + '/cancel', { method: 'POST' }).catch(function() {});
   }
   currentTrainJobId = null;
   _trainPollErrors = 0;
@@ -2529,7 +2671,7 @@ async function loadModels() {
           '</div>' +
         '</div>';
       }
-      return '<div class="model-card ' + (m.id === selectedModelId ? 'selected' : '') + '" onclick="selectModel(' + m.id + ')">' +
+      return '<div class="model-card ' + (m.id === selectedModelId ? 'selected' : '') + '" onclick="selectModel(' + m.id + ', this)">' +
         '<div class="model-icon">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>' +
         '</div>' +
@@ -2549,10 +2691,10 @@ async function loadModels() {
   } catch(e) {}
 }
 
-function selectModel(id) {
+function selectModel(id, el) {
   selectedModelId = id;
   document.querySelectorAll('.model-card').forEach(function(c) { c.classList.remove('selected'); });
-  event.currentTarget.classList.add('selected');
+  if (el) el.classList.add('selected');
   updateConvertBtn();
 }
 
@@ -2614,10 +2756,13 @@ async function startConversion() {
   }
 }
 
+var _convertPollErrors = 0;
+
 async function pollConvertStatus() {
   if (!currentConvertJobId) return;
   try {
     var job = await api('/jobs/' + currentConvertJobId);
+    _convertPollErrors = 0;
     var pct = job.progress || 0;
     var circ = 2 * Math.PI * 60;
     var offset = circ - (pct / 100) * circ;
@@ -2641,15 +2786,24 @@ async function pollConvertStatus() {
         dlBtn.dataset.url = dlUrl;
         dlBtn.dataset.fname = outFile;
 
+        // Store URLs for A/B toggle
+        _resultUrls.vocal = dlUrl;
+
         // Show mixed file download button if available
         var mixedFile = job.result ? job.result.mixed_file : null;
         var mixedBtn = document.getElementById('convert-mixed-btn');
+        var toggleEl = document.getElementById('convert-result-toggle');
         if (mixedFile && mixedBtn) {
-          mixedBtn.dataset.url = '/api/download/' + encodeURIComponent(mixedFile);
+          var mixUrl = '/api/download/' + encodeURIComponent(mixedFile);
+          mixedBtn.dataset.url = mixUrl;
           mixedBtn.dataset.fname = mixedFile;
           mixedBtn.style.display = 'inline-flex';
-        } else if (mixedBtn) {
-          mixedBtn.style.display = 'none';
+          _resultUrls.mix = mixUrl;
+          if (toggleEl) toggleEl.style.display = 'block';
+        } else {
+          if (mixedBtn) mixedBtn.style.display = 'none';
+          _resultUrls.mix = null;
+          if (toggleEl) toggleEl.style.display = 'none';
         }
 
         // Show audio player for result (play mixed if available, else vocals)
@@ -2715,6 +2869,15 @@ async function pollConvertStatus() {
 
     setTimeout(pollConvertStatus, 3000);
   } catch(e) {
+    _convertPollErrors++;
+    if (_convertPollErrors >= 20) {
+      document.getElementById('convert-status-msg').textContent = '서버 연결 실패';
+      document.getElementById('convert-cancel-area').style.display = 'none';
+      document.getElementById('convert-error-area').style.display = 'block';
+      document.getElementById('convert-error-msg').textContent = '서버와의 연결이 끊어졌습니다. 네트워크를 확인해 주세요.';
+      toast('서버 연결 끊김', 'error');
+      return;
+    }
     setTimeout(pollConvertStatus, 5000);
   }
 }
@@ -2722,7 +2885,7 @@ async function pollConvertStatus() {
 function toggleResultAudio() {
   var audio = document.getElementById('result-audio');
   var btn = document.getElementById('result-play-btn');
-  if (!audio) return;
+  if (!audio || !btn) return;
   // Pause all other players
   document.querySelectorAll('.audio-player audio').forEach(function(a) {
     if (a.id !== 'result-audio' && !a.paused) {
@@ -2753,6 +2916,26 @@ function resultSeek(e) {
   audio.currentTime = pct * audio.duration;
 }
 
+var _resultUrls = { vocal: null, mix: null };
+function switchResultAudio(mode) {
+  var audio = document.getElementById('result-audio');
+  var url = mode === 'mix' ? _resultUrls.mix : _resultUrls.vocal;
+  if (!audio || !url) return;
+  var wasPlaying = !audio.paused;
+  audio.src = url;
+  if (wasPlaying) audio.play();
+  // Toggle button styles
+  var mixBtn = document.getElementById('toggle-mix');
+  var vocalBtn = document.getElementById('toggle-vocal');
+  if (mode === 'mix') {
+    mixBtn.style.background = 'var(--violet)'; mixBtn.style.color = 'white';
+    vocalBtn.style.background = 'transparent'; vocalBtn.style.color = 'var(--text2)';
+  } else {
+    vocalBtn.style.background = 'var(--violet)'; vocalBtn.style.color = 'white';
+    mixBtn.style.background = 'transparent'; mixBtn.style.color = 'var(--text2)';
+  }
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Batch Conversion
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2762,7 +2945,7 @@ async function startBatchConversion() {
   document.body.classList.add('busy');
   batchProcessing = true;
   batchResults = batchFiles.map(function(f) {
-    return { file: f, jobId: null, status: 'pending', resultUrl: null, error: null };
+    return { file: f, jobId: null, status: 'pending', resultUrl: null, mixedUrl: null, error: null };
   });
 
   document.getElementById('convert-main').style.display = 'none';
@@ -2844,11 +3027,13 @@ async function startBatchConversion() {
 
 function pollBatchItem(index) {
   return new Promise(function(resolve) {
+    var errorCount = 0;
     var poll = async function() {
       var r = batchResults[index];
       if (!r.jobId) { resolve(); return; }
       try {
         var job = await api('/jobs/' + r.jobId);
+        errorCount = 0;
 
         if (job.status === 'completed') {
           r.status = 'completed';
@@ -2871,6 +3056,14 @@ function pollBatchItem(index) {
         renderBatchProgress();
         setTimeout(poll, 3000);
       } catch(e) {
+        errorCount++;
+        if (errorCount >= 20) {
+          r.status = 'failed';
+          r.error = '서버 연결 실패';
+          renderBatchProgress();
+          resolve();
+          return;
+        }
         setTimeout(poll, 5000);
       }
     };
@@ -2924,6 +3117,9 @@ function resetConversion() {
   document.getElementById('convert-file-info').style.display = 'none';
   document.getElementById('batch-queue').style.display = 'none';
   document.getElementById('convert-result-player').style.display = 'none';
+  var toggleEl = document.getElementById('convert-result-toggle');
+  if (toggleEl) toggleEl.style.display = 'none';
+  _resultUrls = { vocal: null, mix: null };
   var mixedBtn = document.getElementById('convert-mixed-btn');
   if (mixedBtn) mixedBtn.style.display = 'none';
   document.getElementById('btn-convert').disabled = false;
@@ -2954,7 +3150,9 @@ async function loadConversionHistory() {
     container.style.display = 'block';
     document.getElementById('conversion-history-count').textContent = list.length + '개';
     listEl.innerHTML = list.map(function(c) {
-      var audioUrl = '/api/download/' + encodeURIComponent(c.output_file);
+      // Prefer mixed file (vocals+MR) for playback, fallback to vocals-only
+      var playFile = c.output_name || c.output_file;
+      var audioUrl = '/api/download/' + encodeURIComponent(playFile);
       var playerHtml = createAudioPlayer(audioUrl);
       return '<div class="conversion-item" style="flex-direction:column;align-items:stretch">' +
         '<div style="display:flex;align-items:center;gap:10px">' +
@@ -2969,7 +3167,7 @@ async function loadConversionHistory() {
               ' · ' + (c.created_at || '') +
             '</div>' +
           '</div>' +
-          '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + encodeURIComponent(c.output_file) + '\', \'' + c.output_file.replace(/'/g, "\\'") + '\')" title="다운로드">' +
+          '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + encodeURIComponent(playFile) + '\', \'' + playFile.replace(/'/g, "\\'") + '\')" title="다운로드">' +
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
           '</button>' +
           '<button class="btn-conv-action btn-conv-delete" onclick="deleteConversion(' + c.id + ')" title="삭제">' +
@@ -2994,12 +3192,20 @@ async function deleteConversion(id) {
 }
 
 function retryConversion() {
-  // 버튼 비활성화 + 로딩 표시
   var btn = document.getElementById('btn-convert-retry');
   var backBtn = document.getElementById('btn-convert-back');
   if (btn) { btn.disabled = true; btn.textContent = '재시작 중...'; }
   if (backBtn) backBtn.disabled = true;
-  resetConversion();
+  // 에러 영역 숨기고 진행률 UI로 전환
+  document.getElementById('convert-error-area').style.display = 'none';
+  document.getElementById('convert-cancel-area').style.display = 'block';
+  currentConvertJobId = null;
+  // 이전 파일이 남아있으면 재시도, 없으면 메인으로
+  if (convertFile) {
+    startConversion();
+  } else {
+    resetConversion();
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3015,6 +3221,22 @@ async function loadSettings() {
     document.getElementById('cfg-r2-secret-key').value = config.r2_secret_key_display || '';
     document.getElementById('cfg-r2-bucket').value = config.r2_bucket_name || 'voice-studio';
   } catch(e) {}
+}
+
+async function testRunPodConnection() {
+  toast('RunPod 연결 테스트 중...', 'info', 2000);
+  try {
+    var health = await api('/health');
+    if (health.runpod && health.runpod.status === 'connected') {
+      var detail = health.runpod.detail || {};
+      var workers = detail.workers ? JSON.stringify(detail.workers) : '';
+      toast('RunPod 연결 성공! ' + (workers ? '워커: ' + workers : ''), 'success');
+    } else if (health.runpod) {
+      toast('RunPod: ' + (health.runpod.message || health.runpod.status), 'warning');
+    }
+  } catch(e) {
+    toast('연결 테스트 실패: ' + e.message, 'error');
+  }
 }
 
 async function saveSettings() {

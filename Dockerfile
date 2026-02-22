@@ -193,7 +193,8 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
 # does NOT have demucs.api module which our handler requires.
 RUN python -m pip install --no-cache-dir \
     "git+https://github.com/adefossez/demucs.git" \
-    noisereduce
+    noisereduce \
+    pyannote.audio
 
 # -- CRITICAL: Re-pin NumPy <2.0 AFTER all other installs --
 # PyTorch 2.1.0 was compiled with NumPy 1.x C API.
@@ -215,7 +216,7 @@ RUN python -m pip install --no-cache-dir \
     tensorboard \
     wget
 
-RUN python -m pip install --no-cache-dir runpod boto3
+RUN python -m pip install --no-cache-dir runpod boto3 requests
 
 # -- Verify critical imports --
 RUN python -c "from bs4 import BeautifulSoup; print('bs4 OK')" \

@@ -649,9 +649,10 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
     seg_idx = 0
 
     for ap in audio_paths:
-        # 원본 파일명에서 _vocals 접미사 제거하여 소스 stem 추출
+        # 원본 파일명에서 처리 접미사들을 모두 제거하여 소스 stem 추출
+        # 순서 중요: _diarized → _clean → _vocals (역순으로 붙었으므로)
         source_stem = ap.stem
-        for suffix in ("_vocals", "_clean", "_diarized"):
+        for suffix in ("_diarized", "_clean", "_vocals"):
             if source_stem.endswith(suffix):
                 source_stem = source_stem[:-len(suffix)]
 
@@ -800,6 +801,12 @@ def task_train(job_input: dict, job: dict) -> dict:
 
     if not audio_files and not audio_urls:
         raise ValueError("No audio_files or audio_urls provided for training")
+
+    # Validate model name — must be safe for filesystem paths
+    import re
+    model_name = re.sub(r'[<>:"/\\|?*]', '_', model_name).strip()
+    if not model_name:
+        model_name = "my_voice_model"
 
     # Validate parameters — Applio only supports 32k, 40k, 48k
     if sample_rate not in (32000, 40000, 48000):
@@ -1003,8 +1010,18 @@ def task_train(job_input: dict, job: dict) -> dict:
 
     finally:
         cleanup_dir(WORK_DIR / f"train_{job_id}")
-        # Keep logs_dir as it contains the model — but clean after encoding
-        cleanup_dir(logs_dir)
+        # logs_dir contains the model, but we've already uploaded/encoded it above,
+        # so it's safe to clean. However, keep logs_dir if upload failed to allow retry.
+        # Only clean non-essential subdirectories, preserve .pth and .index
+        try:
+            if logs_dir.exists():
+                for sub in logs_dir.iterdir():
+                    if sub.is_dir():
+                        cleanup_dir(sub)
+                    elif sub.suffix not in (".pth", ".index"):
+                        sub.unlink(missing_ok=True)
+        except Exception as e:
+            log.warning(f"Partial logs cleanup failed: {e}")
         cleanup_gpu()
 
 
@@ -1064,7 +1081,7 @@ def _rvc_preprocess(
                     "-segment_time", str(SLICE_DURATION),
                     "-ac", "1",
                     "-acodec", "pcm_s16le",
-                    "-ar", "44100",
+                    "-ar", str(sample_rate),
                     slice_pattern,
                 ])
                 slice_paths = sorted(tmp_slices.glob(f"s{idx:04d}_*.wav"))
@@ -1253,6 +1270,12 @@ def _rvc_train(
              f"batch={batch_size}, save_every={save_every_epoch}, sr_label={sr_label}")
     log.info(f"Pretrained G: {pretrained_g}")
     log.info(f"Pretrained D: {pretrained_d}")
+    if not pretrained_g or not pretrained_d:
+        log.warning(
+            "⚠ Pretrained model(s) NOT found — training from random initialization! "
+            "Quality will be significantly worse. Ensure pretrained_v2 models are cached."
+        )
+        runpod.serverless.progress_update(job, f"⚠ 사전학습 모델 없이 학습 시작 (품질 저하 가능)")
 
     # Verify preprocessed data exists before training
     gt_dir = logs_dir / "sliced_audios"
@@ -1392,12 +1415,10 @@ def _rvc_train(
 
     # If training exited with 0 but no epochs detected, the training loop
     # likely never ran (multiprocessing child crash, CUDA error, empty dataset).
-    # This is a warning — the definitive check is .pth existence in the caller.
     if epoch_count == 0:
-        log.error(
-            f"Training subprocess exited 0 but no epochs detected! "
-            f"This usually means train.py crashed silently via multiprocessing. "
-            f"Last output:\n{tail}"
+        raise RuntimeError(
+            f"학습 프로세스가 에포크 0에서 종료됨 (train.py가 multiprocessing 자식에서 크래시했을 가능성). "
+            f"마지막 출력:\n{tail}"
         )
 
     log.info(f"Training completed via CLI ({epochs} epochs, reached epoch {epoch_count})")
@@ -1894,9 +1915,11 @@ def _rvc_infer(
 
         run_infer_script(
             pitch=pitch_shift,
+            filter_radius=filter_radius,
             index_rate=index_rate,
             volume_envelope=1.0,
             protect=protect,
+            hop_length=hop_length,
             f0_method=f0_method,
             input_path=str(input_audio),
             output_path=str(output_path),
@@ -1912,6 +1935,7 @@ def _rvc_infer(
             export_format=export_format.upper(),
             embedder_model="contentvec",
             embedder_model_custom=None,
+            rms_mix_rate=rms_mix_rate,
         )
         log.info("Inference completed via core.run_infer_script")
         return
@@ -1934,8 +1958,10 @@ def _rvc_infer(
             model_path=str(pth_path),
             index_path=index_str,
             pitch=pitch_shift,
+            filter_radius=filter_radius,
             f0_method=f0_method,
             index_rate=index_rate,
+            rms_mix_rate=rms_mix_rate,
             volume_envelope=1.0,
             protect=protect,
             hop_length=hop_length,
@@ -1974,11 +2000,13 @@ def _rvc_infer(
 
         # Load model
         cpt = torch.load(str(pth_path), map_location="cpu")
-        tgt_sr = cpt.get("config", [0] * 18)[-1]
-        if tgt_sr == 1:
-            tgt_sr = sample_rate if 'sample_rate' in dir() else 40000
+        config = cpt.get("config", [])
+        tgt_sr = config[-1] if config else 40000
+        if not tgt_sr or tgt_sr <= 1:
+            tgt_sr = 40000
 
-        cpt["config"][-3] = cpt["weight"]["emb_g.weight"].shape[0]
+        if "weight" in cpt and "emb_g.weight" in cpt["weight"]:
+            config[-3] = cpt["weight"]["emb_g.weight"].shape[0]
         if_f0 = cpt.get("f0", 1)
         version = cpt.get("version", "v2")
 
@@ -2017,8 +2045,8 @@ def _rvc_infer(
 
         # Load index
         file_index = ""
-        if index_path and Path(index_str).exists():
-            file_index = index_str
+        if index_path and index_path.exists():
+            file_index = str(index_path)
 
         # Run pipeline
         sid = torch.tensor([0], dtype=torch.long, device=device)
@@ -2060,9 +2088,12 @@ def _rvc_infer(
         str(APPLIO_ROOT / "core.py"),
         "infer",
         "--pitch", str(pitch_shift),
+        "--filter_radius", str(filter_radius),
         "--index_rate", str(index_rate),
+        "--rms_mix_rate", str(rms_mix_rate),
         "--volume_envelope", "1.0",
         "--protect", str(protect),
+        "--hop_length", str(hop_length),
         "--f0_method", f0_method,
         "--input_path", str(input_audio),
         "--output_path", str(output_path),
