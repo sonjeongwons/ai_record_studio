@@ -683,6 +683,17 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     accomp_files = output.get("accompaniment_files", [])
     vocal_files = output.get("vocal_files", [])
     total_duration = output.get("total_duration", 0.0)
+
+    # Diagnostic: log what we received from RunPod
+    print(f"[Preprocess] Received output keys: {list(output.keys())}")
+    print(f"[Preprocess] segment_count={output.get('segment_count')}, "
+          f"total_duration={total_duration}, "
+          f"segments={len(segments)}, accomp={len(accomp_files)}, "
+          f"vocals={len(vocal_files)}")
+    if not segments and output.get("segment_count", 0) > 0:
+        print(f"[Preprocess] WARNING: Handler reported {output.get('segment_count')} segments "
+              f"but segments array is empty! RunPod response may have been truncated "
+              f"due to payload size limit.")
     saved_files = []
 
     # 기존 파일과 이름 충돌 방지용 prefix
@@ -690,13 +701,28 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     prefix = uuid.uuid4().hex[:6]
 
     def _save_file_list(file_list, default_prefix="seg"):
-        """Save a list of base64-encoded files to PREPROCESSED_DIR."""
+        """Save files to PREPROCESSED_DIR — supports R2 URL or inline base64."""
         saved = []
         for i, fobj in enumerate(file_list):
             orig_name = fobj.get("filename", f"{default_prefix}_{i:04d}.wav")
             fname = orig_name if orig_name not in existing else f"{prefix}_{orig_name}"
             fpath = PREPROCESSED_DIR / fname
-            if fobj.get("data_base64"):
+            if fobj.get("url"):
+                # Download from R2 presigned URL
+                try:
+                    resp = requests.get(fobj["url"], timeout=120)
+                    resp.raise_for_status()
+                    with open(fpath, "wb") as f:
+                        f.write(resp.content)
+                    saved.append({
+                        "filename": fname,
+                        "duration_seconds": fobj.get("duration_seconds", 0),
+                    })
+                    existing.add(fname)
+                except Exception as e:
+                    print(f"[Preprocess] Failed to download {orig_name}: {e}")
+            elif fobj.get("data_base64"):
+                # Legacy: inline base64
                 with open(fpath, "wb") as f:
                     f.write(base64.b64decode(fobj["data_base64"]))
                 saved.append({

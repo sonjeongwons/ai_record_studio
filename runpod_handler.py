@@ -222,9 +222,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         runpod.serverless.progress_update(job, "Segmenting audio clips... (6/6)")
         segments = _segment_audio(cleaned_paths, segment_dir)
 
-        # Compress segments to MP3 for transfer (RunPod response limit ~20MB)
-        # WAV: 24 segments × 10s × 44.1kHz × 16bit ≈ 25+ MB base64 → exceeds limit
-        # MP3 192kbps: same segments ≈ 5 MB base64 → fits safely
+        # Convert segments to MP3 for transfer
         segment_data = []
         total_duration = 0.0
         mp3_dir = ensure_dir(work / "mp3_transfer")
@@ -249,7 +247,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
 
             segment_data.append({
                 "filename": encode_path.name,
-                "data_base64": encode_file_b64(encode_path),
+                "path": str(encode_path),
                 "duration_seconds": round(dur, 2),
             })
 
@@ -270,7 +268,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 encode_path = accomp_path
             accomp_data.append({
                 "filename": encode_path.name,
-                "data_base64": encode_file_b64(encode_path),
+                "path": str(encode_path),
                 "duration_seconds": round(dur, 2),
             })
 
@@ -291,12 +289,56 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 encode_path = vp
             vocal_data.append({
                 "filename": encode_path.name,
-                "data_base64": encode_file_b64(encode_path),
+                "path": str(encode_path),
                 "duration_seconds": round(dur, 2),
             })
 
-        log.info(f"Returning {len(segment_data)} segments ({total_duration:.1f}s), "
+        log.info(f"Preprocessed {len(segment_data)} segments ({total_duration:.1f}s), "
                  f"{len(accomp_data)} accompaniment, {len(vocal_data)} vocal files")
+
+        # Upload all files to R2 bucket to avoid RunPod response payload limit (~20MB).
+        # Inline base64 of segments+MR+vocals can easily exceed this for 2+ audio files.
+        all_files = segment_data + accomp_data + vocal_data
+        use_r2 = False
+        try:
+            from runpod.serverless.utils import upload_file_to_bucket
+            bucket_name = os.environ.get("BUCKET_NAME", "voice-studio")
+            # Test if bucket is configured by checking env vars
+            if os.environ.get("BUCKET_ENDPOINT_URL"):
+                use_r2 = True
+        except ImportError:
+            pass
+
+        if use_r2:
+            log.info(f"Uploading {len(all_files)} preprocessed files to R2...")
+            for fobj in all_files:
+                try:
+                    url = upload_file_to_bucket(
+                        file_name=fobj["filename"],
+                        file_location=fobj["path"],
+                        prefix=f"voice-studio/preprocess/{job_id}",
+                        bucket_name=bucket_name,
+                    )
+                    if url and url.startswith("http"):
+                        fobj["url"] = url
+                    else:
+                        # No bucket configured — fall back to inline base64
+                        fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
+                except Exception as e:
+                    log.warning(f"R2 upload failed for {fobj['filename']}: {e}, using base64")
+                    fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
+            log.info(f"R2 upload complete for preprocess results")
+        else:
+            # No R2 configured — use inline base64 (may exceed payload limit)
+            log.warning("No R2 bucket configured — using inline base64 for preprocess results. "
+                        "This may fail for large datasets due to RunPod payload limits.")
+            for fobj in all_files:
+                fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
+
+        # Remove local paths from response (not needed by server)
+        for fobj in all_files:
+            fobj.pop("path", None)
+
         return {
             "segment_count": len(segment_data),
             "total_duration": round(total_duration, 2),
