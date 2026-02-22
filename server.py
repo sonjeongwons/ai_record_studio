@@ -1555,15 +1555,6 @@ async def preprocess_status():
             "SELECT COUNT(*) FROM training_files WHERE preprocessed=0 AND deleted=0"
         ).fetchone()[0]
 
-    # 세그먼트가 없거나 전처리되지 않은 파일이 있으면 미완료
-    has_segments = len(files) > 0
-    all_processed = total_files > 0 and unprocessed == 0
-
-    if not has_segments or not all_processed:
-        return {"preprocessed": False, "segment_count": 0, "total_duration": 0,
-                "unprocessed_count": unprocessed,
-                "accompaniment_files": [], "vocal_files": []}
-
     # Categorize files: training segments vs MR vs vocals
     training_segments = []
     accomp_files = []
@@ -1576,6 +1567,10 @@ async def preprocess_status():
         else:
             training_segments.append(f)
 
+    has_segments = len(training_segments) > 0
+    all_processed = total_files > 0 and unprocessed == 0
+    processed_count = total_files - unprocessed
+
     # 메타데이터 파일에서 정확한 총 길이 읽기 (핸들러가 계산한 값)
     total_dur = 0.0
     meta_path = PREPROCESSED_DIR / "_metadata.json"
@@ -1586,7 +1581,7 @@ async def preprocess_status():
             pass
 
     # 메타데이터 없으면 WAV 파일에서 직접 계산 (폴백)
-    if total_dur == 0.0:
+    if total_dur == 0.0 and has_segments:
         import wave
         for f in training_segments:
             try:
@@ -1594,7 +1589,6 @@ async def preprocess_status():
                     with wave.open(str(f), "rb") as wf:
                         total_dur += wf.getnframes() / wf.getframerate()
                 elif f.suffix.lower() == ".mp3":
-                    # MP3: pydub 사용 가능하면 정확, 아니면 비트레이트 기반 추정
                     try:
                         from pydub import AudioSegment
                         audio = AudioSegment.from_mp3(str(f))
@@ -1605,10 +1599,11 @@ async def preprocess_status():
                 pass
 
     return {
-        "preprocessed": True,
+        "preprocessed": has_segments and all_processed,
         "segment_count": len(training_segments),
         "total_duration": round(total_dur, 2),
-        "unprocessed_count": 0,
+        "unprocessed_count": unprocessed,
+        "processed_count": processed_count,
         "accompaniment_files": accomp_files,
         "vocal_files": vocal_files,
     }

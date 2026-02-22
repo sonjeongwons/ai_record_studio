@@ -877,6 +877,27 @@ input[type="range"]::-webkit-slider-thumb {
           </div>
         </div>
 
+        <!-- Training data stats (persistent - visible whenever preprocessed segments exist) -->
+        <div id="preprocess-stats-bar" style="display:none;margin-bottom:14px;padding:10px 14px;border-radius:8px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.15)">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div style="font-size:12px;color:var(--text3);font-weight:500">학습 데이터</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="4"/><path d="M8 12h8M12 8v8"/></svg>
+              <span style="font-size:13px;color:var(--text1)" id="stats-segments">0</span>
+              <span style="font-size:11px;color:var(--text3)">세그먼트</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span style="font-size:13px;color:var(--text1)" id="stats-duration">-</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span style="font-size:13px;color:var(--text1)" id="stats-files">0</span>
+              <span style="font-size:11px;color:var(--text3)">파일 전처리됨</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Preprocess: idle -->
         <div id="preprocess-idle">
           <div class="alert alert-info" style="margin-bottom:14px">
@@ -1988,8 +2009,17 @@ async function pollPreprocessStatus() {
       preprocessDone = true;
       document.getElementById('btn-start-train').disabled = false;
       toast('전처리 완료: ' + segments + '개 세그먼트', 'success');
-      // 파일 목록 새로고침 (전처리 배지 업데이트)
-      api('/files').then(function(r) { uploadedFiles = r.files || []; renderFileList(); }).catch(function(){});
+      // 파일 목록 새로고침 (전처리 배지 업데이트) + 스탯 바 갱신
+      api('/files').then(function(r) {
+        uploadedFiles = r.files || [];
+        renderFileList();
+        // Stats bar update with fresh data from server
+        api('/preprocess/status').then(function(st) {
+          updatePreprocessStatsBar(st.segment_count, st.total_duration,
+            st.processed_count || 0);
+          updatePreprocessDownloads(st.accompaniment_files, st.vocal_files);
+        }).catch(function(){});
+      }).catch(function(){});
       // Fetch full status for download info if not in result
       if (!job.result || !job.result.accompaniment_files) {
         api('/preprocess/status').then(function(st) {
@@ -2067,11 +2097,20 @@ async function resetPreprocess() {
   document.getElementById('btn-start-train').disabled = true;
   var msg = isAll ? '전처리 초기화됨.' : selectedIds.length + '개 파일 전처리 초기화됨.';
   toast(msg + ' 다시 전처리하거나 건너뛸 수 있습니다.', 'info');
-  // 파일 배지 새로고침
+  // 파일 배지 + 스탯 바 새로고침
   try {
     var r = await api('/files');
     uploadedFiles = r.files || [];
     renderFileList();
+    // Refresh stats bar (may still have segments from other files)
+    var st = await api('/preprocess/status');
+    updatePreprocessStatsBar(st.segment_count, st.total_duration,
+      st.processed_count || 0);
+    // If still have segments, re-enable train
+    if (st.segment_count > 0) {
+      preprocessDone = true;
+      document.getElementById('btn-start-train').disabled = false;
+    }
   } catch(e2) {}
 }
 
@@ -2103,9 +2142,29 @@ function updatePreprocessDownloads(accompFiles, vocalFiles) {
   dlSection.style.display = hasFiles ? 'block' : 'none';
 }
 
+function updatePreprocessStatsBar(segCount, totalDuration, preprocessedFileCount) {
+  var bar = document.getElementById('preprocess-stats-bar');
+  if (segCount > 0) {
+    bar.style.display = 'block';
+    document.getElementById('stats-segments').textContent = segCount;
+    document.getElementById('stats-duration').textContent =
+      totalDuration > 0 ? formatDuration(totalDuration) : '-';
+    document.getElementById('stats-files').textContent = preprocessedFileCount || 0;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
 async function checkPreprocessStatus() {
   try {
     var res = await api('/preprocess/status');
+    // Always update stats bar if there are segments (even if not all files are preprocessed)
+    if (res.segment_count > 0) {
+      updatePreprocessStatsBar(res.segment_count, res.total_duration,
+        res.processed_count || 0);
+    } else {
+      updatePreprocessStatsBar(0, 0, 0);
+    }
     if (res.preprocessed && res.segment_count > 0) {
       // 서버가 DB 동기화했으므로 파일 목록 먼저 새로고침
       try {
