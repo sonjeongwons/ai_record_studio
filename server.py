@@ -325,6 +325,11 @@ def init_db():
             db.execute("CREATE INDEX IF NOT EXISTS idx_training_files_hash ON training_files(file_hash)")
         except Exception:
             pass
+        # 성능 인덱스 추가
+        db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_conversions_model_id ON conversions(model_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_conversions_job_id ON conversions(job_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_training_files_deleted ON training_files(deleted)")
 
 
 def cleanup_stale_jobs():
@@ -354,16 +359,29 @@ def cleanup_stale_jobs():
             print(f"  정리된 진행 중 작업: {active.rowcount}개")
 
 
+# 주기적 정리 스로틀 (30분 간격)
+_last_cleanup_time: float = 0.0
+
+
+def maybe_cleanup_stale_jobs():
+    """30분 이상 경과 시 stale job 정리 (health 엔드포인트에서 호출)."""
+    global _last_cleanup_time
+    now = time.time()
+    if now - _last_cleanup_time > 1800:  # 30분
+        _last_cleanup_time = now
+        cleanup_stale_jobs()
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # RunPod 에러 메시지 (한국어)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 RUNPOD_ERROR_MESSAGES = {
     "timeout": "네트워크 연결 실패. 인터넷 연결을 확인하세요.",
-    "auth": "RunPod API 키가 올바르지 않습니다.",
-    "funds": "RunPod 잔액이 부족합니다.",
-    "file_too_large": "파일 크기 제한 초과",
-    "unknown": "RunPod API 오류가 발생했습니다: {detail}",
+    "auth": "RunPod API 키가 올바르지 않습니다. 설정에서 API 키를 확인하세요.",
+    "funds": "RunPod 잔액이 부족합니다. RunPod 대시보드에서 충전하세요.",
+    "file_too_large": "파일 크기가 제한(2GB)을 초과합니다. 더 작은 파일을 사용하세요.",
+    "unknown": "RunPod 서버 오류가 발생했습니다. 잠시 후 다시 시도하세요. (상세: {detail})",
 }
 
 
@@ -1199,6 +1217,12 @@ async def upload_files(
 ):
     saved = []
     skipped = []
+
+    # 디스크 공간 확인 (최소 500MB)
+    disk = shutil.disk_usage(str(UPLOAD_DIR))
+    if disk.free < 500_000_000:  # 500MB minimum
+        raise HTTPException(507, "디스크 공간이 부족합니다. 최소 500MB 필요합니다.")
+
     for f in files:
         ext = Path(f.filename).suffix.lower()
         if ext not in [".wav", ".mp3", ".flac", ".ogg", ".m4a", ".mp4", ".mkv", ".webm"]:
@@ -2038,6 +2062,8 @@ async def delete_model(model_id: int):
         for d in dirs_to_check:
             if d.exists() and not any(d.iterdir()):
                 d.rmdir()
+        # 연결된 변환 기록도 삭제 (cascade)
+        db.execute("DELETE FROM conversions WHERE model_id = ?", (model_id,))
         db.execute("DELETE FROM voice_models WHERE id=?", (model_id,))
     return {"status": "ok"}
 
@@ -2135,6 +2161,9 @@ async def get_stats():
 @app.get("/api/health")
 async def health_check():
     """서버 상태, RunPod 연결, 디스크 용량 확인"""
+    # 주기적 stale job 정리 (30분 간격)
+    maybe_cleanup_stale_jobs()
+
     health = {
         "status": "ok",
         "server": "running",
@@ -2185,6 +2214,23 @@ async def health_check():
         health["status"] = "degraded"
 
     return health
+
+
+@app.get("/api/system-info")
+async def system_info():
+    """시스템 요약 정보 (디스크, 모델/파일/변환 수)"""
+    disk = shutil.disk_usage(str(DATA_DIR))
+    with get_db() as db:
+        models = db.execute("SELECT COUNT(*) FROM voice_models").fetchone()[0]
+        files = db.execute("SELECT COUNT(*) FROM training_files WHERE deleted=0").fetchone()[0]
+        conversions = db.execute("SELECT COUNT(*) FROM conversions").fetchone()[0]
+    return {
+        "disk_free_gb": round(disk.free / (1024**3), 1),
+        "disk_total_gb": round(disk.total / (1024**3), 1),
+        "models_count": models,
+        "training_files_count": files,
+        "conversions_count": conversions,
+    }
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

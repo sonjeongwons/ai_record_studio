@@ -3,6 +3,7 @@
 # ================================================================
 # Only runpod_handler.py is COPYed into the image.
 # Everything else is client-side, runtime data, or dev files.
+# Excluding these files speeds up docker build context transfer.
 
 # -- Client-side app (runs locally, NOT in Docker) --
 server.py
@@ -10,9 +11,13 @@ static/
 requirements.txt
 start.bat
 start.sh
+app.py
+main.py
 
 # -- Documentation --
 *.md
+LICENSE
+LICENSE.*
 
 # -- Runtime data (user uploads, trained models, output) --
 uploads/
@@ -20,11 +25,19 @@ models/
 output/
 workspace/
 
+# -- PyInstaller build artifacts --
+build/
+dist/
+*.spec
+
 # -- Database and config (local state) --
 *.db
 *.db-journal
 *.db-wal
+*.db-shm
 config.json
+*.sqlite
+*.sqlite3
 
 # -- Python artifacts --
 __pycache__/
@@ -36,12 +49,14 @@ dist/
 build/
 *.egg
 .eggs/
+*.whl
 
 # -- Virtual environments --
 venv/
 .venv/
 env/
 .env
+.env.*
 
 # -- IDE / editor --
 .vscode/
@@ -51,21 +66,47 @@ env/
 *~
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # -- Git --
 .git/
 .gitignore
+.gitattributes
 
 # -- Docker (prevent recursive inclusion) --
 Dockerfile
+Dockerfile.*
 .dockerignore
 docker-compose*.yml
+docker-compose*.yaml
 
 # -- Archives --
 *.zip
+*.tar
 *.tar.gz
+*.tar.bz2
 *.7z
+*.rar
 
 # -- Logs --
 *.log
 logs/
+
+# -- OS files --
+*.tmp
+*.bak
+*.swp
+*.orig
+
+# -- Media files (not needed in build context) --
+*.mp3
+*.wav
+*.flac
+*.mp4
+*.mkv
+*.avi
+
+# -- Node (if any frontend tooling exists) --
+node_modules/
+package-lock.json
+yarn.lock

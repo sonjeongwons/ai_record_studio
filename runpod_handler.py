@@ -49,9 +49,9 @@ PRETRAINED_DIR = APPLIO_ROOT / "rvc" / "models" / "pretraineds"
 # Applio를 import path에 추가
 sys.path.insert(0, str(APPLIO_ROOT))
 
-# Segment duration bounds (seconds)
-SEGMENT_MIN = 5.0
-SEGMENT_MAX = 15.0
+# Segment duration bounds (seconds) — optimal for RVC training
+SEGMENT_MIN = 3.0
+SEGMENT_MAX = 12.0
 
 # Audio extensions that are already audio (no video extraction needed)
 AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wma"}
@@ -146,7 +146,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
       3) Vocal separation (Demucs htdemucs_ft)
       4) Speaker diarization (pyannote, optional)
       5) Noise reduction (noisereduce)
-      6) Segment into 5-15s clips
+      6) Segment into 3-12s clips
       7) Return segments as base64 + metadata
     """
     audio_files: list[dict] = job_input.get("audio_files", [])
@@ -218,7 +218,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         runpod.serverless.progress_update(job, "Noise reduction... (5/6)")
         cleaned_paths = _noise_reduce(diarized_paths, clean_dir)
 
-        # --- Step 6: Segment into 5-15s clips ---
+        # --- Step 6: Segment into 3-12s clips ---
         runpod.serverless.progress_update(job, "Segmenting audio clips... (6/6)")
         segments = _segment_audio(cleaned_paths, segment_dir)
 
@@ -582,11 +582,11 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
     """
     Light noise reduction using noisereduce library.
     Optimized for singing vocals after Demucs separation:
-    - prop_decrease=0.4 (gentle) to preserve high-frequency detail
-      (consonants, sibilants, breath sounds that give voice character)
-    - Demucs already removes most background noise, so aggressive
-      noise reduction here degrades quality rather than improving it
-    - Only targets residual stationary noise (hum, hiss)
+    - ALWAYS applies light NR (prop_decrease=0.5) for consistent quality
+    - Demucs already removes most background noise, so we use gentle
+      settings to catch residual stationary noise (hum, hiss)
+    - prop_decrease=0.5 is the sweet spot: enough to clean without
+      degrading high-frequency detail (consonants, sibilants, breath)
     """
     ensure_dir(output_dir)
 
@@ -599,22 +599,16 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
         for ap in audio_paths:
             audio_data, sr = sf.read(str(ap))
 
-            # Check if audio is already clean (Demucs output usually is)
-            # RMS below -50dB noise floor → skip noise reduction entirely
+            # Log noise floor level for diagnostics (but always apply NR)
             rms = np.sqrt(np.mean(audio_data ** 2))
             noise_floor_db = 20 * np.log10(max(rms, 1e-10))
+            log.info(f"Noise floor: {noise_floor_db:.1f}dB for {ap.name}")
 
-            if noise_floor_db < -50:
-                # Extremely quiet / already very clean → skip
-                log.info(f"Audio already clean ({noise_floor_db:.1f}dB), skipping NR: {ap.name}")
-                cleaned.append(ap)
-                continue
-
-            # Gentle noise reduction — preserve singing detail
+            # Always apply light noise reduction for consistent quality
             reduced = nr.reduce_noise(
                 y=audio_data,
                 sr=sr,
-                prop_decrease=0.4,     # gentle (was 0.8, too aggressive for singing)
+                prop_decrease=0.5,     # light NR — consistent quality without over-processing
                 stationary=True,
                 n_fft=2048,
                 hop_length=512,
@@ -623,7 +617,7 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
             out_path = output_dir / f"{ap.stem}_clean.wav"
             sf.write(str(out_path), reduced, samplerate=sr, subtype="PCM_16")
             cleaned.append(out_path)
-            log.info(f"Noise reduction done (gentle): {ap.name}")
+            log.info(f"Noise reduction done (light): {ap.name}")
 
         return cleaned
 
@@ -637,7 +631,7 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
 
 def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
     """
-    Split audio files into 5-15 second segments using silence detection.
+    Split audio files into 3-12 second segments using silence detection.
     Uses FFmpeg silencedetect to find natural split points,
     falling back to fixed-length splitting.
     """
@@ -706,7 +700,7 @@ def _detect_silence_splits(
 ) -> list[tuple[float, float]]:
     """
     Use FFmpeg silencedetect to find silence boundaries,
-    then create segments of 5-15 seconds at those boundaries.
+    then create segments of 3-12 seconds at those boundaries.
     """
     try:
         result = subprocess.run(
@@ -819,13 +813,13 @@ def task_train(job_input: dict, job: dict) -> dict:
     if batch_size <= 0:
         try:
             vram_gb = torch.cuda.get_device_properties(0).total_mem / (1024 ** 3)
-            # Rule of thumb: batch_size ≈ VRAM_GB, in multiples of 4
-            # RTX 4090 (24GB) → 16~24, RTX 3090 (24GB) → 16, RTX 3060 (12GB) → 8
-            batch_size = max(4, min(32, int(vram_gb) // 4 * 4))
+            # Optimized formula: better GPU utilization, especially for RTX 4090 (24GB)
+            # RTX 4090 (24GB) → 32, RTX 3090 (24GB) → 28, RTX 3060 (12GB) → 16
+            batch_size = min(48, max(4, (int(vram_gb) // 3) * 4))
             log.info(f"Auto-detected batch_size={batch_size} for {vram_gb:.1f}GB VRAM")
         except Exception:
             batch_size = 8
-    batch_size = max(4, min(32, batch_size))
+    batch_size = max(4, min(48, batch_size))
 
     job_id = job.get("id", uuid.uuid4().hex[:12])
     start_time = time.time()
@@ -1560,6 +1554,10 @@ def _rvc_create_index(model_name: str, logs_dir: Path) -> None:
         faiss.write_index(index, str(index_path))
         log.info(f"FAISS index created: {index_path} ({big_npy.shape[0]} vectors)")
 
+        # Validate that the index is not empty
+        if hasattr(index, 'ntotal') and index.ntotal == 0:
+            log.warning("FAISS index is empty — index file may not improve inference")
+
     except ImportError:
         log.warning("faiss not available, skipping index creation")
     except Exception as e:
@@ -1696,8 +1694,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
     index_rate: float = job_input.get("index_rate", 0.88)
     f0_method: str = job_input.get("f0_method", "rmvpe")
     filter_radius: int = job_input.get("filter_radius", 3)
-    rms_mix_rate: float = job_input.get("rms_mix_rate", 0.1)
-    protect: float = job_input.get("protect", 0.23)
+    rms_mix_rate: float = job_input.get("rms_mix_rate", 0.25)
+    protect: float = job_input.get("protect", 0.33)
     hop_length: int = job_input.get("hop_length", 128)
     clean_audio: bool = job_input.get("clean_audio", True)
     clean_strength: float = job_input.get("clean_strength", 0.7)
@@ -1929,13 +1927,13 @@ def _rvc_infer(
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
     index_rate: float = 0.88,
-    protect: float = 0.23,
+    protect: float = 0.33,
     hop_length: int = 128,
     clean_audio: bool = True,
     clean_strength: float = 0.7,
     export_format: str = "wav",
     filter_radius: int = 3,
-    rms_mix_rate: float = 0.1,
+    rms_mix_rate: float = 0.25,
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.
@@ -2156,7 +2154,15 @@ def _rvc_infer(
         log.warning(f"CLI stderr: {cli_result.stderr[-2000:]}")
 
     if cli_result.returncode != 0:
-        log.error(f"CLI failed with code {cli_result.returncode}")
+        # Include last 5 lines of stdout for debugging context
+        stdout_lines = [l for l in cli_result.stdout.strip().splitlines() if l.strip()]
+        tail = "\n".join(stdout_lines[-5:]) if stdout_lines else "(no stdout)"
+        stderr_tail = cli_result.stderr.strip()[-500:] if cli_result.stderr.strip() else ""
+        log.error(
+            f"CLI failed with code {cli_result.returncode}.\n"
+            f"Last stdout:\n{tail}"
+            + (f"\nStderr:\n{stderr_tail}" if stderr_tail else "")
+        )
 
     log.info("Inference completed via CLI fallback")
 

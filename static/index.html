@@ -228,7 +228,7 @@ select { -webkit-appearance: none; cursor: pointer; }
   transition: all 0.3s;
   background: rgba(255,255,255,0.01);
 }
-.dropzone:hover, .dropzone.drag-over {
+.dropzone:hover, .dropzone.drag-over, .dropzone.dragover {
   border-color: var(--violet);
   background: var(--violet-g);
 }
@@ -868,19 +868,221 @@ input[type="range"]::-webkit-slider-thumb {
 .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Focus-visible for keyboard accessibility */
-.btn:focus-visible, .nav-btn:focus-visible, input:focus-visible, select:focus-visible {
+.btn:focus-visible, .nav-btn:focus-visible, input:focus-visible, select:focus-visible,
+.file-delete:focus-visible, .skip-link:focus-visible, .audio-play-btn:focus-visible,
+.btn-model-delete:focus-visible, .btn-conv-action:focus-visible, .batch-remove:focus-visible,
+.toast-close:focus-visible, .connection-status:focus-visible {
   outline: 2px solid var(--violet);
   outline-offset: 2px;
 }
-.model-card:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.model-card:focus-visible, .file-item:focus-visible, .job-item:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 1px;
+}
 
+/* ─── Skeleton Loading ─── */
+@keyframes skeletonPulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.8s ease-in-out infinite;
+  border-radius: 8px;
+}
+.skeleton-line {
+  height: 14px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+}
+.skeleton-line.short { width: 40%; }
+.skeleton-line.medium { width: 70%; }
+.skeleton-line.long { width: 100%; }
+.skeleton-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.skeleton-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.skeleton-text { flex: 1; }
+
+/* ─── Search/Filter Input ─── */
+.search-input-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+.search-input-wrap svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--text3);
+  pointer-events: none;
+}
+.search-input {
+  width: 100%;
+  padding: 8px 12px 8px 34px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-input:focus { border-color: var(--violet); }
+.search-input::placeholder { color: var(--text3); }
+
+/* ─── Scroll to Top Button ─── */
+.scroll-top-btn {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--violet);
+  border: none;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 9990;
+  box-shadow: 0 4px 16px rgba(139,92,246,0.4);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s, transform 0.3s, background 0.2s;
+  pointer-events: none;
+}
+.scroll-top-btn.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.scroll-top-btn:hover { background: #7c3aed; }
+.scroll-top-btn svg { width: 18px; height: 18px; }
+
+/* ─── Tab Fade Transitions ─── */
+.page {
+  display: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.page.active {
+  display: block;
+  opacity: 1;
+}
+.page.fade-entering {
+  display: block;
+  opacity: 0;
+}
+
+/* ─── Audio Volume Control ─── */
+.audio-vol-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.audio-vol-wrap svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text3);
+  flex-shrink: 0;
+}
+.audio-vol-slider {
+  -webkit-appearance: none;
+  width: 50px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg3);
+  outline: none;
+}
+.audio-vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--violet);
+  cursor: pointer;
+  border: 1.5px solid var(--bg);
+}
+
+/* ─── Enhanced Empty States ─── */
+.empty-state-enhanced {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text3);
+}
+.empty-state-enhanced .empty-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+.empty-state-enhanced .empty-icon svg {
+  width: 32px;
+  height: 32px;
+  opacity: 0.3;
+}
+.empty-state-enhanced .empty-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+.empty-state-enhanced .empty-desc {
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.5;
+}
+
+/* ─── Keyboard Shortcut Badge ─── */
+.kbd-hint {
+  font-size: 9px;
+  color: var(--text3);
+  background: rgba(255,255,255,0.05);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: 4px;
+  display: inline-block;
+  vertical-align: middle;
+}
 
 /* ─── Responsive ─── */
+@media (max-width: 1024px) {
+  .main { padding: 28px 28px; }
+  .main-inner { max-width: 100%; }
+  .grid-3 { grid-template-columns: 1fr 1fr; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
 @media (max-width: 768px) {
   .sidebar { width: 56px; padding: 12px 0; }
   .sidebar .logo { width: 32px; height: 32px; border-radius: 10px; margin-bottom: 16px; }
   .sidebar .logo svg { width: 16px; height: 16px; }
-  .nav-btn { width: 38px; height: 38px; }
+  .nav-btn { width: 42px; height: 42px; }
   .main { padding: 20px 16px; }
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: 1fr; }
@@ -888,6 +1090,12 @@ input[type="range"]::-webkit-slider-thumb {
   .preprocess-results { grid-template-columns: 1fr 1fr; }
   h1 { font-size: 18px; }
   .dropzone { padding: 24px 16px; }
+  .btn { padding: 12px 20px; font-size: 14px; }
+  .btn-full { padding: 16px; font-size: 15px; }
+  .scroll-top-btn { bottom: 20px; right: 20px; }
+  .toast-container { bottom: 16px; right: 16px; max-width: calc(100vw - 32px); }
+  .audio-vol-slider { width: 40px; }
+  .nav-btn .tooltip { display: none; }
 }
 @media (max-width: 480px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -897,6 +1105,12 @@ input[type="range"]::-webkit-slider-thumb {
   .toast-container { left: 12px; right: 12px; bottom: 12px; }
   .toast { min-width: 0; }
   .download-panel { left: 12px; max-width: calc(100vw - 24px); width: auto; }
+  .btn { padding: 14px 20px; font-size: 14px; min-height: 44px; }
+  .nav-btn { width: 44px; height: 44px; }
+  .card { padding: 16px; }
+  .flex.gap-16 { flex-wrap: wrap; }
+  .preprocess-results { grid-template-columns: 1fr; }
+  .audio-vol-wrap { display: none; }
 }
 </style>
 </head>
@@ -913,33 +1127,38 @@ input[type="range"]::-webkit-slider-thumb {
 </svg>
 
 <!-- Toast Container -->
-<div class="toast-container" id="toast-container"></div>
+<div class="toast-container" id="toast-container" role="status" aria-live="polite"></div>
 <div class="download-panel" id="download-panel"></div>
+
+<!-- Scroll to Top Button -->
+<button class="scroll-top-btn" id="scroll-top-btn" onclick="scrollToTop()" aria-label="맨 위로 스크롤">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+</button>
 
 <!-- Sidebar -->
 <nav class="sidebar">
   <div class="logo">
     <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="white" stroke-width="2"/></svg>
   </div>
-  <button class="nav-btn active" onclick="showPage('home')" data-page="home">
+  <button class="nav-btn active" onclick="showPage('home')" data-page="home" aria-label="홈 대시보드 (Ctrl+1)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-    <span class="tooltip">홈</span>
+    <span class="tooltip">홈 <span class="kbd-hint">Ctrl+1</span></span>
   </button>
-  <button class="nav-btn" onclick="showPage('train')" data-page="train">
+  <button class="nav-btn" onclick="showPage('train')" data-page="train" aria-label="학습 (Ctrl+2)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
-    <span class="tooltip">학습</span>
+    <span class="tooltip">학습 <span class="kbd-hint">Ctrl+2</span></span>
   </button>
-  <button class="nav-btn" onclick="showPage('convert')" data-page="convert">
+  <button class="nav-btn" onclick="showPage('convert')" data-page="convert" aria-label="변환 (Ctrl+3)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
-    <span class="tooltip">변환</span>
+    <span class="tooltip">변환 <span class="kbd-hint">Ctrl+3</span></span>
   </button>
-  <button class="nav-btn" onclick="showPage('settings')" data-page="settings">
+  <button class="nav-btn" onclick="showPage('settings')" data-page="settings" aria-label="설정 (Ctrl+4)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-    <span class="tooltip">설정</span>
+    <span class="tooltip">설정 <span class="kbd-hint">Ctrl+4</span></span>
   </button>
 
   <!-- Connection Status Indicator -->
-  <div class="connection-status" id="connection-status" onclick="checkConnection(true)">
+  <div class="connection-status" id="connection-status" onclick="checkConnection(true)" role="status" aria-label="API 연결 상태" tabindex="0">
     <div class="connection-dot checking" id="connection-dot"></div>
     <div class="connection-label">API</div>
     <span class="tooltip" id="connection-tooltip">확인 중...</span>
@@ -1002,7 +1221,7 @@ input[type="range"]::-webkit-slider-thumb {
 
   <!-- Step: Upload -->
   <div id="train-upload">
-    <div class="dropzone" id="train-dropzone">
+    <div class="dropzone" id="train-dropzone" role="button" tabindex="0" aria-label="학습용 파일 업로드 (클릭 또는 드래그)">
       <div class="dropzone-icon">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
       </div>
@@ -1013,13 +1232,17 @@ input[type="range"]::-webkit-slider-thumb {
 
     <div class="flex-between mt-16 mb-16" id="file-list-header" style="display:none">
       <div style="display:flex;align-items:center;gap:8px">
-        <label style="display:flex;align-items:center;cursor:pointer;gap:4px;font-size:12px;color:var(--text3)" title="전체 선택/해제">
-          <input type="checkbox" id="select-all-cb" checked onchange="toggleSelectAll(this.checked)" style="accent-color:#8b5cf6;width:15px;height:15px">
+        <label style="display:flex;align-items:center;cursor:pointer;gap:4px;font-size:12px;color:var(--text3)" title="전체 선택/해제" aria-label="전체 선택/해제">
+          <input type="checkbox" id="select-all-cb" checked onchange="toggleSelectAll(this.checked)" style="accent-color:#8b5cf6;width:15px;height:15px" aria-label="모든 파일 선택">
           전체
         </label>
         <span style="font-size:13px;color:var(--text2)" id="file-count-label"></span>
       </div>
-      <button class="btn btn-danger" onclick="deleteSelectedFiles()" style="padding:6px 12px;font-size:11px">선택 삭제</button>
+      <button class="btn btn-danger" onclick="deleteSelectedFiles()" style="padding:6px 12px;font-size:11px" aria-label="선택한 파일 삭제">선택 삭제</button>
+    </div>
+    <div class="search-input-wrap" id="file-search-wrap" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="search-input" id="file-search" placeholder="파일 검색..." oninput="filterFiles()" aria-label="파일 검색">
     </div>
     <div id="file-list"></div>
 
@@ -1258,12 +1481,16 @@ input[type="range"]::-webkit-slider-thumb {
   <div id="convert-main">
     <div class="card">
       <label class="label">보이스 모델 선택</label>
+      <div class="search-input-wrap" id="model-search-wrap" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="search-input" id="model-search" placeholder="모델 검색..." oninput="filterModels()" aria-label="모델 검색">
+      </div>
       <div id="convert-model-list"></div>
     </div>
 
     <div class="card">
       <label class="label">변환할 음원 업로드 (여러 파일 가능)</label>
-      <div class="dropzone" id="convert-dropzone" style="padding:24px">
+      <div class="dropzone" id="convert-dropzone" style="padding:24px" role="button" tabindex="0" aria-label="변환할 음원 파일 업로드 (클릭 또는 드래그)">
         <div class="dropzone-icon">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
         </div>
@@ -1604,37 +1831,42 @@ input[type="range"]::-webkit-slider-thumb {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // State
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-let uploadedFiles = [];
-let models = [];
-let selectedModelId = null;
-let convertFile = null;
-let currentTrainJobId = null;
-let currentConvertJobId = null;
-let preprocessJobId = null;
-let preprocessDone = false;
+var uploadedFiles = [];
+var models = [];
+var selectedModelId = null;
+var convertFile = null;
+var currentTrainJobId = null;
+var currentConvertJobId = null;
+var preprocessJobId = null;
+var preprocessDone = false;
 
 // Batch conversion state
-let batchFiles = [];
-let batchResults = [];
-let batchProcessing = false;
+var batchFiles = [];
+var batchResults = [];
+var batchProcessing = false;
 
 // Connection check
-let connectionOk = null;
-let connectionTimer = null;
+var connectionOk = null;
+var connectionTimer = null;
+
+// Auto-save debounce timer
+var _settingsDebounceTimer = null;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Toast Notification System
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const TOAST_ICONS = {
+var TOAST_ICONS = {
   success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
   error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
   info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
   warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
 };
 
-function toast(message, type = 'info', duration = 4000) {
-  const container = document.getElementById('toast-container');
-  const el = document.createElement('div');
+function toast(message, type, duration) {
+  type = type || 'info';
+  duration = (duration === undefined) ? 4000 : duration;
+  var container = document.getElementById('toast-container');
+  var el = document.createElement('div');
   el.className = 'toast toast-' + type;
   el.innerHTML =
     '<div class="toast-icon">' + (TOAST_ICONS[type] || TOAST_ICONS.info) + '</div>' +
@@ -1696,7 +1928,7 @@ async function checkConnection(showToast) {
 
 function startConnectionPolling() {
   checkConnection(false);
-  connectionTimer = setInterval(function() { checkConnection(false); }, 60000);
+  connectionTimer = setInterval(function() { checkConnection(false); }, 30000);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1857,10 +2089,23 @@ function apRedraw(uid, progress) {
 // Navigation
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function showPage(page) {
-  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  var currentPage = document.querySelector('.page.active');
+  var nextPage = document.getElementById('page-' + page);
+
   document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
-  document.getElementById('page-' + page).classList.add('active');
   document.querySelector('[data-page="' + page + '"]').classList.add('active');
+
+  // Fade transition
+  if (currentPage && currentPage !== nextPage) {
+    currentPage.classList.remove('active');
+    currentPage.style.display = 'none';
+    currentPage.style.opacity = '0';
+  }
+  nextPage.style.display = 'block';
+  // Force reflow then fade in
+  void nextPage.offsetWidth;
+  nextPage.classList.add('active');
+  nextPage.style.opacity = '1';
 
   // 페이지 이동 시 대시보드 타이머 정리
   if (page !== 'home' && _dashboardTimer) {
@@ -2124,9 +2369,17 @@ function renderFileList() {
   var btnTrain = document.getElementById('btn-start-train');
   var preprocessSection = document.getElementById('preprocess-section');
 
+  var searchWrap = document.getElementById('file-search-wrap');
+
   if (!uploadedFiles.length) {
-    listEl.innerHTML = '';
+    listEl.innerHTML =
+      '<div class="empty-state-enhanced">' +
+        '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>' +
+        '<div class="empty-title">학습 파일이 없습니다</div>' +
+        '<div class="empty-desc">위 업로드 영역에 음원 파일을 끌어다 놓거나 클릭하세요</div>' +
+      '</div>';
     headerEl.style.display = 'none';
+    if (searchWrap) searchWrap.style.display = 'none';
     btnTrain.disabled = true;
     preprocessSection.style.display = 'none';
     preprocessDone = false;
@@ -2134,6 +2387,7 @@ function renderFileList() {
   }
 
   headerEl.style.display = 'flex';
+  if (searchWrap) searchWrap.style.display = uploadedFiles.length > 3 ? 'block' : 'none';
   var totalSize = uploadedFiles.reduce(function(a, f) { return a + (f.size || f.file_size || 0); }, 0);
   document.getElementById('file-count-label').textContent =
     uploadedFiles.length + '개 파일 \u00B7 ' + formatSize(totalSize);
@@ -2839,6 +3093,8 @@ async function loadModels() {
     var res = await api('/models');
     models = res.models;
 
+    var modelSearchWrap = document.getElementById('model-search-wrap');
+
     if (!models.length) {
       document.getElementById('convert-no-models').style.display = 'block';
       document.getElementById('convert-main').style.display = 'none';
@@ -2847,10 +3103,17 @@ async function loadModels() {
 
     document.getElementById('convert-no-models').style.display = 'none';
     document.getElementById('convert-main').style.display = 'block';
+    if (modelSearchWrap) modelSearchWrap.style.display = models.length > 3 ? 'block' : 'none';
 
     if (!selectedModelId && models.length) selectedModelId = models[0].id;
 
-    document.getElementById('convert-model-list').innerHTML = models.map(function(m) {
+    var modelSearchVal = document.getElementById('model-search') ? document.getElementById('model-search').value.toLowerCase() : '';
+    var filteredModels = models.filter(function(m) {
+      if (!modelSearchVal) return true;
+      return (m.name || '').toLowerCase().indexOf(modelSearchVal) !== -1;
+    });
+
+    document.getElementById('convert-model-list').innerHTML = filteredModels.map(function(m) {
       var files = [];
       try { files = JSON.parse(m.training_files_json || '[]'); } catch(e) {}
       var filesHtml = '';
@@ -3490,10 +3753,107 @@ async function saveDownloadFolder() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Search/Filter
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function filterFiles() {
+  var query = (document.getElementById('file-search').value || '').toLowerCase();
+  var items = document.querySelectorAll('#file-list .file-item');
+  items.forEach(function(item) {
+    var name = item.querySelector('.file-name');
+    var text = name ? name.textContent.toLowerCase() : '';
+    item.style.display = (!query || text.indexOf(query) !== -1) ? '' : 'none';
+  });
+}
+
+function filterModels() {
+  loadModels();
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Scroll to Top
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+window.addEventListener('scroll', function() {
+  var btn = document.getElementById('scroll-top-btn');
+  if (btn) {
+    if (window.scrollY > 300) {
+      btn.classList.add('visible');
+    } else {
+      btn.classList.remove('visible');
+    }
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Keyboard Shortcuts
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+document.addEventListener('keydown', function(e) {
+  // Ctrl+1~4: tab switching
+  if (e.ctrlKey && !e.shiftKey && !e.altKey) {
+    var pages = ['home', 'train', 'convert', 'settings'];
+    var idx = parseInt(e.key) - 1;
+    if (idx >= 0 && idx < pages.length) {
+      e.preventDefault();
+      showPage(pages[idx]);
+    }
+  }
+  // Esc: close modals / dismiss toasts
+  if (e.key === 'Escape') {
+    var toasts = document.querySelectorAll('.toast:not(.removing)');
+    if (toasts.length > 0) {
+      toasts.forEach(function(t) { dismissToast(t); });
+    }
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Drag & Drop Enhancement
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function setupDragDrop(dropzoneId, inputId) {
+  var dz = document.getElementById(dropzoneId);
+  if (!dz) return;
+  var input = document.getElementById(inputId);
+
+  dz.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dz.classList.add('dragover');
+  });
+  dz.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dz.classList.remove('dragover');
+  });
+  dz.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    dz.classList.remove('dragover');
+    if (e.dataTransfer.files.length && input) {
+      input.files = e.dataTransfer.files;
+      input.dispatchEvent(new Event('change'));
+    }
+  });
+  // Also handle Enter/Space on keyboard-focused dropzone
+  dz.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (input) input.click();
+    }
+  });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Init
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 loadDashboard();
 startConnectionPolling();
+
+// Setup drag-and-drop on both dropzones
+setupDragDrop('train-dropzone', 'train-file-input');
+setupDragDrop('convert-dropzone', 'convert-file-input');
 
 // 파일 목록을 먼저 로드한 후 전처리 상태 확인 (race condition 방지)
 api('/files').then(function(res) {
