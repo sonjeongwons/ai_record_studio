@@ -83,8 +83,8 @@ def cleanup_dir(path: Path) -> None:
 def cleanup_gpu() -> None:
     """Release GPU memory and run garbage collection."""
     if torch.cuda.is_available():
-        torch.cuda.empty_cache()
         torch.cuda.synchronize()
+        torch.cuda.empty_cache()
     gc.collect()
 
 
@@ -806,6 +806,8 @@ def task_train(job_input: dict, job: dict) -> dict:
     model_name = re.sub(r'[<>:"/\\|?*]', '_', model_name).strip()
     if not model_name:
         model_name = "my_voice_model"
+    if len(model_name) > 64:
+        model_name = model_name[:64]
 
     # Validate parameters — Applio only supports 32k, 40k, 48k
     if sample_rate not in (32000, 40000, 48000):
@@ -1193,7 +1195,12 @@ def _rvc_extract(
         if len(last_lines) > 20:
             last_lines.pop(0)
 
-    proc.wait(timeout=7200)
+    try:
+        proc.wait(timeout=7200)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=10)
+        raise RuntimeError("Feature extraction 타임아웃 (2시간 초과). 학습 데이터가 너무 많을 수 있습니다.")
     if proc.returncode != 0:
         tail = "\n".join(last_lines[-10:])
         raise RuntimeError(
@@ -1418,7 +1425,14 @@ def _rvc_train(
             except Exception:
                 pass
 
-    proc.wait(timeout=36000)  # 10-hour timeout
+    try:
+        proc.wait(timeout=36000)  # 10-hour timeout
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=10)
+        raise RuntimeError(
+            f"학습 타임아웃 (10시간 초과). epoch={epoch_count}/{epochs} 에서 중단됨."
+        )
     if proc.returncode != 0:
         tail = "\n".join(last_lines[-10:])
         raise RuntimeError(

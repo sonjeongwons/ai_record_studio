@@ -11,7 +11,6 @@ import shutil
 import hashlib
 import sqlite3
 import base64
-import asyncio
 import threading
 import webbrowser
 import uuid
@@ -23,7 +22,7 @@ from typing import Optional
 
 import uvicorn
 import requests
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -221,8 +220,14 @@ def prepare_files_for_runpod(file_paths: list[str]) -> list[list[dict]]:
 
 def load_config():
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH) as f:
-            return json.load(f)
+        try:
+            with open(CONFIG_PATH, encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # 손상된 config 백업 후 초기화
+            backup = CONFIG_PATH.with_suffix(".json.bak")
+            shutil.copy2(str(CONFIG_PATH), str(backup))
+            print(f"[Warning] config.json 손상 → 백업: {backup}")
     return {"runpod_api_key": "", "runpod_endpoint_id": ""}
 
 def save_config(config):
@@ -1408,6 +1413,14 @@ async def start_training(
     if existing:
         raise HTTPException(400, f"'{model_name}' 이름의 모델이 이미 존재합니다. 다른 이름을 사용해 주세요.")
 
+    # 파라미터 검증
+    if not (10 <= epochs <= 10000):
+        raise HTTPException(400, f"에포크는 10~10000 사이여야 합니다. (입력: {epochs})")
+    if batch_size < 0 or batch_size > 64:
+        raise HTTPException(400, f"배치 사이즈는 0~64 사이여야 합니다. (입력: {batch_size})")
+    if sample_rate not in (32000, 40000, 48000):
+        raise HTTPException(400, f"샘플레이트는 32000/40000/48000 중 하나여야 합니다. (입력: {sample_rate})")
+
     # 학습 파일 수집
     with get_db() as db:
         if file_ids:
@@ -1841,6 +1854,7 @@ async def start_conversion(
             "protect": protect,
             "rms_mix_rate": rms_mix_rate,
             "filter_radius": filter_radius,
+            "hop_length": 128,
             "separate_vocals": True,
             "vocal_volume": vocal_volume,
             "mr_volume": mr_volume,
@@ -1900,6 +1914,13 @@ async def start_conversion(
                 except Exception as e:
                     print(f"[Convert] R2 index upload failed: {e}")
                     # index는 선택사항이므로 계속 진행
+
+        # 임시 입력 파일 정리 (R2 업로드 또는 base64 변환 후 불필요)
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except Exception:
+            pass
 
         # 페이로드 크기 로깅 (디버깅용)
         payload_keys = {k: (len(v) if isinstance(v, str) and len(v) > 100 else v)

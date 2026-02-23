@@ -1843,7 +1843,11 @@ function apRedraw(uid, progress) {
       ? 'rgba(139, 92, 246, 0.8)'
       : 'rgba(255, 255, 255, 0.12)';
     ctx.beginPath();
-    ctx.roundRect(x, y, barW, barH, 1);
+    if (ctx.roundRect) {
+      ctx.roundRect(x, y, barW, barH, 1);
+    } else {
+      ctx.rect(x, y, barW, barH);
+    }
     ctx.fill();
   }
   ctx.restore();
@@ -1857,6 +1861,12 @@ function showPage(page) {
   document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector('[data-page="' + page + '"]').classList.add('active');
+
+  // 페이지 이동 시 대시보드 타이머 정리
+  if (page !== 'home' && _dashboardTimer) {
+    clearInterval(_dashboardTimer);
+    _dashboardTimer = null;
+  }
 
   if (page === 'home') loadDashboard();
   if (page === 'convert') { loadModels(); loadConversionHistory(); }
@@ -1949,6 +1959,12 @@ function dismissDownloadItem(id) {
   if (!el || el.classList.contains('dl-removing')) return;
   el.classList.add('dl-removing');
   setTimeout(function() { el.remove(); }, 250);
+}
+
+function escapeHtml(str) {
+  var d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
 }
 
 function formatSize(bytes) {
@@ -2221,6 +2237,9 @@ function toggleSelectAll(checked) {
 }
 
 async function deleteFile(id) {
+  var file = uploadedFiles.find(function(f) { return f.id === id; });
+  var name = file ? file.original_name || file.filename : '파일';
+  if (!confirm('"' + name + '" 파일을 삭제하시겠습니까?')) return;
   await api('/files/' + id, { method: 'DELETE' });
   uploadedFiles = uploadedFiles.filter(function(f) { return f.id !== id; });
   renderFileList();
@@ -2523,7 +2542,13 @@ async function cleanupStuckJobs() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Training
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var _submitting = false;
 async function startTraining() {
+  if (_submitting) return;
+  _submitting = true;
+  try { await _doStartTraining(); } finally { _submitting = false; }
+}
+async function _doStartTraining() {
   var modelName = document.getElementById('model-name').value || 'My Voice';
   var epochs = document.getElementById('train-epochs').value;
   var sr = document.getElementById('train-sr').value;
@@ -2845,12 +2870,12 @@ async function loadModels() {
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>' +
         '</div>' +
         '<div style="flex:1">' +
-          '<div style="font-size:14px;font-weight:500">' + m.name + '</div>' +
+          '<div style="font-size:14px;font-weight:500">' + escapeHtml(m.name) + '</div>' +
           '<div style="font-size:11px;color:var(--text3)">' + (m.epochs || 0) + ' 에폭 \u00B7 ' + (m.created_at || '') + '</div>' +
           filesHtml +
         '</div>' +
         '<span class="badge badge-green">준비</span>' +
-        '<button class="btn-model-delete" onclick="event.stopPropagation(); deleteModel(' + m.id + ', \'' + m.name.replace(/'/g, "\\'") + '\')" title="모델 삭제">' +
+        '<button class="btn-model-delete" onclick="event.stopPropagation(); deleteModel(' + m.id + ', \'' + escapeHtml(m.name).replace(/'/g, "\\'") + '\')" title="모델 삭제">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
         '</button>' +
       '</div>';
@@ -2885,12 +2910,14 @@ function updateConvertBtn() {
 }
 
 async function startConversion() {
+  if (_submitting) return;
   if (!selectedModelId) return;
 
   if (batchFiles.length > 1) {
     startBatchConversion();
     return;
   }
+  _submitting = true;
 
   if (!convertFile) return;
 
@@ -2922,6 +2949,8 @@ async function startConversion() {
     document.body.classList.remove('busy');
     toast('변환 시작 실패: ' + e.message, 'error');
     document.getElementById('btn-convert').disabled = false;
+  } finally {
+    _submitting = false;
   }
 }
 
@@ -3294,6 +3323,13 @@ function resetConversion() {
   document.getElementById('btn-convert').disabled = false;
   // file input 초기화 (같은 파일 재선택 시 change 이벤트 발생하도록)
   document.getElementById('convert-file-input').value = '';
+  // 오디오 재생 중지 + waveform 메모리 정리
+  var resultAudio = document.getElementById('result-audio');
+  if (resultAudio) { resultAudio.pause(); resultAudio.src = ''; }
+  // batch result waveform 키 정리
+  Object.keys(apWaveData).forEach(function(k) {
+    if (k.startsWith('br_') || k === 'result') delete apWaveData[k];
+  });
   loadModels();
   loadConversionHistory();
 }
