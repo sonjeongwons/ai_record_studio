@@ -988,9 +988,11 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
                    message=f"{batch_label} 제출 중... ({len(batch)}개 세그먼트)")
 
         try:
+            config = load_config()
             runpod_job_id = runpod_client.submit_job({
                 "task_type": "preprocess",
                 "audio_files": batch,
+                "bucket_name": config.get("r2_bucket_name", ""),
             })
         except Exception as e:
             error_msg = classify_runpod_error(e)
@@ -1113,7 +1115,8 @@ async def get_config():
         "r2_endpoint_url": config.get("r2_endpoint_url", ""),
         "r2_access_key_id": config.get("r2_access_key_id", ""),
         "r2_secret_key_display": "***" + r2_secret[-4:] if r2_secret else "",
-        "r2_bucket_name": config.get("r2_bucket_name", "voice-studio"),
+        "r2_bucket_name": config.get("r2_bucket_name", ""),
+        "download_folder": config.get("download_folder", str(Path.home() / "Downloads")),
     }
 
 @app.post("/api/config")
@@ -1132,7 +1135,7 @@ async def set_r2_config(
     r2_endpoint_url: str = Form(""),
     r2_access_key_id: str = Form(""),
     r2_secret_access_key: str = Form(""),
-    r2_bucket_name: str = Form("voice-studio"),
+    r2_bucket_name: str = Form(""),
 ):
     config = load_config()
     if r2_endpoint_url:
@@ -1145,6 +1148,41 @@ async def set_r2_config(
         config["r2_bucket_name"] = r2_bucket_name
     save_config(config)
     return {"status": "ok"}
+
+@app.post("/api/config/download-folder")
+async def set_download_folder(folder: str = Form(...)):
+    folder_path = Path(folder)
+    if not folder_path.exists():
+        try:
+            folder_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise HTTPException(400, f"폴더를 생성할 수 없습니다: {e}")
+    if not folder_path.is_dir():
+        raise HTTPException(400, "유효한 폴더 경로가 아닙니다.")
+    config = load_config()
+    config["download_folder"] = str(folder_path)
+    save_config(config)
+    return {"status": "ok", "folder": str(folder_path)}
+
+@app.post("/api/save-to-folder")
+async def save_to_folder(filename: str = Form(...)):
+    """output 디렉토리의 파일을 사용자 지정 다운로드 폴더에 복사"""
+    safe_name = Path(filename).name
+    src = OUTPUT_DIR / safe_name
+    if not src.exists():
+        raise HTTPException(404, "파일을 찾을 수 없습니다.")
+
+    config = load_config()
+    dl_folder = Path(config.get("download_folder", str(Path.home() / "Downloads")))
+    if not dl_folder.exists():
+        try:
+            dl_folder.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise HTTPException(500, f"다운로드 폴더 생성 실패: {e}")
+
+    dst = dl_folder / safe_name
+    shutil.copy2(str(src), str(dst))
+    return {"status": "ok", "path": str(dst), "size": dst.stat().st_size}
 
 
 # ─── 파일 업로드 API ───
@@ -1445,7 +1483,7 @@ async def start_training(
         if use_r2:
             print(f"[Train] Uploading {len(file_paths)} files ({total_size:,} bytes) to R2...")
             for i, fp in enumerate(file_paths):
-                r2_key = f"voice-studio/train/{job_id}/{Path(fp).name}"
+                r2_key = f"train/{job_id}/{Path(fp).name}"
                 try:
                     url = upload_to_r2(Path(fp), r2_key)
                     audio_urls.append({"filename": Path(fp).name, "url": url})
@@ -1455,6 +1493,9 @@ async def start_training(
                         message=f"학습 데이터 R2 업로드 실패: {e}")
                     return {"job_id": job_id}
             print(f"[Train] All {len(audio_urls)} files uploaded to R2")
+
+        config = load_config()
+        r2_bucket = config.get("r2_bucket_name", "")
 
         if audio_urls:
             # R2 URL 방식
@@ -1466,6 +1507,7 @@ async def start_training(
                 "epochs": epochs,
                 "batch_size": batch_size,
                 "f0_method": f0_method,
+                "bucket_name": r2_bucket,
             }
         else:
             # base64 인라인 (소용량)
@@ -1481,6 +1523,7 @@ async def start_training(
                 "epochs": epochs,
                 "batch_size": batch_size,
                 "f0_method": f0_method,
+                "bucket_name": r2_bucket,
             }
 
         payload_size = len(json.dumps(payload))
@@ -1784,6 +1827,9 @@ async def start_conversion(
         """, (job_id,))
 
     try:
+        config = load_config()
+        r2_bucket = config.get("r2_bucket_name", "")
+
         payload = {
             "task_type": "convert",
             "audio_filename": audio.filename,
@@ -1798,10 +1844,11 @@ async def start_conversion(
             "separate_vocals": True,
             "vocal_volume": vocal_volume,
             "mr_volume": mr_volume,
+            "bucket_name": r2_bucket,
         }
 
         # 오디오 파일을 R2에 업로드 (10 MB 페이로드 한도 회피)
-        audio_r2_key = f"voice-studio/convert/{job_id}/{audio.filename}"
+        audio_r2_key = f"convert/{job_id}/{audio.filename}"
         try:
             audio_url = upload_to_r2(temp_path, audio_r2_key)
             payload["audio_url"] = audio_url
@@ -1830,7 +1877,7 @@ async def start_conversion(
                 local_pth = MODEL_DIR / local_pth
             if local_pth.exists():
                 try:
-                    pth_r2_key = f"voice-studio/convert/{job_id}/model.pth"
+                    pth_r2_key = f"convert/{job_id}/model.pth"
                     pth_url = upload_to_r2(local_pth, pth_r2_key)
                     payload["pth_url"] = pth_url
                     print(f"[Convert] Uploaded model pth to R2: {pth_r2_key}")
@@ -1846,7 +1893,7 @@ async def start_conversion(
                 local_idx = MODEL_DIR / local_idx
             if local_idx.exists():
                 try:
-                    idx_r2_key = f"voice-studio/convert/{job_id}/model.index"
+                    idx_r2_key = f"convert/{job_id}/model.index"
                     index_url = upload_to_r2(local_idx, idx_r2_key)
                     payload["index_url"] = index_url
                     print(f"[Convert] Uploaded model index to R2: {idx_r2_key}")

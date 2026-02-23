@@ -302,9 +302,8 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         use_r2 = False
         try:
             from runpod.serverless.utils import upload_file_to_bucket
-            bucket_name = os.environ.get("BUCKET_NAME", "voice-studio")
-            # Test if bucket is configured by checking env vars
-            if os.environ.get("BUCKET_ENDPOINT_URL"):
+            bucket_name = job_input.get("bucket_name") or os.environ.get("BUCKET_NAME", "")
+            if bucket_name and os.environ.get("BUCKET_ENDPOINT_URL"):
                 use_r2 = True
         except ImportError:
             pass
@@ -316,7 +315,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                     url = upload_file_to_bucket(
                         file_name=fobj["filename"],
                         file_location=fobj["path"],
-                        prefix=f"voice-studio/preprocess/{job_id}",
+                        prefix=f"preprocess/{job_id}",
                         bucket_name=bucket_name,
                     )
                     if url and url.startswith("http"):
@@ -960,12 +959,12 @@ def task_train(job_input: dict, job: dict) -> dict:
         try:
             from runpod.serverless.utils import upload_file_to_bucket
 
-            bucket_name = os.environ.get("BUCKET_NAME", "voice-studio")
+            bucket_name = job_input.get("bucket_name") or os.environ.get("BUCKET_NAME", "")
 
             pth_url = upload_file_to_bucket(
                 file_name=pth_path.name,
                 file_location=str(pth_path),
-                prefix=f"voice-studio/{job_id}",
+                prefix=f"train/{job_id}",
                 bucket_name=bucket_name,
             )
             # upload_file_to_bucket returns a local path if no bucket configured
@@ -984,7 +983,7 @@ def task_train(job_input: dict, job: dict) -> dict:
                 index_url = upload_file_to_bucket(
                     file_name=index_path.name,
                     file_location=str(index_path),
-                    prefix=f"voice-studio/{job_id}",
+                    prefix=f"train/{job_id}",
                     bucket_name=bucket_name,
                 )
                 if index_url and index_url.startswith("http"):
@@ -1859,12 +1858,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
             log.info(f"Result too large for inline ({total_b64_size / 1024 / 1024:.1f} MB b64), uploading to R2")
             try:
                 from runpod.serverless.utils import upload_file_to_bucket
-                bucket_name = os.environ.get("BUCKET_NAME", "voice-studio")
+                bucket_name = job_input.get("bucket_name") or os.environ.get("BUCKET_NAME", "")
 
                 vocals_url = upload_file_to_bucket(
                     file_name=f"converted_{Path(audio_filename).stem}.{export_format}",
                     file_location=str(converted_vocals_path),
-                    prefix=f"voice-studio/convert/{job_id}",
+                    prefix=f"convert/{job_id}",
                     bucket_name=bucket_name,
                 )
                 if vocals_url and vocals_url.startswith("http"):
@@ -1878,7 +1877,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                     mixed_url = upload_file_to_bucket(
                         file_name=f"mixed_{Path(audio_filename).stem}.{export_format}",
                         file_location=str(mixed_path),
-                        prefix=f"voice-studio/convert/{job_id}",
+                        prefix=f"convert/{job_id}",
                         bucket_name=bucket_name,
                     )
                     if mixed_url and mixed_url.startswith("http"):

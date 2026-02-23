@@ -503,6 +503,104 @@ input[type="range"]::-webkit-slider-thumb {
 .toast-warning { border-color: rgba(245,158,11,0.25); }
 .toast-warning .toast-icon { background: rgba(245,158,11,0.15); color: var(--amber); }
 
+/* Download Progress Panel */
+.download-panel {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 340px;
+  width: 340px;
+}
+.download-item {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  backdrop-filter: blur(12px);
+  animation: dlSlideUp 0.3s ease forwards;
+}
+.download-item.dl-done {
+  border-color: rgba(16,185,129,0.25);
+}
+.download-item.dl-error {
+  border-color: rgba(239,68,68,0.25);
+}
+.download-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.download-item-filename {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+.download-item-close {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 2px;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 4px;
+  transition: color 0.2s;
+}
+.download-item-close:hover { color: var(--text1); }
+.download-progress-bar {
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.download-progress-fill {
+  height: 100%;
+  background: var(--violet);
+  border-radius: 2px;
+  transition: width 0.15s ease;
+  width: 0%;
+}
+.dl-done .download-progress-fill {
+  background: var(--emerald);
+}
+.download-item-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text3);
+}
+.download-item-status {
+  font-size: 11px;
+  color: var(--emerald);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.download-item-status svg { width: 12px; height: 12px; }
+.download-item.dl-removing {
+  animation: dlSlideOut 0.25s ease forwards;
+}
+@keyframes dlSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes dlSlideOut {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(-40px) scale(0.9); }
+}
+
 @keyframes toastIn {
   from { opacity: 0; transform: translateX(40px) scale(0.95); }
   to { opacity: 1; transform: translateX(0) scale(1); }
@@ -798,6 +896,7 @@ input[type="range"]::-webkit-slider-thumb {
   .main { padding: 16px 12px; }
   .toast-container { left: 12px; right: 12px; bottom: 12px; }
   .toast { min-width: 0; }
+  .download-panel { left: 12px; max-width: calc(100vw - 24px); width: auto; }
 }
 </style>
 </head>
@@ -815,6 +914,7 @@ input[type="range"]::-webkit-slider-thumb {
 
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
+<div class="download-panel" id="download-panel"></div>
 
 <!-- Sidebar -->
 <nav class="sidebar">
@@ -1455,10 +1555,23 @@ input[type="range"]::-webkit-slider-thumb {
     </div>
     <div style="margin-top:12px">
       <label class="label">버킷 이름</label>
-      <input type="text" id="cfg-r2-bucket" placeholder="voice-studio" value="voice-studio">
+      <input type="text" id="cfg-r2-bucket" placeholder="my-bucket-name">
     </div>
     <button class="btn btn-primary mt-16" onclick="saveR2Settings()">R2 설정 저장</button>
     <div id="r2-settings-msg" style="font-size:12px;margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom:12px">다운로드 설정</h2>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+      변환된 파일이 저장될 폴더를 지정합니다.
+    </p>
+    <div>
+      <label class="label">저장 폴더</label>
+      <input type="text" id="cfg-download-folder" placeholder="C:\Users\...\Downloads" style="font-size:12px">
+    </div>
+    <button class="btn btn-primary mt-16" onclick="saveDownloadFolder()">저장 폴더 설정</button>
+    <div id="download-folder-msg" style="font-size:12px;margin-top:8px"></div>
   </div>
 
   <div class="card">
@@ -1765,18 +1878,77 @@ async function api(path, opts) {
 
 function downloadFile(url, filename) {
   if (!url) { toast('다운로드 URL이 없습니다', 'error'); return; }
-  var fetchUrl = url.indexOf('%') >= 0 ? url : encodeURI(url);
+  var displayName = filename || decodeURIComponent(url.split('/').pop());
 
-  // 직접 anchor 클릭으로 다운로드 (blob 방식은 대용량 파일에서 실패 가능)
-  // FileResponse가 Content-Disposition: attachment 헤더를 설정하므로
-  // 브라우저가 파일을 직접 스트리밍 다운로드함
-  var a = document.createElement('a');
-  a.href = fetchUrl;
-  a.download = filename || '';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(function() { document.body.removeChild(a); }, 1000);
+  // 다운로드 진행률 UI 생성
+  var panel = document.getElementById('download-panel');
+  var itemId = 'dl-' + Date.now();
+  var item = document.createElement('div');
+  item.className = 'download-item';
+  item.id = itemId;
+  item.innerHTML =
+    '<div class="download-item-header">' +
+      '<span class="download-item-filename" title="' + displayName + '">' + displayName + '</span>' +
+      '<button class="download-item-close" onclick="dismissDownloadItem(\'' + itemId + '\')">&times;</button>' +
+    '</div>' +
+    '<div class="download-progress-bar"><div class="download-progress-fill" id="' + itemId + '-fill" style="width:0%;transition:width 0.5s ease"></div></div>' +
+    '<div class="download-item-info">' +
+      '<span id="' + itemId + '-pct">저장 중...</span>' +
+      '<span id="' + itemId + '-size"></span>' +
+    '</div>';
+  panel.appendChild(item);
+
+  // 진행 애니메이션 시작
+  var fill = document.getElementById(itemId + '-fill');
+  if (fill) fill.style.width = '60%';
+
+  // 서버에서 지정 폴더로 파일 복사
+  var form = new FormData();
+  form.append('filename', displayName);
+  api('/save-to-folder', { method: 'POST', body: form }).then(function(res) {
+    if (fill) fill.style.width = '100%';
+
+    var el = document.getElementById(itemId);
+    if (el) {
+      el.classList.add('dl-done');
+      var pctEl = document.getElementById(itemId + '-pct');
+      if (pctEl) pctEl.textContent = '';
+      var infoArea = el.querySelector('.download-item-info');
+      if (infoArea) {
+        infoArea.innerHTML =
+          '<span style="color:var(--emerald)">' +
+            '<svg style="width:12px;height:12px;vertical-align:-2px;margin-right:3px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' +
+            '저장 완료' +
+          '</span>' +
+          '<span>' + formatSize(res.size) + '</span>';
+      }
+      // 저장 경로 표시
+      var pathEl = document.createElement('div');
+      pathEl.style.cssText = 'font-size:11px;color:var(--text2);margin-top:6px;word-break:break-all;line-height:1.4';
+      pathEl.textContent = res.path;
+      el.appendChild(pathEl);
+    }
+    // 8초 후 자동으로 사라짐
+    setTimeout(function() { dismissDownloadItem(itemId); }, 8000);
+  }).catch(function(e) {
+    if (fill) fill.style.width = '100%';
+    var el = document.getElementById(itemId);
+    if (el) {
+      el.classList.add('dl-error');
+      var pctEl = document.getElementById(itemId + '-pct');
+      if (pctEl) {
+        pctEl.textContent = '실패: ' + e.message;
+        pctEl.style.color = 'var(--red)';
+      }
+    }
+  });
+}
+
+function dismissDownloadItem(id) {
+  var el = document.getElementById(id);
+  if (!el || el.classList.contains('dl-removing')) return;
+  el.classList.add('dl-removing');
+  setTimeout(function() { el.remove(); }, 250);
 }
 
 function formatSize(bytes) {
@@ -3216,7 +3388,8 @@ async function loadSettings() {
     document.getElementById('cfg-r2-endpoint').value = config.r2_endpoint_url || '';
     document.getElementById('cfg-r2-access-key').value = config.r2_access_key_id || '';
     document.getElementById('cfg-r2-secret-key').value = config.r2_secret_key_display || '';
-    document.getElementById('cfg-r2-bucket').value = config.r2_bucket_name || 'voice-studio';
+    document.getElementById('cfg-r2-bucket').value = config.r2_bucket_name || '';
+    document.getElementById('cfg-download-folder').value = config.download_folder || '';
   } catch(e) {}
 }
 
@@ -3262,6 +3435,21 @@ async function saveR2Settings() {
     toast('R2 설정이 저장되었습니다', 'success');
   } catch(e) {
     toast('R2 설정 저장 실패: ' + e.message, 'error');
+  }
+}
+
+async function saveDownloadFolder() {
+  var folder = document.getElementById('cfg-download-folder').value.trim();
+  if (!folder) { toast('폴더 경로를 입력해주세요', 'warning'); return; }
+  var form = new FormData();
+  form.append('folder', folder);
+  try {
+    var res = await api('/config/download-folder', { method: 'POST', body: form });
+    document.getElementById('download-folder-msg').innerHTML =
+      '<span style="color:var(--emerald)">저장 폴더: ' + res.folder + '</span>';
+    toast('다운로드 폴더가 설정되었습니다', 'success');
+  } catch(e) {
+    toast('폴더 설정 실패: ' + e.message, 'error');
   }
 }
 
