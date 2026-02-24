@@ -11,7 +11,8 @@ Docker 컨테이너 내부 /app/Applio/ 에 Applio 리포가 클론되어 있다
 
 Docker 이미지에 필요한 것:
   - Applio repo at /app/Applio/
-  - FFmpeg, Demucs (htdemucs_ft), pyannote-audio, noisereduce
+  - FFmpeg, Demucs (htdemucs_ft), noisereduce
+  - pyannote-audio (optional, for speaker diarization — requires separate install)
   - CUDA 12.1+, PyTorch 2.x, FAISS-gpu
   - runpod SDK
   - pretrained models at /app/Applio/rvc/models/pretraineds/
