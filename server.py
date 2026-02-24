@@ -488,13 +488,11 @@ class RunPodClient:
         error_msg = classify_runpod_error(last_exc, last_response)
         raise HTTPException(status_code=502, detail=error_msg)
 
-    def submit_job(self, payload: dict, execution_timeout: int = 36000) -> str:
+    def submit_job(self, payload: dict) -> str:
         """비동기 작업 제출 → job_id 반환 (재시도 포함)
-        execution_timeout: RunPod 실행 제한 시간 (초). 기본 36000초 (10시간).
+        실행 시간 제한은 RunPod 대시보드의 Execution Timeout 설정을 따름.
         """
         body = {"input": payload}
-        if execution_timeout:
-            body["policy"] = {"executionTimeout": execution_timeout * 1000}  # ms
         resp = self._request_with_retry(
             "POST",
             f"{self.base_url}/run",

@@ -172,7 +172,7 @@ RUN python -m pip install --no-cache-dir \
         "transformers>=4.40.0,<4.45.0" \
         tensorboard==2.16.2 \
         wget==3.2 \
-        runpod==1.7.1 \
+        runpod==1.8.1 \
         boto3==1.34.69 \
         requests==2.31.0
 
