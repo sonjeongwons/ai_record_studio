@@ -1204,7 +1204,26 @@ async def save_to_folder(filename: str = Form(...)):
             raise HTTPException(500, f"다운로드 폴더 생성 실패: {e}")
 
     dst = dl_folder / safe_name
-    shutil.copy2(str(src), str(dst))
+
+    # 파일이 이미 존재하고 잠겨있으면 번호 붙여서 저장 (예: file (2).wav)
+    try:
+        shutil.copy2(str(src), str(dst))
+    except (PermissionError, OSError):
+        # 파일이 잠겨 있을 때 자동 번호 부여
+        stem = Path(safe_name).stem
+        ext = Path(safe_name).suffix
+        for i in range(2, 100):
+            dst = dl_folder / f"{stem} ({i}){ext}"
+            if not dst.exists():
+                break
+            try:
+                # 존재하지만 잠기지 않은 파일이면 덮어쓰기
+                shutil.copy2(str(src), str(dst))
+                return {"status": "ok", "path": str(dst), "size": dst.stat().st_size}
+            except (PermissionError, OSError):
+                continue
+        shutil.copy2(str(src), str(dst))
+
     return {"status": "ok", "path": str(dst), "size": dst.stat().st_size}
 
 

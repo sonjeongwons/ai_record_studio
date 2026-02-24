@@ -1057,6 +1057,61 @@ input[type="range"]::-webkit-slider-thumb {
   line-height: 1.5;
 }
 
+/* ─── Sub-Tab Bar ─── */
+.sub-tab-bar {
+  display: flex;
+  gap: 2px;
+  background: var(--bg2);
+  border-radius: 12px;
+  padding: 3px;
+  margin-bottom: 20px;
+  width: fit-content;
+}
+.sub-tab {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text3);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.sub-tab:hover { color: var(--text); }
+.sub-tab.active {
+  background: var(--violet);
+  color: white;
+}
+
+/* ─── Pagination ─── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--text3);
+}
+.pagination:empty { display: none; }
+.page-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.page-btn:hover { border-color: var(--violet); color: var(--text); }
+.page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.page-btn.active { background: var(--violet); color: white; border-color: var(--violet); }
+.page-info { font-size: 11px; color: var(--text3); }
+
 /* ─── Keyboard Shortcut Badge ─── */
 .kbd-hint {
   font-size: 9px;
@@ -1211,7 +1266,12 @@ input[type="range"]::-webkit-slider-thumb {
 
   <h2>최근 작업</h2>
   <p class="subtitle">진행 중이거나 완료된 작업</p>
+  <div class="search-input-wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" class="search-input" id="jobs-search" placeholder="작업 검색..." oninput="filterRecentJobs()" aria-label="작업 검색">
+  </div>
   <div id="recent-jobs"></div>
+  <div class="pagination" id="jobs-pagination"></div>
 </div>
 
 <!-- ═══════════════════════ TRAIN ═══════════════════════ -->
@@ -1472,6 +1532,13 @@ input[type="range"]::-webkit-slider-thumb {
   <h1>음원 변환</h1>
   <p class="subtitle">학습된 AI 보이스 모델로 새로운 음원을 만들어보세요</p>
 
+  <!-- 서브탭: 변환 / 기록 -->
+  <div class="sub-tab-bar">
+    <button class="sub-tab active" id="sub-tab-convert" onclick="switchConvertSubTab('convert')">변환</button>
+    <button class="sub-tab" id="sub-tab-history" onclick="switchConvertSubTab('history')">기록</button>
+  </div>
+
+  <div id="convert-sub-convert">
   <div id="convert-no-models" class="empty-state card" style="display:none">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
     <p style="margin-top:8px">학습된 모델이 없습니다</p>
@@ -1486,6 +1553,7 @@ input[type="range"]::-webkit-slider-thumb {
         <input type="text" class="search-input" id="model-search" placeholder="모델 검색..." oninput="filterModels()" aria-label="모델 검색">
       </div>
       <div id="convert-model-list"></div>
+      <div class="pagination" id="model-pagination"></div>
     </div>
 
     <div class="card">
@@ -1727,14 +1795,23 @@ input[type="range"]::-webkit-slider-thumb {
     </div>
   </div>
 
-  <!-- Conversion History -->
-  <div id="conversion-history" class="card mt-24" style="display:none">
-    <div class="flex-between mb-16">
-      <label class="label" style="margin:0">변환 기록</label>
-      <span style="font-size:11px;color:var(--text3)" id="conversion-history-count"></span>
+  </div><!-- /convert-sub-convert -->
+
+  <!-- 변환 기록 서브탭 -->
+  <div id="convert-sub-history" style="display:none">
+    <div id="conversion-history" class="card">
+      <div class="flex-between mb-16">
+        <label class="label" style="margin:0">변환 기록</label>
+        <span style="font-size:11px;color:var(--text3)" id="conversion-history-count"></span>
+      </div>
+      <div class="search-input-wrap" id="conv-history-search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="search-input" id="conv-history-search" placeholder="변환 기록 검색..." oninput="filterConversionHistory()" aria-label="변환 기록 검색">
+      </div>
+      <div id="conversion-history-list"></div>
+      <div class="pagination" id="conv-history-pagination"></div>
     </div>
-    <div id="conversion-history-list"></div>
-  </div>
+  </div><!-- /convert-sub-history -->
 </div>
 
 <!-- ═══════════════════════ SETTINGS ═══════════════════════ -->
@@ -1851,6 +1928,14 @@ var connectionTimer = null;
 
 // Auto-save debounce timer
 var _settingsDebounceTimer = null;
+
+// Pagination state
+var PAGE_SIZE = 10;
+var _jobsPage = 1;
+var _allJobs = [];
+var _convHistoryPage = 1;
+var _allConvHistory = [];
+var _modelPage = 1;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Toast Notification System
@@ -2114,7 +2199,7 @@ function showPage(page) {
   }
 
   if (page === 'home') loadDashboard();
-  if (page === 'convert') { loadModels(); loadConversionHistory(); }
+  if (page === 'convert') { loadModels(); }
   if (page === 'settings') loadSettings();
 }
 
@@ -2274,44 +2359,69 @@ async function loadDashboard() {
       if (_dashboardTimer) { clearInterval(_dashboardTimer); _dashboardTimer = null; }
     }
 
-    if (!jobs.length) {
-      el.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><p>아직 작업이 없습니다</p><p style="font-size:12px;margin-top:4px">학습 또는 변환을 시작해보세요</p></div>';
-      return;
-    }
-
-    var typeIcons = {
-      train: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>',
-      convert: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>',
-      preprocess: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'
-    };
-    var typeLabels = { train: '모델 학습', convert: '음원 변환', preprocess: '전처리' };
-    var typeClasses = { train: 'train', convert: 'convert', preprocess: 'preprocess' };
-    var statusBadge = function(s) {
-      if (s === 'completed') return '<span class="badge badge-green">완료</span>';
-      if (s === 'failed') return '<span class="badge badge-red">실패</span>';
-      return '<span class="badge badge-amber">진행중</span>';
-    };
-    var formatDate = function(d) {
-      if (!d) return '';
-      var parts = d.split(' ');
-      if (parts.length >= 2) return parts[0].slice(5) + ' ' + parts[1].slice(0, 5);
-      return d;
-    };
-
-    el.innerHTML = jobs.slice(0, 15).map(function(j) {
-      return '<div class="job-item">' +
-        '<div class="job-icon ' + (typeClasses[j.job_type] || 'train') + '">' +
-          (typeIcons[j.job_type] || typeIcons.train) +
-        '</div>' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:13px">' + (typeLabels[j.job_type] || j.job_type) + '</div>' +
-          '<div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (j.message || '') + '</div>' +
-        '</div>' +
-        statusBadge(j.status) +
-        '<span style="font-size:10px;color:var(--text3);white-space:nowrap">' + formatDate(j.created_at) + '</span>' +
-      '</div>';
-    }).join('');
+    _allJobs = jobs;
+    renderJobsPage();
   } catch(e) {}
+}
+
+function renderJobsPage() {
+  var el = document.getElementById('recent-jobs');
+  var query = (document.getElementById('jobs-search') ? document.getElementById('jobs-search').value : '').toLowerCase();
+
+  var filtered = _allJobs.filter(function(j) {
+    if (!query) return true;
+    var typeLabels = { train: '모델 학습', convert: '음원 변환', preprocess: '전처리' };
+    var text = (typeLabels[j.job_type] || j.job_type) + ' ' + (j.message || '') + ' ' + (j.status || '');
+    return text.toLowerCase().indexOf(query) !== -1;
+  });
+
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state-enhanced">' +
+      '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>' +
+      '<div class="empty-title">' + (query ? '검색 결과가 없습니다' : '아직 작업이 없습니다') + '</div>' +
+      '<div class="empty-desc">' + (query ? '"' + escapeHtml(query) + '" 에 해당하는 작업이 없습니다' : '학습 또는 변환을 시작해보세요') + '</div>' +
+    '</div>';
+    document.getElementById('jobs-pagination').innerHTML = '';
+    return;
+  }
+
+  var typeIcons = {
+    train: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>',
+    convert: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>',
+    preprocess: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'
+  };
+  var typeLabels = { train: '모델 학습', convert: '음원 변환', preprocess: '전처리' };
+  var typeClasses = { train: 'train', convert: 'convert', preprocess: 'preprocess' };
+  var statusBadge = function(s) {
+    if (s === 'completed') return '<span class="badge badge-green">완료</span>';
+    if (s === 'failed') return '<span class="badge badge-red">실패</span>';
+    return '<span class="badge badge-amber">진행중</span>';
+  };
+  var formatDate = function(d) {
+    if (!d) return '';
+    var parts = d.split(' ');
+    if (parts.length >= 2) return parts[0].slice(5) + ' ' + parts[1].slice(0, 5);
+    return d;
+  };
+
+  var start = (_jobsPage - 1) * PAGE_SIZE;
+  var pageItems = filtered.slice(start, start + PAGE_SIZE);
+
+  el.innerHTML = pageItems.map(function(j) {
+    return '<div class="job-item">' +
+      '<div class="job-icon ' + (typeClasses[j.job_type] || 'train') + '">' +
+        (typeIcons[j.job_type] || typeIcons.train) +
+      '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px">' + (typeLabels[j.job_type] || j.job_type) + '</div>' +
+        '<div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(j.message || '') + '</div>' +
+      '</div>' +
+      statusBadge(j.status) +
+      '<span style="font-size:10px;color:var(--text3);white-space:nowrap">' + formatDate(j.created_at) + '</span>' +
+    '</div>';
+  }).join('');
+
+  renderPagination('jobs-pagination', _jobsPage, filtered.length, 'setJobsPage');
 }
 
 function goToActiveJob() {
@@ -3113,7 +3223,11 @@ async function loadModels() {
       return (m.name || '').toLowerCase().indexOf(modelSearchVal) !== -1;
     });
 
-    document.getElementById('convert-model-list').innerHTML = filteredModels.map(function(m) {
+    // Pagination
+    var start = (_modelPage - 1) * PAGE_SIZE;
+    var pageModels = filteredModels.slice(start, start + PAGE_SIZE);
+
+    document.getElementById('convert-model-list').innerHTML = pageModels.map(function(m) {
       var files = [];
       try { files = JSON.parse(m.training_files_json || '[]'); } catch(e) {}
       var filesHtml = '';
@@ -3124,7 +3238,7 @@ async function loadModels() {
             '<span>학습 음원 ' + files.length + '개</span>' +
           '</div>' +
           '<div class="model-train-files-list">' +
-            files.map(function(f) { return '<div class="model-train-file">' + f + '</div>'; }).join('') +
+            files.map(function(f) { return '<div class="model-train-file">' + escapeHtml(f) + '</div>'; }).join('') +
           '</div>' +
         '</div>';
       }
@@ -3144,6 +3258,7 @@ async function loadModels() {
       '</div>';
     }).join('');
 
+    renderPagination('model-pagination', _modelPage, filteredModels.length, 'setModelPage');
     updateConvertBtn();
   } catch(e) {}
 }
@@ -3608,44 +3723,68 @@ async function cancelConversion() {
 async function loadConversionHistory() {
   try {
     var res = await api('/conversions');
-    var list = (res.conversions || []).filter(function(c) { return c.status === 'completed' && c.output_file; });
-    var container = document.getElementById('conversion-history');
-    var listEl = document.getElementById('conversion-history-list');
-    if (!list.length) {
-      container.style.display = 'none';
-      return;
-    }
-    container.style.display = 'block';
-    document.getElementById('conversion-history-count').textContent = list.length + '개';
-    listEl.innerHTML = list.map(function(c) {
-      // Prefer mixed file (vocals+MR) for playback, fallback to vocals-only
-      var playFile = c.output_name || c.output_file;
-      var audioUrl = '/api/download/' + encodeURIComponent(playFile);
-      var playerHtml = createAudioPlayer(audioUrl);
-      return '<div class="conversion-item" style="flex-direction:column;align-items:stretch">' +
-        '<div style="display:flex;align-items:center;gap:10px">' +
-          '<div class="file-icon" style="flex-shrink:0">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
-          '</div>' +
-          '<div style="flex:1;min-width:0">' +
-            '<div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (c.input_file || '-') + '</div>' +
-            '<div style="font-size:10px;color:var(--text3)">' +
-              (c.model_name || '삭제된 모델') +
-              (c.processing_time ? ' · ' + c.processing_time.toFixed(1) + '초' : '') +
-              ' · ' + (c.created_at || '') +
-            '</div>' +
-          '</div>' +
-          '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + encodeURIComponent(playFile) + '\', \'' + playFile.replace(/'/g, "\\'") + '\')" title="다운로드">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
-          '</button>' +
-          '<button class="btn-conv-action btn-conv-delete" onclick="deleteConversion(' + c.id + ')" title="삭제">' +
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
-          '</button>' +
-        '</div>' +
-        playerHtml +
-      '</div>';
-    }).join('');
+    _allConvHistory = (res.conversions || []).filter(function(c) { return c.status === 'completed' && c.output_file; });
+    renderConvHistoryPage();
   } catch(e) {}
+}
+
+function renderConvHistoryPage() {
+  var container = document.getElementById('conversion-history');
+  var listEl = document.getElementById('conversion-history-list');
+  var query = (document.getElementById('conv-history-search') ? document.getElementById('conv-history-search').value : '').toLowerCase();
+
+  var filtered = _allConvHistory.filter(function(c) {
+    if (!query) return true;
+    var text = (c.input_file || '') + ' ' + (c.model_name || '') + ' ' + (c.created_at || '');
+    return text.toLowerCase().indexOf(query) !== -1;
+  });
+
+  if (!filtered.length) {
+    document.getElementById('conversion-history-count').textContent = '0개';
+    listEl.innerHTML = '<div class="empty-state-enhanced">' +
+      '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>' +
+      '<div class="empty-title">' + (query ? '검색 결과 없음' : '변환 기록이 없습니다') + '</div>' +
+      '<div class="empty-desc">' + (query ? '"' + escapeHtml(query) + '"에 해당하는 기록이 없습니다' : '음원을 변환하면 여기에 기록됩니다') + '</div>' +
+    '</div>';
+    document.getElementById('conv-history-pagination').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('conversion-history-count').textContent = filtered.length + '개';
+
+  var start = (_convHistoryPage - 1) * PAGE_SIZE;
+  var pageItems = filtered.slice(start, start + PAGE_SIZE);
+
+  listEl.innerHTML = pageItems.map(function(c) {
+    var playFile = c.output_name || c.output_file;
+    var audioUrl = '/api/download/' + encodeURIComponent(playFile);
+    var playerHtml = createAudioPlayer(audioUrl);
+    var escapedPlayFile = playFile.replace(/'/g, "\\'");
+    return '<div class="conversion-item" style="flex-direction:column;align-items:stretch">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div class="file-icon" style="flex-shrink:0">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
+        '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(c.input_file || '-') + '</div>' +
+          '<div style="font-size:10px;color:var(--text3)">' +
+            escapeHtml(c.model_name || '삭제된 모델') +
+            (c.processing_time ? ' \u00B7 ' + c.processing_time.toFixed(1) + '초' : '') +
+            ' \u00B7 ' + (c.created_at || '') +
+          '</div>' +
+        '</div>' +
+        '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + encodeURIComponent(playFile) + '\', \'' + escapedPlayFile + '\')" title="다운로드">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
+        '</button>' +
+        '<button class="btn-conv-action btn-conv-delete" onclick="deleteConversion(' + c.id + ')" title="삭제">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+        '</button>' +
+      '</div>' +
+      playerHtml +
+    '</div>';
+  }).join('');
+
+  renderPagination('conv-history-pagination', _convHistoryPage, filtered.length, 'setConvHistoryPage');
 }
 
 async function deleteConversion(id) {
@@ -3753,6 +3892,46 @@ async function saveDownloadFolder() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Pagination Helper
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function renderPagination(containerId, currentPage, totalItems, onPageChange) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  var totalPages = Math.ceil(totalItems / PAGE_SIZE);
+  if (totalPages <= 1) { el.innerHTML = ''; return; }
+
+  var html = '<button class="page-btn" onclick="' + onPageChange + '(' + (currentPage - 1) + ')" ' +
+    (currentPage <= 1 ? 'disabled' : '') + '>&lsaquo; 이전</button>';
+  html += '<span class="page-info">' + currentPage + ' / ' + totalPages + '</span>';
+  html += '<button class="page-btn" onclick="' + onPageChange + '(' + (currentPage + 1) + ')" ' +
+    (currentPage >= totalPages ? 'disabled' : '') + '>다음 &rsaquo;</button>';
+  el.innerHTML = html;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Convert Sub-Tab Switching
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function switchConvertSubTab(tab) {
+  var convertDiv = document.getElementById('convert-sub-convert');
+  var historyDiv = document.getElementById('convert-sub-history');
+  var tabConvert = document.getElementById('sub-tab-convert');
+  var tabHistory = document.getElementById('sub-tab-history');
+
+  if (tab === 'history') {
+    convertDiv.style.display = 'none';
+    historyDiv.style.display = 'block';
+    tabConvert.classList.remove('active');
+    tabHistory.classList.add('active');
+    loadConversionHistory();
+  } else {
+    convertDiv.style.display = 'block';
+    historyDiv.style.display = 'none';
+    tabConvert.classList.add('active');
+    tabHistory.classList.remove('active');
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Search/Filter
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function filterFiles() {
@@ -3766,6 +3945,32 @@ function filterFiles() {
 }
 
 function filterModels() {
+  _modelPage = 1;
+  loadModels();
+}
+
+function filterConversionHistory() {
+  _convHistoryPage = 1;
+  renderConvHistoryPage();
+}
+
+function filterRecentJobs() {
+  _jobsPage = 1;
+  renderJobsPage();
+}
+
+function setJobsPage(page) {
+  _jobsPage = page;
+  renderJobsPage();
+}
+
+function setConvHistoryPage(page) {
+  _convHistoryPage = page;
+  renderConvHistoryPage();
+}
+
+function setModelPage(page) {
+  _modelPage = page;
   loadModels();
 }
 
