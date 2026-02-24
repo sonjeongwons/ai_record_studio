@@ -953,6 +953,8 @@ def task_train(job_input: dict, job: dict) -> dict:
             "pth_filename": pth_path.name,
         }
 
+        # --- Upload strategy: R2 bucket → base64 fallback ---
+        upload_ok = False
         try:
             from runpod.serverless.utils import upload_file_to_bucket
 
@@ -964,43 +966,61 @@ def task_train(job_input: dict, job: dict) -> dict:
                 prefix=f"train/{job_id}",
                 bucket_name=bucket_name,
             )
-            # upload_file_to_bucket returns a local path if no bucket configured
             if pth_url and pth_url.startswith("http"):
                 result["pth_url"] = pth_url
+                upload_ok = True
                 log.info(f"Model uploaded to bucket: {pth_url[:80]}...")
-            else:
-                raise RuntimeError(
-                    "클라우드 스토리지가 설정되지 않았습니다. "
-                    "RunPod 템플릿에 BUCKET_ENDPOINT_URL, BUCKET_ACCESS_KEY_ID, "
-                    "BUCKET_SECRET_ACCESS_KEY 환경변수를 설정하세요. "
-                    "(Cloudflare R2 무료 플랜 권장)"
-                )
 
-            if index_path is not None:
-                index_url = upload_file_to_bucket(
-                    file_name=index_path.name,
-                    file_location=str(index_path),
-                    prefix=f"train/{job_id}",
-                    bucket_name=bucket_name,
-                )
-                if index_url and index_url.startswith("http"):
-                    result["index_url"] = index_url
-                    result["index_filename"] = index_path.name
-                    log.info(f"Index uploaded to bucket: {index_url[:80]}...")
+                if index_path is not None:
+                    index_url = upload_file_to_bucket(
+                        file_name=index_path.name,
+                        file_location=str(index_path),
+                        prefix=f"train/{job_id}",
+                        bucket_name=bucket_name,
+                    )
+                    if index_url and index_url.startswith("http"):
+                        result["index_url"] = index_url
+                        result["index_filename"] = index_path.name
+                        log.info(f"Index uploaded to bucket: {index_url[:80]}...")
+                else:
+                    log.warning("No FAISS index file generated")
             else:
-                log.warning("No FAISS index file generated")
+                log.warning("Bucket upload returned non-HTTP path, falling back to base64")
 
         except ImportError:
-            raise RuntimeError(
-                "boto3가 설치되지 않았습니다. Docker 이미지를 재빌드하세요."
-            )
-        except RuntimeError:
-            raise  # re-raise our own errors
+            log.warning("runpod upload utils not available, falling back to base64")
         except Exception as e:
-            raise RuntimeError(
-                f"모델 업로드 실패: {e}. "
-                f"RunPod 환경변수(BUCKET_ENDPOINT_URL 등)를 확인하세요."
-            ) from e
+            log.warning(f"Bucket upload failed ({e}), falling back to base64")
+
+        # Fallback: base64 encode model if bucket upload failed
+        # RunPod payload limit ~20MB, RVC models ~50MB → only works for small models
+        if not upload_ok:
+            import base64
+            pth_size_mb = pth_path.stat().st_size / (1024 * 1024)
+            if pth_size_mb <= 18:
+                log.info(f"Using base64 fallback for {pth_path.name} ({pth_size_mb:.1f} MB)")
+                with open(pth_path, "rb") as f:
+                    result["pth_base64"] = base64.b64encode(f.read()).decode()
+                result["upload_method"] = "base64"
+
+                if index_path is not None:
+                    idx_size_mb = index_path.stat().st_size / (1024 * 1024)
+                    remaining_mb = 18 - pth_size_mb
+                    if idx_size_mb <= remaining_mb:
+                        with open(index_path, "rb") as f:
+                            result["index_base64"] = base64.b64encode(f.read()).decode()
+                        result["index_filename"] = index_path.name
+                        log.info(f"Index included via base64 ({idx_size_mb:.1f} MB)")
+                    else:
+                        log.warning(f"Index too large for base64 ({idx_size_mb:.1f} MB), skipped")
+            else:
+                log.error(f"Model too large for base64 ({pth_size_mb:.1f} MB) and bucket upload failed")
+                result["upload_method"] = "failed"
+                result["error"] = (
+                    "모델 파일이 너무 크고 클라우드 스토리지가 설정되지 않았습니다. "
+                    "RunPod 템플릿에 BUCKET_ENDPOINT_URL, BUCKET_ACCESS_KEY_ID, "
+                    "BUCKET_SECRET_ACCESS_KEY 환경변수를 설정하세요."
+                )
 
         return result
 

@@ -879,6 +879,14 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 resp.raise_for_status()
                 with open(pth_path, "wb") as f:
                     f.write(resp.content)
+            # Fallback: base64 encoded model (when R2 upload failed)
+            elif output.get("pth_base64"):
+                pth_filename = output.get("pth_filename", f"{model_name}.pth")
+                pth_path = str(model_dir / pth_filename)
+                raw = base64.b64decode(output["pth_base64"])
+                with open(pth_path, "wb") as f:
+                    f.write(raw)
+                print(f"[Train] Model saved via base64 fallback: {pth_filename}")
             # Legacy: inline base64 (backward compat for small models)
             elif output.get("pth_data"):
                 pth_filename = output.get("pth_filename", f"{model_name}.pth")
@@ -890,6 +898,12 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 with open(pth_path, "wb") as f:
                     f.write(raw)
 
+            # Check for upload failure (model too large for base64 + no R2)
+            if output.get("upload_method") == "failed":
+                error_msg = output.get("error", "모델 업로드 실패")
+                update_job(job_id, status="failed", message=error_msg)
+                return
+
             # Download index from presigned URL (primary path)
             if output.get("index_url"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
@@ -898,6 +912,14 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 resp.raise_for_status()
                 with open(index_path, "wb") as f:
                     f.write(resp.content)
+            # Fallback: base64 encoded index
+            elif output.get("index_base64"):
+                idx_filename = output.get("index_filename", f"{model_name}.index")
+                index_path = str(model_dir / idx_filename)
+                raw = base64.b64decode(output["index_base64"])
+                with open(index_path, "wb") as f:
+                    f.write(raw)
+                print(f"[Train] Index saved via base64 fallback: {idx_filename}")
             # Legacy: inline base64
             elif output.get("index_data"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
