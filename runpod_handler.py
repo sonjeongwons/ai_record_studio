@@ -309,6 +309,9 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         except ImportError:
             pass
 
+        MAX_B64_BYTES = 15_000_000  # 15MB safety limit for RunPod payload
+        total_b64_bytes = 0
+
         if use_r2:
             log.info(f"Uploading {len(all_files)} preprocessed files to R2...")
             for fobj in all_files:
@@ -322,30 +325,77 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                     if url and url.startswith("http"):
                         fobj["url"] = url
                     else:
-                        # No bucket configured — fall back to inline base64
-                        fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
+                        log.warning(f"upload_file_to_bucket returned non-HTTP for "
+                                    f"{fobj['filename']}: {str(url)[:120]}")
+                        file_size = Path(fobj["path"]).stat().st_size
+                        b64_size = file_size * 4 // 3
+                        if total_b64_bytes + b64_size <= MAX_B64_BYTES:
+                            fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
+                            total_b64_bytes += b64_size
+                        else:
+                            log.warning(f"Skipping base64 for {fobj['filename']} "
+                                        f"(would exceed {MAX_B64_BYTES // 1_000_000}MB limit)")
                 except Exception as e:
-                    log.warning(f"R2 upload failed for {fobj['filename']}: {e}, using base64")
-                    fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
-            log.info(f"R2 upload complete for preprocess results")
+                    log.warning(f"R2 upload failed for {fobj['filename']}: {e}")
+                    file_size = Path(fobj["path"]).stat().st_size
+                    b64_size = file_size * 4 // 3
+                    if total_b64_bytes + b64_size <= MAX_B64_BYTES:
+                        fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
+                        total_b64_bytes += b64_size
+                    else:
+                        log.warning(f"Skipping base64 for {fobj['filename']} "
+                                    f"(would exceed {MAX_B64_BYTES // 1_000_000}MB limit)")
+            r2_count = sum(1 for f in all_files if "url" in f)
+            b64_count = sum(1 for f in all_files if "data_base64" in f)
+            skip_count = len(all_files) - r2_count - b64_count
+            log.info(f"R2 upload complete: {r2_count} via URL, {b64_count} via base64 "
+                     f"({total_b64_bytes / 1e6:.1f}MB), {skip_count} skipped")
         else:
-            # No R2 configured — use inline base64 (may exceed payload limit)
-            log.warning("No R2 bucket configured — using inline base64 for preprocess results. "
-                        "This may fail for large datasets due to RunPod payload limits.")
+            # No R2 configured — use inline base64 with size limit
+            log.warning("No R2 bucket configured — using inline base64 for preprocess results")
             for fobj in all_files:
-                fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
+                file_size = Path(fobj["path"]).stat().st_size
+                b64_size = file_size * 4 // 3
+                if total_b64_bytes + b64_size <= MAX_B64_BYTES:
+                    fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
+                    total_b64_bytes += b64_size
+                else:
+                    log.warning(f"Skipping base64 for {fobj['filename']} "
+                                f"(would exceed {MAX_B64_BYTES // 1_000_000}MB limit)")
+            b64_count = sum(1 for f in all_files if "data_base64" in f)
+            skip_count = len(all_files) - b64_count
+            log.info(f"Base64 encoding: {b64_count} files ({total_b64_bytes / 1e6:.1f}MB), "
+                     f"{skip_count} skipped due to size limit")
 
         # Remove local paths from response (not needed by server)
         for fobj in all_files:
             fobj.pop("path", None)
 
-        return {
+        result = {
             "segment_count": len(segment_data),
             "total_duration": round(total_duration, 2),
             "segments": segment_data,
             "accompaniment_files": accomp_data,
             "vocal_files": vocal_data,
         }
+
+        # Final payload size safety check
+        import json as _json
+        result_json = _json.dumps(result)
+        result_size = len(result_json)
+        log.info(f"Final result payload size: {result_size / 1e6:.2f} MB")
+
+        if result_size > 18_000_000:
+            log.error(f"Result payload too large ({result_size / 1e6:.1f} MB), "
+                      f"stripping base64 data to prevent RunPod 400 error")
+            for flist in [segment_data, accomp_data, vocal_data]:
+                for fobj in flist:
+                    if fobj.pop("data_base64", None):
+                        fobj["data_stripped"] = True
+            result_json = _json.dumps(result)
+            log.info(f"Trimmed payload size: {len(result_json) / 1e6:.2f} MB")
+
+        return result
 
     finally:
         cleanup_dir(work)

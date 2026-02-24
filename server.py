@@ -479,13 +479,18 @@ class RunPodClient:
         error_msg = classify_runpod_error(last_exc, last_response)
         raise HTTPException(status_code=502, detail=error_msg)
 
-    def submit_job(self, payload: dict) -> str:
-        """비동기 작업 제출 → job_id 반환 (재시도 포함)"""
+    def submit_job(self, payload: dict, execution_timeout: int = 600) -> str:
+        """비동기 작업 제출 → job_id 반환 (재시도 포함)
+        execution_timeout: RunPod 실행 제한 시간 (초). 기본 600초 (10분).
+        """
+        body = {"input": payload}
+        if execution_timeout:
+            body["policy"] = {"executionTimeout": execution_timeout * 1000}  # ms
         resp = self._request_with_retry(
             "POST",
             f"{self.base_url}/run",
             headers=self.headers,
-            json={"input": payload},
+            json=body,
             timeout=120
         )
         return resp.json()["id"]
@@ -1607,7 +1612,7 @@ async def start_training(
         payload_size = len(json.dumps(payload))
         print(f"[Train] Payload size: {payload_size:,} bytes, segments: {total_segments}")
 
-        runpod_job_id = runpod_client.submit_job(payload)
+        runpod_job_id = runpod_client.submit_job(payload, execution_timeout=3600)
 
         msg = f"GPU에 작업 제출됨 ({total_segments}개 세그먼트)"
         update_job(job_id, status="running", progress=5,
@@ -1682,9 +1687,11 @@ async def start_preprocess(
     try:
         # 배치별로 RunPod 작업 제출 (대용량 파일은 여러 작업으로 분할)
         if len(batches) == 1:
+            config = load_config()
             runpod_job_id = runpod_client.submit_job({
                 "task_type": "preprocess",
                 "audio_files": batches[0],
+                "bucket_name": config.get("r2_bucket_name", ""),
             })
             update_job(job_id, status="running", progress=5,
                       message=f"GPU에 전처리 작업 제출됨 ({len(unprocessed)}개 파일{skip_msg})",
