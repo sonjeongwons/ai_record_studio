@@ -34,9 +34,10 @@ body {
   display: flex;
 }
 body.busy, body.busy * { cursor: wait !important; }
-::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.5); }
 
 /* ─── Sidebar ─── */
 .sidebar {
@@ -112,8 +113,7 @@ body.busy, body.busy * { cursor: wait !important; }
   max-width: 960px;
   margin: 0 auto;
 }
-.page { display: none; animation: fadeIn 0.3s ease; }
-.page.active { display: block; }
+/* .page styles defined in Tab Fade Transitions section below */
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -125,13 +125,15 @@ h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
 h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 .subtitle { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
 .card {
-  background: var(--bg2);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(30,30,50,0.8), rgba(20,20,40,0.6));
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(139,92,246,0.1);
   border-radius: var(--radius);
   padding: 20px;
   margin-bottom: 16px;
+  transition: border-color 0.3s, box-shadow 0.3s;
 }
-.card:hover { border-color: rgba(255,255,255,0.1); }
+.card:hover { border-color: rgba(139,92,246,0.3); box-shadow: 0 4px 20px rgba(139,92,246,0.1); }
 
 .btn {
   padding: 10px 20px;
@@ -141,16 +143,21 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 .btn-primary {
   background: var(--violet);
   color: white;
 }
-.btn-primary:hover { background: #7c3aed; box-shadow: 0 4px 20px rgba(139,92,246,0.3); }
+.btn-primary:hover { background: #7c3aed; box-shadow: 0 4px 15px rgba(139,92,246,0.4); }
 .btn-primary:disabled { background: #2a2a3a; color: var(--text3); cursor: not-allowed; box-shadow: none; }
 .btn-secondary {
   background: rgba(255,255,255,0.05);
@@ -173,7 +180,7 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 .btn-gradient:hover { box-shadow: 0 4px 20px rgba(139,92,246,0.3); }
 .btn-gradient:disabled { background: #2a2a3a; color: var(--text3); box-shadow: none; }
 
-input[type="text"], input[type="number"], select {
+input[type="text"], input[type="number"], input[type="password"], select, textarea {
   background: rgba(255,255,255,0.05);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -183,9 +190,9 @@ input[type="text"], input[type="number"], select {
   color: var(--text);
   width: 100%;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-input:focus, select:focus { border-color: var(--violet); }
+input:focus, select:focus, textarea:focus { border-color: var(--violet); box-shadow: 0 0 0 3px rgba(139,92,246,0.15); }
 select { -webkit-appearance: none; cursor: pointer; }
 
 .label {
@@ -400,8 +407,14 @@ input[type="range"]::-webkit-slider-thumb {
 .stat-card {
   padding: 16px;
   border-radius: var(--radius);
-  background: var(--bg2);
-  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(30,30,50,0.8), rgba(20,20,40,0.6));
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(139,92,246,0.1);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.stat-card:hover {
+  border-color: rgba(139,92,246,0.3);
+  box-shadow: 0 4px 20px rgba(139,92,246,0.1);
 }
 .stat-value {
   font-size: 24px;
@@ -860,11 +873,12 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 /* ─── Hover & Focus Refinements ─── */
-.file-item:hover { background: rgba(255,255,255,0.04); }
-.job-item:hover { background: rgba(255,255,255,0.04); }
-.conversion-item:hover { background: rgba(255,255,255,0.04); }
-.card { transition: border-color 0.2s; }
-.btn:active:not(:disabled) { transform: scale(0.97); }
+.file-item:nth-child(even) { background: rgba(255,255,255,0.02); }
+.file-item:hover { background: rgba(139,92,246,0.08); }
+.job-item:nth-child(even) { background: rgba(255,255,255,0.02); }
+.job-item:hover { background: rgba(139,92,246,0.08); }
+.conversion-item:nth-child(even) { background: rgba(255,255,255,0.02); }
+.conversion-item:hover { background: rgba(139,92,246,0.08); }
 .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Focus-visible for keyboard accessibility */
@@ -981,15 +995,18 @@ input[type="range"]::-webkit-slider-thumb {
 .page {
   display: none;
   opacity: 0;
-  transition: opacity 0.25s ease;
+  transform: translateY(8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 .page.active {
   display: block;
   opacity: 1;
+  transform: translateY(0);
 }
 .page.fade-entering {
   display: block;
   opacity: 0;
+  transform: translateY(8px);
 }
 
 /* ─── Audio Volume Control ─── */
@@ -1124,6 +1141,73 @@ input[type="range"]::-webkit-slider-thumb {
   margin-left: 4px;
   display: inline-block;
   vertical-align: middle;
+}
+
+/* ─── Progress Bar Animation ─── */
+@keyframes progressPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+}
+.progress-fill.active {
+    animation: progressPulse 2s ease-in-out infinite;
+}
+.batch-progress-fill {
+    animation: progressPulse 2s ease-in-out infinite;
+}
+.download-progress-fill {
+    animation: progressPulse 2s ease-in-out infinite;
+}
+
+/* ─── Custom Confirm Dialog ─── */
+.confirm-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+}
+.confirm-dialog {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+    animation: fadeIn 0.2s ease;
+}
+.confirm-dialog h3 {
+    margin: 0 0 12px;
+    color: var(--text);
+}
+.confirm-dialog p {
+    color: var(--text-dim, var(--text2));
+    margin: 0 0 24px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+.confirm-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+.btn-danger-solid {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+.btn-danger-solid:hover {
+    background: #dc2626;
 }
 
 /* ─── Responsive ─── */
@@ -1539,10 +1623,13 @@ input[type="range"]::-webkit-slider-thumb {
   </div>
 
   <div id="convert-sub-convert">
-  <div id="convert-no-models" class="empty-state card" style="display:none">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-    <p style="margin-top:8px">학습된 모델이 없습니다</p>
-    <button class="btn btn-primary mt-16" onclick="showPage('train')">모델 학습하러 가기</button>
+  <div id="convert-no-models" class="card" style="display:none">
+    <div class="empty-state-enhanced">
+      <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></div>
+      <div class="empty-title">학습된 모델이 없습니다</div>
+      <div class="empty-desc">먼저 학습 탭에서 AI 보이스 모델을 만들어주세요</div>
+      <button class="btn btn-primary mt-16" onclick="showPage('train')">모델 학습하러 가기</button>
+    </div>
   </div>
 
   <div id="convert-main">
@@ -1720,7 +1807,7 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
       <!-- Audio source toggle (vocals vs mix) -->
       <div id="convert-result-toggle" class="mt-16" style="display:none">
-        <div style="display:flex;gap:4px;background:var(--bg3);padding:3px;border-radius:10px;display:inline-flex">
+        <div style="display:inline-flex;gap:4px;background:var(--bg3);padding:3px;border-radius:10px">
           <button class="btn" id="toggle-mix" onclick="switchResultAudio('mix')" style="padding:6px 14px;font-size:12px;border-radius:8px;background:var(--violet);color:white">최종 믹스</button>
           <button class="btn" id="toggle-vocal" onclick="switchResultAudio('vocal')" style="padding:6px 14px;font-size:12px;border-radius:8px;background:transparent;color:var(--text2)">변환 보컬만</button>
         </div>
@@ -2100,7 +2187,7 @@ function apSeek(e, uid) {
   var bar = document.getElementById(uid + '_seekbar');
   if (!audio || !bar || !audio.duration) return;
   var rect = bar.getBoundingClientRect();
-  var pct = (e.clientX - rect.left) / rect.width;
+  var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   audio.currentTime = pct * audio.duration;
 }
 
@@ -2173,7 +2260,19 @@ function apRedraw(uid, progress) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Navigation
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function cleanupWaveformCache() {
+  var keys = Object.keys(apWaveData);
+  for (var i = 0; i < keys.length; i++) {
+    if (!document.getElementById(keys[i] + '_wave')) {
+      delete apWaveData[keys[i]];
+    }
+  }
+}
+
 function showPage(page) {
+  // Cleanup waveform cache for removed elements
+  cleanupWaveformCache();
+
   var currentPage = document.querySelector('.page.active');
   var nextPage = document.getElementById('page-' + page);
 
@@ -2191,6 +2290,10 @@ function showPage(page) {
   void nextPage.offsetWidth;
   nextPage.classList.add('active');
   nextPage.style.opacity = '1';
+
+  // Scroll to top on page switch
+  var mainEl = document.querySelector('.main');
+  if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
 
   // 페이지 이동 시 대시보드 타이머 정리
   if (page !== 'home' && _dashboardTimer) {
@@ -2295,6 +2398,35 @@ function escapeHtml(str) {
   var d = document.createElement('div');
   d.textContent = str;
   return d.innerHTML;
+}
+
+function showConfirm(title, message, onConfirm) {
+  var overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = '<div class="confirm-dialog">' +
+    '<h3>' + escapeHtml(title) + '</h3>' +
+    '<p>' + escapeHtml(message) + '</p>' +
+    '<div class="confirm-actions">' +
+    '<button class="btn btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">취소</button>' +
+    '<button class="btn btn-danger-solid" id="confirm-ok-btn">확인</button>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+  document.getElementById('confirm-ok-btn').onclick = function() {
+    overlay.remove();
+    onConfirm();
+  };
+  // Close on overlay click
+  overlay.onclick = function(e) {
+    if (e.target === overlay) overlay.remove();
+  };
+  // Close on Escape key
+  var escHandler = function(e) {
+    if (e.key === 'Escape') {
+      overlay.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
 }
 
 function formatSize(bytes) {
@@ -2600,30 +2732,43 @@ function toggleSelectAll(checked) {
   updateTrainSelection();
 }
 
-async function deleteFile(id) {
+function deleteFile(id) {
   var file = uploadedFiles.find(function(f) { return f.id === id; });
   var name = file ? file.original_name || file.filename : '파일';
-  if (!confirm('"' + name + '" 파일을 삭제하시겠습니까?')) return;
-  await api('/files/' + id, { method: 'DELETE' });
-  uploadedFiles = uploadedFiles.filter(function(f) { return f.id !== id; });
-  renderFileList();
+  showConfirm('파일 삭제', '"' + name + '" 파일을 삭제하시겠습니까?', function() {
+    api('/files/' + id, { method: 'DELETE' }).then(function() {
+      uploadedFiles = uploadedFiles.filter(function(f) { return f.id !== id; });
+      renderFileList();
+    }).catch(function(e) {
+      toast('파일 삭제 실패: ' + e.message, 'error');
+    });
+  });
 }
 
-async function deleteSelectedFiles() {
+function deleteSelectedFiles() {
   var selected = getSelectedFileIds();
   if (selected.length === 0) {
     toast('삭제할 파일을 선택해 주세요', 'warning');
     return;
   }
-  var confirmMsg = selected.length + '개 파일을 삭제하시겠습니까?';
-  if (!confirm(confirmMsg)) return;
-  for (var i = 0; i < selected.length; i++) {
-    await api('/files/' + selected[i], { method: 'DELETE' });
-  }
-  var selectedSet = new Set(selected.map(String));
-  uploadedFiles = uploadedFiles.filter(function(f) { return !selectedSet.has(String(f.id)); });
-  renderFileList();
-  toast(selected.length + '개 파일 삭제됨', 'info');
+  showConfirm('파일 삭제', selected.length + '개 파일을 삭제하시겠습니까?', function() {
+    var deletePromise = Promise.resolve();
+    for (var i = 0; i < selected.length; i++) {
+      (function(fileId) {
+        deletePromise = deletePromise.then(function() {
+          return api('/files/' + fileId, { method: 'DELETE' });
+        });
+      })(selected[i]);
+    }
+    deletePromise.then(function() {
+      var selectedSet = new Set(selected.map(String));
+      uploadedFiles = uploadedFiles.filter(function(f) { return !selectedSet.has(String(f.id)); });
+      renderFileList();
+      toast(selected.length + '개 파일 삭제됨', 'info');
+    }).catch(function(e) {
+      toast('파일 삭제 실패: ' + e.message, 'error');
+    });
+  });
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3270,16 +3415,16 @@ function selectModel(id, el) {
   updateConvertBtn();
 }
 
-async function deleteModel(id, name) {
-  if (!confirm('"' + name + '" 모델을 영구 삭제하시겠습니까?\n삭제된 모델은 복구할 수 없습니다.')) return;
-  try {
-    await api('/models/' + id, { method: 'DELETE' });
-    if (selectedModelId === id) selectedModelId = null;
-    toast('"' + name + '" 모델이 삭제되었습니다', 'info');
-    loadModels();
-  } catch(e) {
-    toast('모델 삭제 실패: ' + e.message, 'error');
-  }
+function deleteModel(id, name) {
+  showConfirm('모델 삭제', '"' + name + '" 모델을 영구 삭제하시겠습니까? 삭제된 모델은 복구할 수 없습니다.', function() {
+    api('/models/' + id, { method: 'DELETE' }).then(function() {
+      if (selectedModelId === id) selectedModelId = null;
+      toast('"' + name + '" 모델이 삭제되었습니다', 'info');
+      loadModels();
+    }).catch(function(e) {
+      toast('모델 삭제 실패: ' + e.message, 'error');
+    });
+  });
 }
 
 function updateConvertBtn() {
@@ -3297,7 +3442,14 @@ async function startConversion() {
   }
   _submitting = true;
 
-  if (!convertFile) return;
+  if (!convertFile) { _submitting = false; return; }
+
+  // File size validation (max 500MB)
+  if (convertFile && convertFile.size > 500 * 1024 * 1024) {
+    toast('파일이 너무 큽니다 (최대 500MB)', 'error');
+    _submitting = false;
+    return;
+  }
 
   var form = new FormData();
   form.append('model_id', selectedModelId);
@@ -3488,7 +3640,7 @@ function resultSeek(e) {
   var bar = document.getElementById('result-seekbar');
   if (!audio || !bar || !audio.duration) return;
   var rect = bar.getBoundingClientRect();
-  var pct = (e.clientX - rect.left) / rect.width;
+  var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
   audio.currentTime = pct * audio.duration;
 }
 
@@ -3723,7 +3875,7 @@ async function cancelConversion() {
 async function loadConversionHistory() {
   try {
     var res = await api('/conversions');
-    _allConvHistory = (res.conversions || []).filter(function(c) { return c.status === 'completed' && c.output_file; });
+    _allConvHistory = (res.conversions || []);
     renderConvHistoryPage();
   } catch(e) {}
 }
@@ -3757,9 +3909,29 @@ function renderConvHistoryPage() {
 
   listEl.innerHTML = pageItems.map(function(c) {
     var playFile = c.output_name || c.output_file;
-    var audioUrl = '/api/download/' + encodeURIComponent(playFile);
-    var playerHtml = createAudioPlayer(audioUrl);
-    var escapedPlayFile = playFile.replace(/'/g, "\\'");
+    var isCompleted = c.status === 'completed' && playFile;
+    var audioUrl = isCompleted ? '/api/download/' + encodeURIComponent(playFile) : '';
+    var playerHtml = isCompleted ? createAudioPlayer(audioUrl) : '';
+    var escapedPlayFile = playFile ? playFile.replace(/'/g, "\\'") : '';
+
+    // Status badge with color coding
+    var statusBadgeHtml = '';
+    if (c.status === 'completed') {
+      statusBadgeHtml = '<span class="badge badge-green">완료</span>';
+    } else if (c.status === 'failed') {
+      statusBadgeHtml = '<span class="badge badge-red">실패</span>';
+    } else if (c.status === 'running' || c.status === 'submitting') {
+      statusBadgeHtml = '<span class="badge badge-amber">진행중</span>';
+    } else {
+      statusBadgeHtml = '<span class="badge badge-violet">' + escapeHtml(c.status || '알 수 없음') + '</span>';
+    }
+
+    var downloadBtn = isCompleted
+      ? '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + encodeURIComponent(playFile) + '\', \'' + escapedPlayFile + '\')" title="다운로드">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
+        '</button>'
+      : '';
+
     return '<div class="conversion-item" style="flex-direction:column;align-items:stretch">' +
       '<div style="display:flex;align-items:center;gap:10px">' +
         '<div class="file-icon" style="flex-shrink:0">' +
@@ -3773,9 +3945,8 @@ function renderConvHistoryPage() {
             ' \u00B7 ' + (c.created_at || '') +
           '</div>' +
         '</div>' +
-        '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + encodeURIComponent(playFile) + '\', \'' + escapedPlayFile + '\')" title="다운로드">' +
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
-        '</button>' +
+        statusBadgeHtml +
+        downloadBtn +
         '<button class="btn-conv-action btn-conv-delete" onclick="deleteConversion(' + c.id + ')" title="삭제">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
         '</button>' +
@@ -3787,15 +3958,15 @@ function renderConvHistoryPage() {
   renderPagination('conv-history-pagination', _convHistoryPage, filtered.length, 'setConvHistoryPage');
 }
 
-async function deleteConversion(id) {
-  if (!confirm('이 변환 파일을 영구 삭제하시겠습니까?')) return;
-  try {
-    await api('/conversions/' + id, { method: 'DELETE' });
-    toast('변환 파일이 삭제되었습니다', 'info');
-    loadConversionHistory();
-  } catch(e) {
-    toast('삭제 실패: ' + e.message, 'error');
-  }
+function deleteConversion(id) {
+  showConfirm('변환 기록 삭제', '이 변환 파일을 영구 삭제하시겠습니까?', function() {
+    api('/conversions/' + id, { method: 'DELETE' }).then(function() {
+      toast('변환 파일이 삭제되었습니다', 'info');
+      loadConversionHistory();
+    }).catch(function(e) {
+      toast('삭제 실패: ' + e.message, 'error');
+    });
+  });
 }
 
 function retryConversion() {
@@ -3828,7 +3999,9 @@ async function loadSettings() {
     document.getElementById('cfg-r2-secret-key').value = config.r2_secret_key_display || '';
     document.getElementById('cfg-r2-bucket').value = config.r2_bucket_name || '';
     document.getElementById('cfg-download-folder').value = config.download_folder || '';
-  } catch(e) {}
+  } catch(e) {
+    toast('설정을 불러오는데 실패했습니다', 'error');
+  }
 }
 
 async function testRunPodConnection() {
@@ -4005,8 +4178,14 @@ document.addEventListener('keydown', function(e) {
       showPage(pages[idx]);
     }
   }
-  // Esc: close modals / dismiss toasts
+  // Esc: close modals / confirm dialogs / dismiss toasts
   if (e.key === 'Escape') {
+    // Close confirm dialogs first
+    var confirmOverlay = document.querySelector('.confirm-overlay');
+    if (confirmOverlay) {
+      confirmOverlay.remove();
+      return;
+    }
     var toasts = document.querySelectorAll('.toast:not(.removing)');
     if (toasts.length > 0) {
       toasts.forEach(function(t) { dismissToast(t); });

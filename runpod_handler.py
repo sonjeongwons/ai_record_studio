@@ -328,7 +328,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                         log.warning(f"upload_file_to_bucket returned non-HTTP for "
                                     f"{fobj['filename']}: {str(url)[:120]}")
                         file_size = Path(fobj["path"]).stat().st_size
-                        b64_size = file_size * 4 // 3
+                        b64_size = (file_size * 4 + 2) // 3
                         if total_b64_bytes + b64_size <= MAX_B64_BYTES:
                             fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
                             total_b64_bytes += b64_size
@@ -338,7 +338,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 except Exception as e:
                     log.warning(f"R2 upload failed for {fobj['filename']}: {e}")
                     file_size = Path(fobj["path"]).stat().st_size
-                    b64_size = file_size * 4 // 3
+                    b64_size = (file_size * 4 + 2) // 3
                     if total_b64_bytes + b64_size <= MAX_B64_BYTES:
                         fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
                         total_b64_bytes += b64_size
@@ -355,7 +355,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
             log.warning("No R2 bucket configured — using inline base64 for preprocess results")
             for fobj in all_files:
                 file_size = Path(fobj["path"]).stat().st_size
-                b64_size = file_size * 4 // 3
+                b64_size = (file_size * 4 + 2) // 3
                 if total_b64_bytes + b64_size <= MAX_B64_BYTES:
                     fobj["data_base64"] = encode_file_b64(Path(fobj["path"]))
                     total_b64_bytes += b64_size
@@ -592,6 +592,11 @@ def _speaker_diarize(vocal_paths: list[Path], output_dir: Path) -> list[Path]:
                 result_paths.append(vp)
                 continue
 
+            if not speaker_durations:
+                log.warning("No speakers detected, returning input as-is")
+                result_paths.append(vp)
+                continue
+
             # Find dominant speaker (longest total duration)
             dominant = max(speaker_durations, key=speaker_durations.get)
             log.info(f"Found {len(speakers)} speakers in {vp.name}, extracting dominant: {dominant}")
@@ -649,6 +654,9 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
         cleaned: list[Path] = []
         for ap in audio_paths:
             audio_data, sr = sf.read(str(ap))
+            if np.any(np.isnan(audio_data)) or np.any(np.isinf(audio_data)):
+                log.warning(f"Skipping corrupted audio file: {ap.name}")
+                continue
 
             # Log noise floor level for diagnostics (but always apply NR)
             rms = np.sqrt(np.mean(audio_data ** 2))
@@ -701,6 +709,9 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
                 source_stem = source_stem[:-len(suffix)]
 
         audio_data, sr = sf.read(str(ap))
+        if np.any(np.isnan(audio_data)) or np.any(np.isinf(audio_data)):
+            log.warning(f"Skipping corrupted audio file: {ap.name}")
+            continue
         total_samples = len(audio_data)
         total_duration = total_samples / sr
 
@@ -880,7 +891,7 @@ def task_train(job_input: dict, job: dict) -> dict:
     #   logs/{model_name}/1_2_3/ - preprocessed sliced audio
     #   logs/{model_name}/0_gt_wavs/ - preprocessed audio
     #   logs/{model_name}/3_feature768/ or 3_feature256/ - feature files
-    logs_dir = APPLIO_ROOT / "logs" / model_name
+    logs_dir = APPLIO_ROOT / "logs" / f"{model_name}_{job_id}"
     dataset_dir = ensure_dir(WORK_DIR / f"train_{job_id}" / "dataset")
     ensure_dir(logs_dir)
 
@@ -1076,18 +1087,14 @@ def task_train(job_input: dict, job: dict) -> dict:
 
     finally:
         cleanup_dir(WORK_DIR / f"train_{job_id}")
-        # logs_dir contains the model, but we've already uploaded/encoded it above,
-        # so it's safe to clean. However, keep logs_dir if upload failed to allow retry.
-        # Only clean non-essential subdirectories, preserve .pth and .index
-        try:
-            if logs_dir.exists():
-                for sub in logs_dir.iterdir():
-                    if sub.is_dir():
-                        cleanup_dir(sub)
-                    elif sub.suffix not in (".pth", ".index"):
-                        sub.unlink(missing_ok=True)
-        except Exception as e:
-            log.warning(f"Partial logs cleanup failed: {e}")
+        # logs_dir is now job-specific (includes job_id), so it's safe to remove entirely.
+        # The model/index have already been uploaded/encoded above.
+        if logs_dir and logs_dir.exists():
+            try:
+                shutil.rmtree(str(logs_dir), ignore_errors=True)
+                log.info(f"Cleaned up training logs: {logs_dir.name}")
+            except Exception:
+                pass
         cleanup_gpu()
 
 

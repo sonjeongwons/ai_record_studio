@@ -64,6 +64,9 @@ chunk_uploads: dict = {}
 # 전처리 작업별 원본 파일 ID 추적 (완료 시 preprocessed=1 마킹용)
 preprocess_file_map: dict[str, list[int]] = {}
 
+# RunPod 폴링 에러 카운터 (job_id별 추적)
+_poll_error_counts: dict[str, int] = {}
+
 def _list_preprocessed_files() -> list[Path]:
     """전처리된 오디오 파일 목록 (WAV + MP3)."""
     files: list[Path] = []
@@ -243,6 +246,7 @@ def get_db():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
     try:
         yield conn
         conn.commit()
@@ -603,6 +607,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             elapsed = int(time.time() - start_time)
 
             if status == "COMPLETED":
+                _poll_error_counts.pop(job_id, None)
                 output = result.get("output", {})
                 if not output:
                     update_job(job_id, status="failed",
@@ -629,6 +634,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                 return
 
             elif status in ("FAILED", "TIMED_OUT", "CANCELLED"):
+                _poll_error_counts.pop(job_id, None)
                 raw_error = result.get("error", "알 수 없는 오류")
                 # RunPod 에러가 dict이면 error_message 추출
                 if isinstance(raw_error, dict):
@@ -739,13 +745,15 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                           message=f"상태: {status} ({elapsed}초)")
 
             if elapsed > 10 * 3600:  # 10시간 타임아웃
+                _poll_error_counts.pop(job_id, None)
                 update_job(job_id, status="failed", message="시간 초과 (10시간)")
                 return
 
         except Exception as e:
-            poll_errors = getattr(poll_runpod_job, '_errors', 0) + 1
-            poll_runpod_job._errors = poll_errors
+            poll_errors = _poll_error_counts.get(job_id, 0) + 1
+            _poll_error_counts[job_id] = poll_errors
             if poll_errors > 30:  # 30 consecutive errors = ~5 min of failures
+                _poll_error_counts.pop(job_id, None)
                 update_job(job_id, status="failed",
                           message=f"RunPod 상태 확인 반복 실패: {e}")
                 return
@@ -840,8 +848,8 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     if meta_path.exists():
         try:
             meta = json.loads(meta_path.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Warning] Failed to parse metadata: {e}")
     prev_dur = meta.get("total_duration", 0.0)
     merged_dur = prev_dur + total_duration
     meta["total_duration"] = round(merged_dur, 2)
@@ -1304,6 +1312,7 @@ async def upload_files(
 
         # 오디오 길이 측정
         duration = _get_audio_duration(save_path)
+        duration = duration or 0.0
 
         with get_db() as db:
             db.execute("""
@@ -1440,6 +1449,7 @@ async def upload_chunk(
         chunk_uploads.pop(upload_id, None)
 
         duration = _get_audio_duration(save_path)
+        duration = duration or 0.0
 
         with get_db() as db:
             db.execute("""
@@ -1495,10 +1505,13 @@ async def start_training(
     with get_db() as db:
         if file_ids:
             ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
-            placeholders = ",".join("?" * len(ids))
-            rows = db.execute(
-                f"SELECT * FROM training_files WHERE id IN ({placeholders}) AND deleted=0", ids
-            ).fetchall()
+            if not ids:
+                rows = db.execute("SELECT * FROM training_files WHERE deleted=0").fetchall()
+            else:
+                placeholders = ",".join("?" * len(ids))
+                rows = db.execute(
+                    f"SELECT * FROM training_files WHERE id IN ({placeholders}) AND deleted=0", ids
+                ).fetchall()
         else:
             rows = db.execute("SELECT * FROM training_files WHERE deleted=0").fetchall()
 
@@ -1517,8 +1530,8 @@ async def start_training(
         if meta_path.exists():
             try:
                 seg_map = json.loads(meta_path.read_text()).get("file_segments", {})
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Warning] Failed to parse metadata: {e}")
 
         ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
         selected_seg_names = set()
@@ -1761,8 +1774,8 @@ async def preprocess_status():
     if meta_path.exists():
         try:
             total_dur = json.loads(meta_path.read_text()).get("total_duration", 0.0)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Warning] Failed to parse metadata: {e}")
 
     # 메타데이터 없으면 WAV 파일에서 직접 계산 (폴백)
     if total_dur == 0.0 and has_segments:
