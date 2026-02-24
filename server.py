@@ -336,22 +336,10 @@ def init_db():
         db.execute("CREATE INDEX IF NOT EXISTS idx_training_files_deleted ON training_files(deleted)")
 
 
-def cleanup_stale_jobs():
-    """서버 시작 시 멈춰있는 작업 정리.
-    running/submitting 상태로 1시간 이상 방치된 작업을 실패 처리."""
+def cleanup_stale_jobs_on_startup():
+    """서버 시작 시 1회만 호출. 모든 running/submitting 작업을 실패 처리.
+    서버 재시작 시 폴링 스레드가 사라지므로 진행 중 작업을 정리."""
     with get_db() as db:
-        stale = db.execute("""
-            UPDATE jobs
-            SET status='failed',
-                message='서버 재시작으로 인한 자동 정리',
-                updated_at=?
-            WHERE status IN ('running', 'submitting')
-              AND updated_at < datetime('now', 'localtime', '-1 hour')
-        """, (datetime.now().isoformat(),))
-        if stale.rowcount > 0:
-            print(f"  정리된 멈춘 작업: {stale.rowcount}개")
-
-        # 서버 재시작 시 모든 running 작업도 정리 (백그라운드 스레드가 사라지므로)
         active = db.execute("""
             UPDATE jobs
             SET status='failed',
@@ -363,12 +351,29 @@ def cleanup_stale_jobs():
             print(f"  정리된 진행 중 작업: {active.rowcount}개")
 
 
+def cleanup_stale_jobs():
+    """주기적 호출용. 1시간 이상 방치된 작업만 실패 처리.
+    진행 중인 정상 작업은 건드리지 않음."""
+    with get_db() as db:
+        stale = db.execute("""
+            UPDATE jobs
+            SET status='failed',
+                message='1시간 이상 응답 없음 (자동 정리)',
+                updated_at=?
+            WHERE status IN ('running', 'submitting')
+              AND updated_at < datetime('now', 'localtime', '-1 hour')
+        """, (datetime.now().isoformat(),))
+        if stale.rowcount > 0:
+            print(f"  정리된 멈춘 작업: {stale.rowcount}개")
+
+
 # 주기적 정리 스로틀 (30분 간격)
 _last_cleanup_time: float = 0.0
 
 
 def maybe_cleanup_stale_jobs():
-    """30분 이상 경과 시 stale job 정리 (health 엔드포인트에서 호출)."""
+    """30분 이상 경과 시 stale job 정리 (health 엔드포인트에서 호출).
+    1시간 이상 방치된 작업만 정리 — 진행 중인 작업은 건드리지 않음."""
     global _last_cleanup_time
     now = time.time()
     if now - _last_cleanup_time > 1800:  # 30분
@@ -483,9 +488,9 @@ class RunPodClient:
         error_msg = classify_runpod_error(last_exc, last_response)
         raise HTTPException(status_code=502, detail=error_msg)
 
-    def submit_job(self, payload: dict, execution_timeout: int = 600) -> str:
+    def submit_job(self, payload: dict, execution_timeout: int = 36000) -> str:
         """비동기 작업 제출 → job_id 반환 (재시도 포함)
-        execution_timeout: RunPod 실행 제한 시간 (초). 기본 600초 (10분).
+        execution_timeout: RunPod 실행 제한 시간 (초). 기본 36000초 (10시간).
         """
         body = {"input": payload}
         if execution_timeout:
@@ -1142,7 +1147,7 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 @app.on_event("startup")
 async def startup():
     init_db()
-    cleanup_stale_jobs()
+    cleanup_stale_jobs_on_startup()
 
 
 # ─── 메인 페이지 ───
@@ -1625,7 +1630,7 @@ async def start_training(
         payload_size = len(json.dumps(payload))
         print(f"[Train] Payload size: {payload_size:,} bytes, segments: {total_segments}")
 
-        runpod_job_id = runpod_client.submit_job(payload, execution_timeout=3600)
+        runpod_job_id = runpod_client.submit_job(payload)
 
         msg = f"GPU에 작업 제출됨 ({total_segments}개 세그먼트)"
         update_job(job_id, status="running", progress=5,
