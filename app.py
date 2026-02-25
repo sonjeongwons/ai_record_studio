@@ -95,6 +95,7 @@ def main():
     # 윈도우 시작 (블로킹 — 닫히면 프로세스 종료)
     webview.start(
         gui='edgechromium',  # Windows: Edge WebView2 (기본 내장)
+        private_mode=False,  # 임시 폴더 삭제 실패 에러 방지
     )
 
 

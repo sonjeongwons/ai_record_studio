@@ -1400,10 +1400,13 @@ def _rvc_train(
     #   15: vocoder, 16: checkpointing
     pg = str(pretrained_g) if pretrained_g else ""
     pd = str(pretrained_d) if pretrained_d else ""
+    # train.py constructs paths as logs/{arg1}/config.json, so arg1 must match
+    # the actual directory name (which includes job_id for collision avoidance).
+    train_dir_name = logs_dir.name
     cmd = [
         sys.executable,
         str(APPLIO_ROOT / "rvc" / "train" / "train.py"),
-        model_name,               # 1
+        train_dir_name,           # 1: must match logs/ subdirectory name
         str(save_every_epoch),    # 2
         str(epochs),              # 3
         pg,                       # 4: pretrainG path
@@ -1577,7 +1580,7 @@ def _rvc_create_index(model_name: str, logs_dir: Path) -> None:
         from core import run_index_script
 
         run_index_script(
-            model_name=model_name,
+            model_name=logs_dir.name,
             index_algorithm="Auto",
         )
         log.info("FAISS index created via core API")
