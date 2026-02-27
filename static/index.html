@@ -1686,9 +1686,9 @@ input[type="range"]::-webkit-slider-thumb {
       <div class="slider-group">
         <div class="slider-header">
           <span class="slider-label">인덱스 비율</span>
-          <span class="slider-value" id="index-val">0.88</span>
+          <span class="slider-value" id="index-val">0.55</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="88" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2)">
+        <input type="range" id="index-slider" min="0" max="100" value="55" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2)">
       </div>
       <!-- Advanced settings (collapsible) -->
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
@@ -1699,10 +1699,21 @@ input[type="range"]::-webkit-slider-thumb {
         <div id="advanced-convert-settings">
           <div class="slider-group">
             <div class="slider-header">
+              <span class="slider-label">F0 Method (피치 추출)</span>
+            </div>
+            <select id="convert-f0" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px">
+              <option value="crepe" selected>Crepe (고품질, 고음 정확)</option>
+              <option value="rmvpe">RMVPE (빠름)</option>
+              <option value="crepe-tiny">Crepe-tiny (빠른 Crepe)</option>
+            </select>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">Crepe로 학습한 모델은 Crepe로 변환 권장</div>
+          </div>
+          <div class="slider-group">
+            <div class="slider-header">
               <span class="slider-label">노이즈 제거</span>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                <input type="checkbox" id="clean-audio-cb" checked style="accent-color:var(--violet)" onchange="document.getElementById('clean-audio-val').textContent=this.checked?'ON':'OFF'">
-                <span class="slider-value" id="clean-audio-val">ON</span>
+                <input type="checkbox" id="clean-audio-cb" style="accent-color:var(--violet)" onchange="document.getElementById('clean-audio-val').textContent=this.checked?'ON':'OFF'">
+                <span class="slider-value" id="clean-audio-val">OFF</span>
               </label>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">변환된 보컬의 잡음을 제거합니다</div>
@@ -1710,10 +1721,10 @@ input[type="range"]::-webkit-slider-thumb {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">Protect (자음 보호)</span>
-              <span class="slider-value" id="protect-val">0.23</span>
+              <span class="slider-value" id="protect-val">0.35</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="50" value="23" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 음색 변환이 강해짐 (0.20~0.30 권장)</div>
+            <input type="range" id="protect-slider" min="0" max="50" value="35" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 원본 발성 디테일 보존 (0.30~0.45 권장)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -1726,10 +1737,10 @@ input[type="range"]::-webkit-slider-thumb {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">Filter Radius (f0 스무딩)</span>
-              <span class="slider-value" id="filter-val">3</span>
+              <span class="slider-value" id="filter-val">4</span>
             </div>
-            <input type="range" id="filter-slider" min="0" max="7" value="3" oninput="document.getElementById('filter-val').textContent=this.value">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 피치가 부드러워짐 (2~4 권장)</div>
+            <input type="range" id="filter-slider" min="0" max="7" value="4" oninput="document.getElementById('filter-val').textContent=this.value">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 피치가 부드러워짐 (3~5 권장)</div>
           </div>
         </div>
       </div>
@@ -3455,6 +3466,7 @@ async function startConversion() {
   form.append('model_id', selectedModelId);
   form.append('pitch_shift', document.getElementById('pitch-slider').value);
   form.append('index_rate', (document.getElementById('index-slider').value / 100).toFixed(2));
+  form.append('f0_method', document.getElementById('convert-f0').value);
   form.append('vocal_volume', (document.getElementById('vocal-vol-slider').value / 100).toFixed(1));
   form.append('mr_volume', (document.getElementById('mr-vol-slider').value / 100).toFixed(1));
   form.append('clean_audio', document.getElementById('clean-audio-cb').checked);
@@ -3691,6 +3703,7 @@ async function startBatchConversion() {
       form.append('model_id', selectedModelId);
       form.append('pitch_shift', document.getElementById('pitch-slider').value);
       form.append('index_rate', (document.getElementById('index-slider').value / 100).toFixed(2));
+      form.append('f0_method', document.getElementById('convert-f0').value);
       form.append('vocal_volume', (document.getElementById('vocal-vol-slider').value / 100).toFixed(1));
       form.append('mr_volume', (document.getElementById('mr-vol-slider').value / 100).toFixed(1));
       form.append('clean_audio', document.getElementById('clean-audio-cb').checked);

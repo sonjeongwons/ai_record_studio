@@ -1889,14 +1889,15 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.88),
+    index_rate: float = Form(0.55),
+    f0_method: str = Form("crepe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
-    clean_audio: bool = Form(True),
+    clean_audio: bool = Form(False),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.23),
+    protect: float = Form(0.35),
     rms_mix_rate: float = Form(0.1),
-    filter_radius: int = Form(3),
+    filter_radius: int = Form(4),
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -1936,7 +1937,7 @@ async def start_conversion(
             "audio_filename": audio.filename,
             "pitch_shift": pitch_shift,
             "index_rate": index_rate,
-            "f0_method": "rmvpe",
+            "f0_method": f0_method,
             "clean_audio": clean_audio,
             "clean_strength": clean_strength,
             "protect": protect,
