@@ -2203,6 +2203,7 @@ input[type="range"].has-fill {
               RTX 4090 ($0.00074/sec) 기준 <b>추정값</b>이며, 실제 시간은 파일 포맷·음질·서버 상황에 따라 달라집니다.<br>              <b>예시:</b> 5분 MP3 1곡 → GPU 약 5~10분 → 약 $0.22~$0.44 &nbsp;|&nbsp; 3곡(합계 15분) → 약 15~30분 → 약 $0.67~$1.33<br>              <b>참고:</b> MP4·MKV 영상 파일은 오디오 추출 시간이 추가됩니다. RunPod GPU 대기 시간(0~5분)은 별도입니다.
             </div>
           </div>
+          <div id="preprocess-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.55"></div>
           <div class="flex gap-8">
             <button class="btn btn-primary" id="btn-start-preprocess" data-loading-label="전처리 중..." onclick="startPreprocess()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
@@ -2358,6 +2359,14 @@ input[type="range"].has-fill {
           <div class="cost-panel-row">
             <span>예상 RunPod 비용</span>
             <span class="cost-panel-val highlight" id="cost-train-cost">—</span>
+          </div>
+          <div class="cost-panel-row">
+            <span>배치 사이즈</span>
+            <span class="cost-panel-val" id="cost-train-batch">—</span>
+          </div>
+          <div class="cost-panel-row">
+            <span>샘플레이트</span>
+            <span class="cost-panel-val" id="cost-train-sr">—</span>
           </div>
         </div>
         <div class="cost-panel-note">
@@ -2634,6 +2643,10 @@ input[type="range"].has-fill {
           <span class="cost-panel-val" id="cost-conv-f0">—</span>
         </div>
         <div class="cost-panel-row">
+          <span>노이즈 제거</span>
+          <span class="cost-panel-val" id="cost-conv-clean">—</span>
+        </div>
+        <div class="cost-panel-row">
           <span>예상 GPU 처리 시간</span>
           <span class="cost-panel-val" id="cost-conv-gpu">—</span>
         </div>
@@ -2646,6 +2659,7 @@ input[type="range"].has-fill {
         RTX 4090 ($0.00074/sec) 기준 <b>추정값</b>. 실제 시간은 파일 길이·품질·F0 방식에 따라 달라집니다.<br>        <b>예시:</b> 3분 노래 1곡 → GPU 약 1~2분 → 약 $0.04~0.09 &nbsp;|&nbsp; 5곡 일괄 → 약 5~10분 → 약 $0.22~0.44<br>        <b>참고:</b> 변환은 학습에 비해 매우 저렴합니다 (1곡당 수 센트 수준). Crepe는 RMVPE보다 약간 느립니다. 노이즈 제거(ON) 시 처리 시간이 10~20% 추가됩니다.
       </div>
     </div>
+    <div id="convert-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.55"></div>
     <button class="btn btn-gradient btn-full" id="btn-convert" onclick="startConversion()" disabled data-loading-label="변환 제출 중...">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
       AI 변환 시작
@@ -3543,6 +3557,25 @@ function formatEta(seconds) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var COST_PER_SEC = 0.00074; // RTX 4090 ~$0.00074/GPU-sec
 
+// 동적 경고 표시 헬퍼: level = ok|info|warn|danger
+function _showCostWarn(elId, level, msg) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  if (!msg) { el.style.display = 'none'; return; }
+  var styles = {
+    ok:     { color:'#4ade80', bg:'rgba(74,222,128,0.08)',  border:'rgba(74,222,128,0.28)' },
+    info:   { color:'#60a5fa', bg:'rgba(96,165,250,0.08)', border:'rgba(96,165,250,0.28)' },
+    warn:   { color:'#fbbf24', bg:'rgba(245,158,11,0.10)', border:'rgba(245,158,11,0.32)' },
+    danger: { color:'#f87171', bg:'rgba(239,68,68,0.10)',  border:'rgba(239,68,68,0.32)' }
+  };
+  var s = styles[level] || styles.info;
+  el.style.color      = s.color;
+  el.style.background = s.bg;
+  el.style.border     = '1px solid ' + s.border;
+  el.innerHTML        = msg;
+  el.style.display    = 'block';
+}
+
 function _formatGpuTime(secs) {
   if (secs < 60) return '약 ' + Math.round(secs) + '초';
   if (secs < 3600) return '약 ' + Math.round(secs / 60) + '분';
@@ -3582,39 +3615,53 @@ function estimatePreprocessCost() {
   var panel = document.getElementById('preprocess-cost-panel');
   if (!panel) return;
   var selectedIds = getSelectedFileIds();
-  if (selectedIds.length === 0) { panel.style.display = 'none'; return; }
+  if (selectedIds.length === 0) { panel.style.display = 'none'; _showCostWarn('preprocess-cost-warn','ok',''); return; }
 
-  var totalSecs = 0;
-  var hasVideo = false;
+  var totalSecs = 0, videoCount = 0, fileCount = selectedIds.length;
   selectedIds.forEach(function(id) {
     var f = uploadedFiles.find(function(u) { return String(u.id) === String(id); });
     if (f) {
       totalSecs += (f.duration_seconds || f.duration || 0);
-      var name = (f.name || f.filename || '').toLowerCase();
-      if (name.endsWith('.mp4') || name.endsWith('.mkv') || name.endsWith('.webm')) hasVideo = true;
+      var nm = (f.name || f.filename || '').toLowerCase();
+      if (nm.endsWith('.mp4') || nm.endsWith('.mkv') || nm.endsWith('.webm')) videoCount++;
     }
   });
   if (totalSecs <= 0) { panel.style.display = 'none'; return; }
 
   // 전처리 = Demucs 줄기 분리 (~1.0x realtime) + 슬라이싱/정규화 + 오버헤드
-  // 영상 파일은 오디오 추출 오버헤드 추가 (~30%)
-  var videoFactor = hasVideo ? 1.30 : 1.0;
+  // 영상 파일은 오디오 추출 오버헤드 추가
+  var videoFactor = videoCount > 0 ? (1.0 + 0.30 * videoCount / fileCount) : 1.0;
   var gpuSecs = totalSecs * 1.0 * videoFactor + 120;
   // 실제 Demucs 처리는 파일 품질·서버 부하에 따라 0.5배~2배 편차 발생
   var minSec  = gpuSecs * 0.55;
   var maxSec  = gpuSecs * 1.80;
 
-  var noteEl = document.getElementById('cost-pre-note');
-  var extraNote = hasVideo ? ' ⚠️ 영상 파일 포함 — 오디오 추출 시간이 추가됩니다.' : '';
-  if (noteEl) {
-    noteEl.querySelector && (noteEl.innerHTML = noteEl.innerHTML.split('⚠️')[0] + extraNote);
-  }
-
-  document.getElementById('cost-pre-duration').textContent = formatDuration(totalSecs) + (hasVideo ? ' (영상 포함)' : '');
+  document.getElementById('cost-pre-duration').textContent =
+    formatDuration(totalSecs) + (videoCount > 0 ? ' (영상 ' + videoCount + '개 포함)' : '');
   document.getElementById('cost-pre-gpu').textContent =
     _formatGpuTime(gpuSecs) + ' (' + _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec) + ')';
   document.getElementById('cost-pre-cost').textContent = _formatCostRange(minSec, maxSec);
   panel.style.display = 'block';
+
+  // ── 동적 경고 (4단계) ──
+  var costStr   = _formatCostRange(minSec, maxSec);
+  var timeStr   = _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec);
+  var videoNote = videoCount > 0 ? ' 영상 파일 ' + videoCount + '개 포함으로 오디오 추출 시간이 추가됩니다.' : '';
+  var warnMsg, warnLevel;
+  if (gpuSecs < 300) {
+    warnLevel = 'ok';
+    warnMsg = '✅ <b>빠른 전처리 예상</b> — ' + fileCount + '개 파일, 약 ' + timeStr + ' 소요 예상 (비용 ' + costStr + ').' + videoNote;
+  } else if (gpuSecs < 1200) {
+    warnLevel = 'info';
+    warnMsg = 'ℹ️ <b>보통 소요</b> — ' + fileCount + '개 파일, 약 ' + timeStr + ' 예상 (비용 ' + costStr + ').' + videoNote + ' 전처리가 완료될 때까지 기다려 주세요.';
+  } else if (gpuSecs < 3600) {
+    warnLevel = 'warn';
+    warnMsg = '⚠️ <b>시간 소요</b> — 약 ' + timeStr + ' 예상 (비용 ' + costStr + ').' + videoNote + ' 파일이 많아 오래 걸립니다. 불필요한 파일은 체크 해제하여 제외하세요.';
+  } else {
+    warnLevel = 'danger';
+    warnMsg = '🔴 <b>장시간 전처리</b> — 약 ' + timeStr + ' 예상 (비용 ' + costStr + ').' + videoNote + ' 데이터가 매우 많습니다. 파일 수를 줄이거나 분할하여 전처리하는 것을 권장합니다.';
+  }
+  _showCostWarn('preprocess-cost-warn', warnLevel, warnMsg);
 }
 
 // ─── 학습 비용 추정 ───
@@ -3674,17 +3721,37 @@ function estimateTrainingCost() {
     _formatGpuTime(totalGpu) + ' (' + _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec) + ')';
   document.getElementById('cost-train-cost').textContent = _formatCostRange(minSec, maxSec);
 
-  // 동적 경고: 예상 학습 시간이 1시간 초과 시 경고 표시
-  var warnEl = document.getElementById('train-cost-warn');
-  if (warnEl) {
-    if (totalGpu > 3600) {
-      var hrs = (totalGpu / 3600).toFixed(1);
-      warnEl.textContent = '⚠️ 예상 학습 시간이 ' + hrs + '시간 이상입니다. RunPod 크레딧과 시간을 충분히 확보하세요. 에폭을 줄이거나 학습 파일 수를 조정하면 시간을 단축할 수 있습니다.';
-      warnEl.style.display = 'block';
-    } else {
-      warnEl.style.display = 'none';
-    }
+  // ── 배치·SR 행 업데이트 ──
+  var batchLabels = { 0:'자동 (기본 속도 1.0×)', 8:'8 (기본 속도 1.0×)', 16:'16 (1.5× 빠름)', 24:'24 (2.2× 빠름)' };
+  var srLabel = sr === 48000 ? '48 kHz (+20% 더 느림)' : '40 kHz (기본)';
+  var bEl = document.getElementById('cost-train-batch');
+  var srEl = document.getElementById('cost-train-sr');
+  if (bEl) bEl.textContent = batchLabels[batch] || ('배치 ' + batch);
+  if (srEl) srEl.textContent = srLabel;
+
+  // ── 동적 경고 (4단계) ──
+  var costStr = _formatCostRange(minSec, maxSec);
+  var timeStr = _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec);
+  var hints = [];
+  if (f0 === 'crepe')           hints.push('Crepe → RMVPE로 바꾸면 학습 시간을 절반으로 줄일 수 있습니다');
+  if (sr === 48000)             hints.push('48kHz → 40kHz로 낮추면 약 20% 단축됩니다');
+  if (batch === 0 || batch === 8) hints.push('배치 16 이상 설정 시 학습 속도가 빨라집니다');
+  var hintStr = hints.length ? '<br>💡 <b>단축 팁:</b> ' + hints.join(' / ') : '';
+  var warnMsg, warnLevel;
+  if (totalGpu < 1800) {
+    warnLevel = 'ok';
+    warnMsg   = '✅ <b>빠른 학습 예상</b> — 약 ' + timeStr + ' 소요 예상 (비용 ' + costStr + '). 학습이 완료되면 변환 탭에서 바로 사용할 수 있습니다.';
+  } else if (totalGpu < 7200) {
+    warnLevel = 'info';
+    warnMsg   = 'ℹ️ <b>보통 소요</b> — 약 ' + timeStr + ' 예상 (비용 ' + costStr + '). 학습 중 RunPod 비용이 계속 발생합니다. 완료 알림을 확인하세요.' + hintStr;
+  } else if (totalGpu < 21600) {
+    warnLevel = 'warn';
+    warnMsg   = '⚠️ <b>장시간 학습</b> — 약 ' + timeStr + ' 예상 (비용 ' + costStr + '). 충분한 RunPod 크레딧을 확인하세요. 에폭을 300으로 낮추면 시간을 크게 단축할 수 있습니다.' + hintStr;
+  } else {
+    warnLevel = 'danger';
+    warnMsg   = '🔴 <b>매우 긴 학습</b> — 약 ' + timeStr + ' 이상 예상 (비용 ' + costStr + '). 데이터가 매우 많거나 에폭이 높습니다. 에폭을 300~500으로 낮추거나 파일 수를 줄이는 것을 강력 권장합니다.' + hintStr;
   }
+  _showCostWarn('train-cost-warn', warnLevel, warnMsg);
 
   panel.style.display = 'block';
   if (staticEl) staticEl.style.display = 'none';
@@ -3715,15 +3782,38 @@ function estimateConversionCost() {
   var maxSec    = totalGpu * 2.00;
 
   var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)' }[f0] || f0;
+  var cleanLabel = (cleanCb && cleanCb.checked) ? 'ON (+15% 시간 추가)' : 'OFF (기본)';
 
   document.getElementById('cost-conv-files').textContent = files.length + '개';
   document.getElementById('cost-conv-duration').textContent =
     totalDuration > 5 ? formatDuration(totalDuration) + ' (파일 크기 기반 추정)' : '측정 불가';
   document.getElementById('cost-conv-f0').textContent = f0Label;
+  var cleanEl = document.getElementById('cost-conv-clean');
+  if (cleanEl) cleanEl.textContent = cleanLabel;
   document.getElementById('cost-conv-gpu').textContent =
     _formatGpuTime(totalGpu) + ' (' + _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec) + ')';
   document.getElementById('cost-conv-cost').textContent = _formatCostRange(minSec, maxSec);
   panel.style.display = 'block';
+
+  // ── 동적 경고 (4단계) ──
+  var costStr = _formatCostRange(minSec, maxSec);
+  var timeStr = _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec);
+  var cleanNote = (cleanCb && cleanCb.checked) ? ' 노이즈 제거 ON으로 처리 시간이 약 15% 추가됩니다.' : '';
+  var warnMsg, warnLevel;
+  if (totalGpu < 60) {
+    warnLevel = 'ok';
+    warnMsg   = '✅ <b>매우 빠른 변환</b> — 1분 이내 완료 예상 (비용 ' + costStr + ').' + cleanNote;
+  } else if (totalGpu < 300) {
+    warnLevel = 'ok';
+    warnMsg   = '✅ <b>빠른 변환 예상</b> — 약 ' + timeStr + ' 소요 (비용 ' + costStr + ').' + cleanNote;
+  } else if (totalGpu < 900) {
+    warnLevel = 'info';
+    warnMsg   = 'ℹ️ <b>보통 소요</b> — 약 ' + timeStr + ' 예상 (비용 ' + costStr + ').' + cleanNote + ' 변환이 완료될 때까지 기다려 주세요.';
+  } else {
+    warnLevel = 'warn';
+    warnMsg   = '⚠️ <b>시간 소요</b> — 약 ' + timeStr + ' 예상 (비용 ' + costStr + ').' + cleanNote + ' 일괄 변환이 많은 경우 페이지를 닫지 마세요.';
+  }
+  _showCostWarn('convert-cost-warn', warnLevel, warnMsg);
 }
 
 // 피치 반음 → 음계 이름 변환
