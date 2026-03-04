@@ -2389,6 +2389,53 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 /* ─── 설정 카드 입력 row 스타일 ─── */
 #page-settings .card > div + div { margin-top: 12px; }
 
+/* ─── Live Cost / Elapsed Time Bar ─── */
+.live-cost-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: rgba(139,92,246,0.06);
+  border: 1px solid rgba(139,92,246,0.16);
+  font-size: 12px;
+  color: var(--text2);
+  margin-top: 12px;
+  line-height: 1.4;
+}
+.live-cost-bar .live-sep { color: rgba(255,255,255,0.15); }
+.live-cost-bar .live-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--violet);
+}
+.live-cost-bar .live-note { font-size: 10px; color: var(--text3); }
+
+/* ─── Pause Button with Icon ─── */
+.btn-pause-icon { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ─── Paused area accumulated cost ─── */
+.paused-cost-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.2);
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 12px;
+}
+.paused-cost-info .paused-cost-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  color: var(--amber);
+}
+
 </style>
 </head>
 <body>
@@ -2623,8 +2670,19 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
               </div>
             </div>
             <div class="progress-label" id="preprocess-msg">전처리 준비 중...</div>
+            <!-- 라이브 경과 시간 + 과금 카운터 -->
+            <div class="live-cost-bar" id="preprocess-live-cost">
+              <span>⏱ 경과&nbsp;<span class="live-val" id="preprocess-elapsed">0:00</span></span>
+              <span class="live-sep">|</span>
+              <span>💰 예상 누적&nbsp;<span class="live-val" id="preprocess-running-cost">~$0.000</span></span>
+              <span class="live-sep">|</span>
+              <span class="live-note">RTX 4090 기준 추정값</span>
+            </div>
             <div class="flex gap-8" style="margin-top:12px;justify-content:center">
-              <button class="btn btn-pause" id="btn-pause-preprocess" data-loading-label="정지 중..." onclick="pausePreprocess()">일시정지</button>
+              <button class="btn btn-pause btn-pause-icon" id="btn-pause-preprocess" data-loading-label="정지 중..." onclick="pausePreprocess()" title="일시정지하면 RunPod 과금이 즉시 중단됩니다. 나중에 재개할 수 있습니다.">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                일시정지 · 과금 중단
+              </button>
               <button class="skip-link" onclick="cancelPreprocess()">취소하고 건너뛰기</button>
             </div>
           </div>
@@ -2637,6 +2695,11 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
             </div>
             <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">전처리 일시정지됨</div>
+            <div class="paused-cost-info" id="preprocess-paused-cost-info" style="display:none">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              이 세션 누적 비용:&nbsp;<span class="paused-cost-val" id="preprocess-paused-cost-val">~$0.000</span>
+              <span style="color:var(--text3);font-size:10px">(과금 중단됨)</span>
+            </div>
             <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod 사용이 중단되어 과금이 멈췄습니다. 재개하면 중단된 부분부터 이어서 전처리합니다.</div>
             <div class="flex gap-8" style="justify-content:center">
               <button class="btn btn-resume" id="btn-resume-preprocess" data-loading-label="재개 중..." onclick="resumePreprocess()">재개</button>
@@ -2799,6 +2862,14 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
       </div>
       <div class="progress-label" id="train-status-msg">준비 중...</div>
       <div class="progress-detail" id="train-detail"></div>
+      <!-- 라이브 경과 시간 + 과금 카운터 -->
+      <div class="live-cost-bar" id="train-live-cost">
+        <span>⏱ 경과&nbsp;<span class="live-val" id="train-elapsed">0:00</span></span>
+        <span class="live-sep">|</span>
+        <span>💰 예상 누적&nbsp;<span class="live-val" id="train-running-cost">~$0.000</span></span>
+        <span class="live-sep">|</span>
+        <span class="live-note">RTX 4090 기준 추정값</span>
+      </div>
     </div>
 
     <div class="card">
@@ -2811,7 +2882,10 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 
     <!-- 실행 중: 일시정지/취소 버튼 -->
     <div id="train-cancel-area" class="flex" style="justify-content:center;margin-top:16px;gap:8px">
-      <button class="btn btn-pause" id="btn-pause-train" data-loading-label="정지 중..." onclick="pauseTraining()">일시정지</button>
+      <button class="btn btn-pause btn-pause-icon" id="btn-pause-train" data-loading-label="정지 중..." onclick="pauseTraining()" title="일시정지하면 RunPod GPU 과금이 즉시 중단됩니다. 재개 시 처음부터 다시 학습합니다.">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        일시정지 · 과금 중단
+      </button>
       <button class="btn btn-secondary" id="btn-cancel-train" data-loading-label="취소 중..." onclick="cancelTraining()">학습 취소</button>
       <button class="btn btn-secondary" onclick="resetTraining()" style="opacity:0.6;font-size:12px">처음으로</button>
     </div>
@@ -2823,6 +2897,11 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
         </div>
         <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">학습 일시정지됨</div>
+        <div class="paused-cost-info" id="train-paused-cost-info" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          이 세션 누적 비용:&nbsp;<span class="paused-cost-val" id="train-paused-cost-val">~$0.000</span>
+          <span style="color:var(--text3);font-size:10px">(과금 중단됨)</span>
+        </div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod GPU 사용이 중단되었습니다. 재개하면 처음부터 다시 학습합니다.</div>
         <div class="flex gap-8" style="justify-content:center">
           <button class="btn btn-resume" id="btn-resume-train" data-loading-label="재개 중..." onclick="resumeTraining()">학습 재개</button>
@@ -3076,11 +3155,22 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
         </div>
       </div>
       <div class="progress-label" id="convert-status-msg">GPU 변환 중...</div>
+      <!-- 라이브 경과 시간 + 과금 카운터 -->
+      <div class="live-cost-bar" id="convert-live-cost">
+        <span>⏱ 경과&nbsp;<span class="live-val" id="convert-elapsed">0:00</span></span>
+        <span class="live-sep">|</span>
+        <span>💰 예상 누적&nbsp;<span class="live-val" id="convert-running-cost">~$0.000</span></span>
+        <span class="live-sep">|</span>
+        <span class="live-note">RTX 4090 기준 추정값</span>
+      </div>
     </div>
 
     <!-- 실행 중: 일시정지/취소 버튼 -->
     <div id="convert-cancel-area" class="flex" style="justify-content:center;margin-top:16px;gap:8px">
-      <button class="btn btn-pause" id="btn-pause-convert" data-loading-label="정지 중..." onclick="pauseConversion()">일시정지</button>
+      <button class="btn btn-pause btn-pause-icon" id="btn-pause-convert" data-loading-label="정지 중..." onclick="pauseConversion()" title="일시정지하면 RunPod GPU 과금이 즉시 중단됩니다. 재개 시 동일 설정으로 다시 변환합니다.">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        일시정지 · 과금 중단
+      </button>
       <button class="btn btn-secondary" id="btn-cancel-convert" data-loading-label="취소 중..." onclick="cancelConversion()">변환 취소</button>
     </div>
 
@@ -3091,6 +3181,11 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
         </div>
         <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">변환 일시정지됨</div>
+        <div class="paused-cost-info" id="convert-paused-cost-info" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          이 세션 누적 비용:&nbsp;<span class="paused-cost-val" id="convert-paused-cost-val">~$0.000</span>
+          <span style="color:var(--text3);font-size:10px">(과금 중단됨)</span>
+        </div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod GPU 사용이 중단되었습니다. 재개하면 동일 설정으로 다시 변환합니다.</div>
         <div class="flex gap-8" style="justify-content:center">
           <button class="btn btn-resume" id="btn-resume-convert" data-loading-label="재개 중..." onclick="resumeConversion()">변환 재개</button>
@@ -3487,6 +3582,11 @@ var _convertPollTimer = null;
 var _preprocessStartTime = null;
 var _trainStartTime = null;
 var _convertStartTime = null;
+
+// Accumulated cost at pause time (for paused area display)
+var _preprocessPausedCostSec = 0;
+var _trainPausedCostSec = 0;
+var _convertPausedCostSec = 0;
 
 // Batch conversion state
 var batchFiles = [];
@@ -3969,6 +4069,36 @@ function formatEta(seconds) {
 // 단가: $0.00074/sec (RTX 4090 Serverless 기준 추정)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var COST_PER_SEC = 0.00074; // RTX 4090 ~$0.00074/GPU-sec
+
+// ─── 라이브 비용/경과 시간 바 업데이트 ───
+function _updateLiveCostBar(elapsedId, costId, startTime) {
+  if (!startTime) return;
+  var sec = (Date.now() - startTime) / 1000;
+  var m = Math.floor(sec / 60);
+  var s = Math.floor(sec % 60);
+  var h = Math.floor(m / 60);
+  var timeStr = h > 0
+    ? h + ':' + (m % 60).toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
+    : m + ':' + s.toString().padStart(2, '0');
+  var cost = sec * COST_PER_SEC;
+  var costStr = cost < 0.001 ? '~$0.001' : '~$' + cost.toFixed(3);
+  var elEl = document.getElementById(elapsedId);
+  var costEl = document.getElementById(costId);
+  if (elEl) elEl.textContent = timeStr;
+  if (costEl) costEl.textContent = costStr;
+}
+
+// ─── 일시정지 시 누적 비용 저장 + 표시 ───
+function _showPausedCost(infoId, valId, startTime) {
+  var infoEl = document.getElementById(infoId);
+  var valEl  = document.getElementById(valId);
+  if (!infoEl || !valEl) return;
+  var sec = startTime ? (Date.now() - startTime) / 1000 : 0;
+  var cost = sec * COST_PER_SEC;
+  var costStr = cost < 0.001 ? '~$0.001' : '~$' + cost.toFixed(3);
+  valEl.textContent = costStr;
+  infoEl.style.display = 'inline-flex';
+}
 
 // 동적 경고 표시 헬퍼: level = ok|info|warn|danger
 function _showCostWarn(elId, level, msg) {
@@ -4739,6 +4869,8 @@ async function pollPreprocessStatus() {
 
     document.getElementById('preprocess-ring').style.strokeDashoffset = offset;
     document.getElementById('preprocess-pct').textContent = pct + '%';
+    // 라이브 경과 시간 + 비용 업데이트
+    _updateLiveCostBar('preprocess-elapsed', 'preprocess-running-cost', _preprocessStartTime);
     // ETA 계산
     var etaStr = '';
     if (pct > 3 && pct < 99 && _preprocessStartTime) {
@@ -4796,6 +4928,7 @@ async function pollPreprocessStatus() {
     }
     if (job.status === 'paused' || job.status === 'cancelled') {
       _preprocessPaused = true;
+      _showPausedCost('preprocess-paused-cost-info', 'preprocess-paused-cost-val', _preprocessStartTime);
       document.getElementById('preprocess-ring').classList.remove('running');
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-paused').style.display = 'block';
@@ -4866,6 +4999,7 @@ async function pausePreprocess() {
   try {
     await api('/jobs/' + preprocessJobId + '/pause', { method: 'POST' });
     _preprocessPaused = true;
+    _showPausedCost('preprocess-paused-cost-info', 'preprocess-paused-cost-val', _preprocessStartTime);
     document.getElementById('preprocess-running').style.display = 'none';
     document.getElementById('preprocess-paused').style.display = 'block';
     setButtonLoading('btn-pause-preprocess', false);
@@ -5140,6 +5274,8 @@ async function pollTrainingStatus() {
 
     document.getElementById('train-ring').style.strokeDashoffset = offset;
     document.getElementById('train-pct').textContent = pct + '%';
+    // 라이브 경과 시간 + 비용 업데이트
+    _updateLiveCostBar('train-elapsed', 'train-running-cost', _trainStartTime);
     // ETA + 상태 메시지
     var etaStr = '';
     if (pct > 3 && pct < 99 && _trainStartTime) {
@@ -5172,6 +5308,7 @@ async function pollTrainingStatus() {
     }
     if (job.status === 'paused' || job.status === 'cancelled') {
       _trainPaused = true;
+      _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
       document.getElementById('train-ring').classList.remove('running');
       document.getElementById('train-info-status').textContent = '일시정지';
       document.getElementById('train-cancel-area').style.display = 'none';
@@ -5288,6 +5425,7 @@ async function pauseTraining() {
   try {
     await api('/jobs/' + currentTrainJobId + '/pause', { method: 'POST' });
     _trainPaused = true;
+    _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
     document.getElementById('train-cancel-area').style.display = 'none';
     document.getElementById('train-paused-area').style.display = 'block';
     document.getElementById('train-info-status').textContent = '일시정지';
@@ -5628,6 +5766,8 @@ async function pollConvertStatus() {
 
     document.getElementById('convert-ring').style.strokeDashoffset = offset;
     document.getElementById('convert-pct').textContent = pct + '%';
+    // 라이브 경과 시간 + 비용 업데이트
+    _updateLiveCostBar('convert-elapsed', 'convert-running-cost', _convertStartTime);
     // ETA
     var etaStr = '';
     if (pct > 3 && pct < 99 && _convertStartTime) {
@@ -5740,6 +5880,7 @@ async function pollConvertStatus() {
     }
     if (job.status === 'paused' || job.status === 'cancelled') {
       _convertPaused = true;
+      _showPausedCost('convert-paused-cost-info', 'convert-paused-cost-val', _convertStartTime);
       document.getElementById('convert-ring').classList.remove('running');
       document.getElementById('convert-status-msg').textContent = '일시정지됨';
       document.getElementById('convert-cancel-area').style.display = 'none';
@@ -5765,6 +5906,7 @@ async function pollConvertStatus() {
     if (_convertPollErrors >= 20) {
       // auto-pause to stop billing
       _convertPaused = true;
+      _showPausedCost('convert-paused-cost-info', 'convert-paused-cost-val', _convertStartTime);
       document.getElementById('convert-status-msg').textContent = '서버 연결 실패';
       document.getElementById('convert-cancel-area').style.display = 'none';
       document.getElementById('convert-paused-area').style.display = 'block';
@@ -6151,6 +6293,7 @@ async function pauseConversion() {
   try {
     await api('/jobs/' + currentConvertJobId + '/pause', { method: 'POST' });
     _convertPaused = true;
+    _showPausedCost('convert-paused-cost-info', 'convert-paused-cost-val', _convertStartTime);
     document.getElementById('convert-cancel-area').style.display = 'none';
     document.getElementById('convert-paused-area').style.display = 'block';
     document.getElementById('convert-status-msg').textContent = '일시정지됨';
