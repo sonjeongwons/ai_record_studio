@@ -61,9 +61,25 @@ def start_server(port):
     )
 
 
+def clear_webview_cache():
+    """WebView2 캐시 삭제 — 코드 업데이트 후 이전 UI가 보이는 문제 방지"""
+    import shutil
+    appdata = os.environ.get('APPDATA', '')
+    if not appdata:
+        return
+    for name in ('EBWebView', 'pywebview'):
+        cache_dir = os.path.join(appdata, name)
+        if os.path.isdir(cache_dir):
+            try:
+                shutil.rmtree(cache_dir)
+            except Exception:
+                pass  # 앱 실행 중이면 삭제 실패할 수 있음 — 무시
+
+
 def main():
     import webview
 
+    clear_webview_cache()
     port = find_free_port()
 
     # 서버를 데몬 스레드로 시작 (윈도우 닫으면 자동 종료)
