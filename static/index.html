@@ -1226,9 +1226,6 @@ input[type="range"].has-fill {
 .batch-item.failed    { animation: batchShake 0.38s ease forwards; }
 
 /* ─── Active Job Banner Transition ─── */
-#active-job-banner {
-  transition: opacity 0.3s ease, transform 0.3s ease, box-shadow var(--transition), border-color var(--transition) !important;
-}
 #active-job-banner.banner-hidden {
   opacity: 0;
   transform: translateY(-6px);
@@ -1285,6 +1282,95 @@ input[type="range"].has-fill {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(139,92,246,0.15) !important;
   border-color: rgba(139,92,246,0.35) !important;
+}
+
+/* ─── Nav Badge (진행 중 작업 표시) ─── */
+.nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--violet);
+  border: 1.5px solid var(--bg);
+  animation: navBadgePulse 2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes navBadgePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(139,92,246,0.6); }
+  50%       { box-shadow: 0 0 0 4px rgba(139,92,246,0); }
+}
+
+/* ─── Progress Ring Smooth Transition ─── */
+#preprocess-ring, #train-ring, #convert-ring {
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ─── 진행 상태 ETA 텍스트 ─── */
+#preprocess-msg, #train-status-msg, #convert-status-msg {
+  transition: color var(--transition);
+}
+
+/* ─── Ring 진행 중 글로우 펄스 ─── */
+@keyframes ringGlow {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(139,92,246,0.4)); }
+  50%       { filter: drop-shadow(0 0 8px rgba(139,92,246,0.75)); }
+}
+#preprocess-ring.running,
+#train-ring.running,
+#convert-ring.running {
+  animation: ringGlow 2.2s ease-in-out infinite;
+}
+
+/* ─── 배치 항목 처리 중 펄스 ─── */
+@keyframes processingPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+.batch-item.processing .batch-item-icon {
+  animation: processingPulse 1.4s ease-in-out infinite;
+}
+
+/* ─── 설정 입력 포커스 강화 ─── */
+.settings-input:focus, .config-input:focus {
+  border-color: var(--violet) !important;
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.15) !important;
+  outline: none;
+}
+
+/* ─── 오디오 플레이어 재생 버튼 액티브 ─── */
+.audio-play-btn:active { transform: scale(0.9); }
+.result-play-btn:active { transform: scale(0.9); }
+
+/* ─── 모델 카드 삭제 버튼 호버 ─── */
+.btn-model-delete { transition: background var(--transition), color var(--transition), transform var(--transition); }
+.btn-model-delete:hover { transform: scale(1.1); }
+
+/* ─── 파일 아이템 삭제 버튼 ─── */
+.file-delete { transition: background var(--transition), color var(--transition), transform var(--transition); }
+.file-delete:hover { transform: scale(1.1); }
+
+/* ─── 전처리 완료 상태 체크마크 애니메이션 ─── */
+@keyframes checkDraw {
+  from { stroke-dashoffset: 100; opacity: 0; }
+  to   { stroke-dashoffset: 0; opacity: 1; }
+}
+
+/* ─── 카드 입장 애니메이션 ─── */
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page.active .card:nth-child(1) { animation: cardEnter 0.28s cubic-bezier(0.4,0,0.2,1) both; animation-delay: 0.04s; }
+.page.active .card:nth-child(2) { animation: cardEnter 0.28s cubic-bezier(0.4,0,0.2,1) both; animation-delay: 0.09s; }
+.page.active .card:nth-child(3) { animation: cardEnter 0.28s cubic-bezier(0.4,0,0.2,1) both; animation-delay: 0.14s; }
+.page.active .card:nth-child(4) { animation: cardEnter 0.28s cubic-bezier(0.4,0,0.2,1) both; animation-delay: 0.19s; }
+.page.active .card:nth-child(5) { animation: cardEnter 0.28s cubic-bezier(0.4,0,0.2,1) both; animation-delay: 0.24s; }
+
+/* ─── 버튼 ripple 효과 강화 ─── */
+.btn::after {
+  transition: transform 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.4s;
 }
 
 /* Model icon hover */
@@ -2227,8 +2313,9 @@ input[type="range"].has-fill {
         <div class="slider-header">
           <span class="slider-label">피치 조절 (반음)</span>
           <span class="slider-value" id="pitch-val">0</span>
+          <span id="pitch-note" style="font-size:11px;color:var(--text3);margin-left:6px">원음</span>
         </div>
-        <input type="range" id="pitch-slider" min="-12" max="12" value="0" oninput="document.getElementById('pitch-val').textContent=this.value">
+        <input type="range" id="pitch-slider" min="-12" max="12" value="0" oninput="document.getElementById('pitch-val').textContent=this.value; document.getElementById('pitch-note').textContent=pitchToNote(parseInt(this.value))">
       </div>
       <div class="slider-group">
         <div class="slider-header">
@@ -2581,6 +2668,14 @@ var _preprocessPollErrors = 0;
 var _preprocessPaused = false;
 var _trainPaused = false;
 var _convertPaused = false;
+var _preprocessPollTimer = null;
+var _trainPollTimer = null;
+var _convertPollTimer = null;
+
+// Job start timestamps (for ETA calculation)
+var _preprocessStartTime = null;
+var _trainStartTime = null;
+var _convertStartTime = null;
 
 // Batch conversion state
 var batchFiles = [];
@@ -2616,6 +2711,8 @@ function toast(message, type, duration) {
   type = type || 'info';
   duration = (duration === undefined) ? 4000 : duration;
   var container = document.getElementById('toast-container');
+  // 동시 최대 5개 - 오래된 것부터 제거
+  while (container.children.length >= 5) { dismissToast(container.children[0]); }
   var el = document.createElement('div');
   el.className = 'toast toast-' + type;
   el.innerHTML =
@@ -2860,15 +2957,15 @@ function showPage(page) {
   var navBtn = document.querySelector('[data-page="' + page + '"]');
   if (navBtn) navBtn.classList.add('active');
 
-  // Fade out current page
+  // Fade out current page (capture in closure to prevent race condition)
   if (currentPage) {
-    currentPage.classList.remove('active');
-    // Keep visible briefly during fade-out via CSS transition, then hide
+    var pageToHide = currentPage;
+    pageToHide.classList.remove('active');
     setTimeout(function() {
-      if (!currentPage.classList.contains('active')) {
-        currentPage.style.display = 'none';
-        currentPage.style.opacity = '';
-        currentPage.style.transform = '';
+      if (!pageToHide.classList.contains('active')) {
+        pageToHide.style.display = 'none';
+        pageToHide.style.opacity = '';
+        pageToHide.style.transform = '';
       }
     }, 320);
   }
@@ -2883,9 +2980,9 @@ function showPage(page) {
   nextPage.style.opacity = '';
   nextPage.style.transform = '';
 
-  // Scroll to top on page switch
+  // Scroll to top on page switch (instant - smooth causes jank during page transition)
   var mainEl = document.querySelector('.main');
-  if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+  if (mainEl) mainEl.scrollTo(0, 0);
 
   // 페이지 이동 시 대시보드 타이머 정리
   if (page !== 'home' && _dashboardTimer) {
@@ -2999,25 +3096,20 @@ function showConfirm(title, message, onConfirm) {
     '<h3>' + escapeHtml(title) + '</h3>' +
     '<p>' + escapeHtml(message) + '</p>' +
     '<div class="confirm-actions">' +
-    '<button class="btn btn-secondary" onclick="this.closest(\'.confirm-overlay\').remove()">취소</button>' +
+    '<button class="btn btn-secondary" id="confirm-cancel-btn">취소</button>' +
     '<button class="btn btn-danger-solid" id="confirm-ok-btn">확인</button>' +
     '</div></div>';
   document.body.appendChild(overlay);
-  document.getElementById('confirm-ok-btn').onclick = function() {
+
+  function closeOverlay() {
+    if (!overlay.parentNode) return;
     overlay.remove();
-    onConfirm();
-  };
-  // Close on overlay click
-  overlay.onclick = function(e) {
-    if (e.target === overlay) overlay.remove();
-  };
-  // Close on Escape key
-  var escHandler = function(e) {
-    if (e.key === 'Escape') {
-      overlay.remove();
-      document.removeEventListener('keydown', escHandler);
-    }
-  };
+    document.removeEventListener('keydown', escHandler);
+  }
+  document.getElementById('confirm-ok-btn').onclick = function() { closeOverlay(); onConfirm(); };
+  document.getElementById('confirm-cancel-btn').onclick = closeOverlay;
+  overlay.onclick = function(e) { if (e.target === overlay) closeOverlay(); };
+  var escHandler = function(e) { if (e.key === 'Escape') closeOverlay(); };
   document.addEventListener('keydown', escHandler);
 }
 
@@ -3032,6 +3124,23 @@ function formatDuration(seconds) {
   var m = Math.floor(seconds / 60);
   var s = Math.floor(seconds % 60);
   return m + '분 ' + s + '초';
+}
+
+function formatEta(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return '...';
+  if (seconds < 60) return Math.round(seconds) + '초';
+  if (seconds < 3600) return Math.round(seconds / 60) + '분';
+  return Math.floor(seconds / 3600) + '시간 ' + Math.round((seconds % 3600) / 60) + '분';
+}
+
+// 피치 반음 → 음계 이름 변환
+function pitchToNote(semitones) {
+  if (semitones === 0) return '원음';
+  var notes = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  var base = 9; // A4 = index 9
+  var idx = ((base + semitones) % 12 + 12) % 12;
+  var sign = semitones > 0 ? '+' : '';
+  return sign + semitones + ' (' + notes[idx] + ')';
 }
 
 // ─── Section Fade Helper ─────────────────────────────
@@ -3121,9 +3230,13 @@ var _dashboardTimer = null;
 async function loadDashboard() {
   try {
     var stats = await api('/stats');
-    animateNumber('stat-files', stats.files);
-    animateNumber('stat-models', stats.models);
-    animateNumber('stat-converts', stats.conversions);
+    var newFiles = stats.files || 0, newModels = stats.models || 0, newConverts = stats.conversions || 0;
+    var currFiles = parseInt(document.getElementById('stat-files').textContent) || 0;
+    var currModels = parseInt(document.getElementById('stat-models').textContent) || 0;
+    var currConverts = parseInt(document.getElementById('stat-converts').textContent) || 0;
+    if (currFiles !== newFiles) animateNumber('stat-files', newFiles);
+    if (currModels !== newModels) animateNumber('stat-models', newModels);
+    if (currConverts !== newConverts) animateNumber('stat-converts', newConverts);
     var sizeEl = document.getElementById('stat-size');
     if (sizeEl) sizeEl.textContent = stats.total_size_mb > 0
       ? (stats.total_size_mb >= 1024 ? (stats.total_size_mb / 1024).toFixed(1) + 'GB' : stats.total_size_mb + 'MB')
@@ -3277,9 +3390,11 @@ async function handleTrainFiles(fileList) {
     } else if (!res.skipped || res.skipped.length === 0) {
       toast('업로드할 파일이 없습니다', 'info');
     }
+    trainFileInput.value = '';  // 같은 파일 재선택 허용
     // 이전 전처리 결과가 있으면 상태 동기화 (재시작 후 재업로드 시)
     checkPreprocessStatus();
   } catch(e) {
+    trainFileInput.value = '';
     toast('업로드 실패: ' + e.message, 'error');
   }
 }
@@ -3492,6 +3607,7 @@ async function startPreprocess() {
       toast(res.skipped + '개 파일은 이미 전처리됨, ' + res.processing + '개 파일 전처리 시작', 'info');
     }
     preprocessJobId = res.job_id;
+    _preprocessStartTime = Date.now();
     pollPreprocessStatus();
   } catch(e) {
     setButtonLoading('btn-start-preprocess', false);
@@ -3502,6 +3618,8 @@ async function startPreprocess() {
 
 async function pollPreprocessStatus() {
   if (!preprocessJobId || _preprocessPaused) return;
+  if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
+  document.getElementById('preprocess-ring').classList.add('running');
   try {
     var job = await api('/jobs/' + preprocessJobId);
     _preprocessPollErrors = 0; // reset on success
@@ -3511,9 +3629,17 @@ async function pollPreprocessStatus() {
 
     document.getElementById('preprocess-ring').style.strokeDashoffset = offset;
     document.getElementById('preprocess-pct').textContent = pct + '%';
-    document.getElementById('preprocess-msg').textContent = job.message || '전처리 중...';
+    // ETA 계산
+    var etaStr = '';
+    if (pct > 3 && pct < 99 && _preprocessStartTime) {
+      var elapsed = (Date.now() - _preprocessStartTime) / 1000;
+      var remaining = elapsed / (pct / 100) * (1 - pct / 100);
+      etaStr = ' — 약 ' + formatEta(remaining) + ' 남음';
+    }
+    document.getElementById('preprocess-msg').textContent = (job.message || '전처리 중...') + etaStr;
 
     if (job.status === 'completed') {
+      document.getElementById('preprocess-ring').classList.remove('running');
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-done').style.display = 'block';
 
@@ -3529,8 +3655,14 @@ async function pollPreprocessStatus() {
       }
 
       preprocessDone = true;
+      _preprocessStartTime = null;
       document.getElementById('btn-start-train').disabled = false;
       toast('전처리 완료: ' + segments + '개 세그먼트', 'success');
+      // 학습 시작 버튼으로 스크롤
+      setTimeout(function() {
+        var trainBtn = document.getElementById('btn-start-train');
+        if (trainBtn) trainBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 600);
       // 파일 목록 새로고침 (전처리 배지 업데이트) + 스탯 바 갱신
       api('/files').then(function(r) {
         uploadedFiles = r.files || [];
@@ -3552,12 +3684,14 @@ async function pollPreprocessStatus() {
     }
     if (job.status === 'paused' || job.status === 'cancelled') {
       _preprocessPaused = true;
+      document.getElementById('preprocess-ring').classList.remove('running');
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-paused').style.display = 'block';
       if (job.status === 'paused') toast('전처리가 일시정지되었습니다', 'info');
       return;
     }
     if (job.status === 'failed') {
+      document.getElementById('preprocess-ring').classList.remove('running');
       document.getElementById('preprocess-msg').textContent = job.message || '전처리 실패';
       toast('전처리 실패: ' + (job.message || ''), 'error');
       setTimeout(function() {
@@ -3567,7 +3701,7 @@ async function pollPreprocessStatus() {
       return;
     }
 
-    setTimeout(pollPreprocessStatus, 3000);
+    _preprocessPollTimer = setTimeout(pollPreprocessStatus, 3000);
   } catch(e) {
     _preprocessPollErrors++;
     if (_preprocessPollErrors >= 20) {
@@ -3578,7 +3712,7 @@ async function pollPreprocessStatus() {
       document.getElementById('preprocess-paused').style.display = 'block';
       return;
     }
-    setTimeout(pollPreprocessStatus, 5000);
+    _preprocessPollTimer = setTimeout(pollPreprocessStatus, 5000);
   }
 }
 
@@ -3595,6 +3729,8 @@ function skipPreprocess() {
 }
 
 function cancelPreprocess() {
+  if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
+  _preprocessStartTime = null;
   var jobId = preprocessJobId;
   preprocessJobId = null;
   preprocessDone = false;
@@ -3846,6 +3982,8 @@ async function _doStartTraining() {
     document.body.classList.remove('busy');
     setButtonLoading('btn-start-train', false);
     currentTrainJobId = res.job_id;
+    _trainStartTime = Date.now();
+    updateNavBadges();
 
     document.getElementById('train-upload').style.display = 'none';
     document.getElementById('train-progress').style.display = 'block';
@@ -3868,6 +4006,8 @@ var _trainPollErrors = 0;
 
 async function pollTrainingStatus() {
   if (!currentTrainJobId || _trainPaused) return;
+  if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
+  document.getElementById('train-ring').classList.add('running');
   try {
     var job = await api('/jobs/' + currentTrainJobId);
     _trainPollErrors = 0; // reset on success
@@ -3878,10 +4018,18 @@ async function pollTrainingStatus() {
 
     document.getElementById('train-ring').style.strokeDashoffset = offset;
     document.getElementById('train-pct').textContent = pct + '%';
-    document.getElementById('train-status-msg').textContent = job.message || '';
+    // ETA + 상태 메시지
+    var etaStr = '';
+    if (pct > 3 && pct < 99 && _trainStartTime) {
+      var elapsed = (Date.now() - _trainStartTime) / 1000;
+      var remaining = elapsed / (pct / 100) * (1 - pct / 100);
+      etaStr = ' — 약 ' + formatEta(remaining) + ' 남음';
+    }
+    document.getElementById('train-status-msg').textContent = (job.message || '') + etaStr;
     document.getElementById('train-info-status').textContent = job.status;
 
     if (job.status === 'completed') {
+      document.getElementById('train-ring').classList.remove('running');
       document.getElementById('train-progress').style.display = 'none';
       document.getElementById('train-done').style.display = 'block';
       document.getElementById('train-done-detail').textContent =
@@ -3889,10 +4037,12 @@ async function pollTrainingStatus() {
           ? '모델 "' + job.result.model_name + '" 이 준비되었습니다'
           : '학습이 완료되었습니다';
       toast('학습 완료!', 'success');
+      updateNavBadges();
       return;
     }
     if (job.status === 'paused' || job.status === 'cancelled') {
       _trainPaused = true;
+      document.getElementById('train-ring').classList.remove('running');
       document.getElementById('train-info-status').textContent = '일시정지';
       document.getElementById('train-cancel-area').style.display = 'none';
       document.getElementById('train-paused-area').style.display = 'block';
@@ -3900,6 +4050,7 @@ async function pollTrainingStatus() {
       return;
     }
     if (job.status === 'failed') {
+      document.getElementById('train-ring').classList.remove('running');
       document.getElementById('train-status-msg').textContent = '학습 실패';
       document.getElementById('train-info-status').textContent = '실패';
       document.getElementById('train-cancel-area').style.display = 'none';
@@ -3911,7 +4062,7 @@ async function pollTrainingStatus() {
       return;
     }
 
-    setTimeout(pollTrainingStatus, 5000);
+    _trainPollTimer = setTimeout(pollTrainingStatus, 5000);
   } catch(e) {
     _trainPollErrors++;
     if (_trainPollErrors > 20) {
@@ -3924,11 +4075,13 @@ async function pollTrainingStatus() {
       toast('서버 연결 실패 - 학습이 일시정지됩니다', 'error');
       return;
     }
-    setTimeout(pollTrainingStatus, 10000);
+    _trainPollTimer = setTimeout(pollTrainingStatus, 10000);
   }
 }
 
 function resetTraining() {
+  if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
+  _trainStartTime = null;
   // Cancel any active job first
   if (currentTrainJobId) {
     api('/jobs/' + currentTrainJobId + '/cancel', { method: 'POST' }).catch(function() {});
@@ -3969,6 +4122,8 @@ function resetTraining() {
 }
 
 async function cancelTraining() {
+  if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
+  _trainStartTime = null;
   setButtonLoading('btn-cancel-train', true);
   if (currentTrainJobId) {
     try { await api('/jobs/' + currentTrainJobId + '/cancel', { method: 'POST' }); } catch(e) {}
@@ -3986,6 +4141,7 @@ async function cancelTraining() {
   document.getElementById('train-paused-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
   toast('학습을 취소했습니다', 'info');
+  updateNavBadges();
   // 파일 목록 & 전처리 상태 복원
   api('/files').then(function(r) {
     uploadedFiles = r.files || [];
@@ -4035,6 +4191,10 @@ async function resumeTraining() {
 
 function retryTraining() {
   currentTrainJobId = null;
+  _trainPaused = false;
+  _trainPollErrors = 0;
+  document.getElementById('train-paused-area').style.display = 'none';
+  document.getElementById('train-cancel-area').style.display = 'block';
   // 버튼 비활성화 + 로딩 표시
   var btn = document.getElementById('btn-train-retry');
   var backBtn = document.getElementById('btn-train-back');
@@ -4174,6 +4334,10 @@ async function loadModels() {
     document.getElementById('convert-main').style.display = 'block';
     if (modelSearchWrap) modelSearchWrap.style.display = models.length > 3 ? 'block' : 'none';
 
+    // 선택된 모델이 목록에 없으면 초기화
+    if (selectedModelId && !models.find(function(m) { return m.id === selectedModelId; })) {
+      selectedModelId = null;
+    }
     if (!selectedModelId && models.length) selectedModelId = models[0].id;
 
     var modelSearchVal = document.getElementById('model-search') ? document.getElementById('model-search').value.toLowerCase() : '';
@@ -4287,11 +4451,13 @@ async function startConversion() {
     document.body.classList.remove('busy');
     setButtonLoading('btn-convert', false);
     currentConvertJobId = res.job_id;
+    _convertStartTime = Date.now();
 
     document.getElementById('convert-main').style.display = 'none';
     document.getElementById('convert-progress').style.display = 'block';
 
     toast('변환이 시작되었습니다', 'info');
+    updateNavBadges();
     pollConvertStatus();
   } catch(e) {
     document.body.classList.remove('busy');
@@ -4306,6 +4472,8 @@ var _convertPollErrors = 0;
 
 async function pollConvertStatus() {
   if (!currentConvertJobId || _convertPaused) return;
+  if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
+  document.getElementById('convert-ring').classList.add('running');
   try {
     var job = await api('/jobs/' + currentConvertJobId);
     _convertPollErrors = 0;
@@ -4315,9 +4483,17 @@ async function pollConvertStatus() {
 
     document.getElementById('convert-ring').style.strokeDashoffset = offset;
     document.getElementById('convert-pct').textContent = pct + '%';
-    document.getElementById('convert-status-msg').textContent = job.message || '';
+    // ETA
+    var etaStr = '';
+    if (pct > 3 && pct < 99 && _convertStartTime) {
+      var elapsed = (Date.now() - _convertStartTime) / 1000;
+      var remaining = elapsed / (pct / 100) * (1 - pct / 100);
+      etaStr = ' — 약 ' + formatEta(remaining) + ' 남음';
+    }
+    document.getElementById('convert-status-msg').textContent = (job.message || '') + etaStr;
 
     if (job.status === 'completed') {
+      document.getElementById('convert-ring').classList.remove('running');
       document.getElementById('convert-progress').style.display = 'none';
       document.getElementById('convert-done').style.display = 'block';
 
@@ -4358,6 +4534,8 @@ async function pollConvertStatus() {
         if (playerEl && audioEl) {
           audioEl.src = mixedFile ? '/api/download/' + encodeURIComponent(mixedFile) : dlUrl;
           playerEl.style.display = 'flex';
+          // 변환 완료 후 자동 재생
+          audioEl.play().catch(function() {}); // 브라우저 정책에 의해 실패해도 무시
           setTimeout(function() {
             var canvas = document.getElementById('result-waveform');
             if (canvas) {
@@ -4401,11 +4579,13 @@ async function pollConvertStatus() {
         }
       }
       toast('변환이 완료되었습니다', 'success');
+      updateNavBadges();
       loadConversionHistory();
       return;
     }
     if (job.status === 'paused' || job.status === 'cancelled') {
       _convertPaused = true;
+      document.getElementById('convert-ring').classList.remove('running');
       document.getElementById('convert-status-msg').textContent = '일시정지됨';
       document.getElementById('convert-cancel-area').style.display = 'none';
       document.getElementById('convert-paused-area').style.display = 'block';
@@ -4413,6 +4593,7 @@ async function pollConvertStatus() {
       return;
     }
     if (job.status === 'failed') {
+      document.getElementById('convert-ring').classList.remove('running');
       document.getElementById('convert-status-msg').textContent = '변환 실패';
       document.getElementById('convert-cancel-area').style.display = 'none';
       document.getElementById('convert-error-area').style.display = 'block';
@@ -4421,7 +4602,7 @@ async function pollConvertStatus() {
       return;
     }
 
-    setTimeout(pollConvertStatus, 3000);
+    _convertPollTimer = setTimeout(pollConvertStatus, 3000);
   } catch(e) {
     _convertPollErrors++;
     if (_convertPollErrors >= 20) {
@@ -4433,7 +4614,7 @@ async function pollConvertStatus() {
       toast('서버 연결 끊김 - 변환이 일시정지됩니다', 'error');
       return;
     }
-    setTimeout(pollConvertStatus, 5000);
+    _convertPollTimer = setTimeout(pollConvertStatus, 5000);
   }
 }
 
@@ -4656,6 +4837,8 @@ function renderBatchProgress() {
 }
 
 function resetConversion() {
+  if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
+  _convertStartTime = null;
   currentConvertJobId = null;
   convertFile = null;
   batchFiles = [];
@@ -4707,6 +4890,7 @@ async function cancelConversion() {
   document.getElementById('convert-paused-area').style.display = 'none';
   resetConversion();
   toast('변환을 취소했습니다', 'info');
+  updateNavBadges();
 }
 
 async function pauseConversion() {
@@ -4851,6 +5035,9 @@ function deleteConversion(id) {
 }
 
 function retryConversion() {
+  _convertPaused = false;
+  _convertPollErrors = 0;
+  document.getElementById('convert-paused-area').style.display = 'none';
   var btn = document.getElementById('btn-convert-retry');
   var backBtn = document.getElementById('btn-convert-back');
   if (btn) { btn.disabled = true; btn.textContent = '재시작 중...'; }
@@ -5212,6 +5399,138 @@ function initAllSliders() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Active Job State Restoration (페이지 재로드 시 복원)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+async function restoreActiveJobs() {
+  try {
+    var res = await api('/jobs/active');
+    var jobs = res.active_jobs || [];
+    for (var i = 0; i < jobs.length; i++) {
+      var job = jobs[i];
+      if (job.job_type === 'preprocess') {
+        if (job.status === 'running' || job.status === 'submitting') {
+          preprocessJobId = job.id;
+          _preprocessPaused = false;
+          _preprocessPollErrors = 0;
+          _preprocessStartTime = Date.now(); // 정확하지 않지만 ETA에 사용
+          document.getElementById('preprocess-idle').style.display = 'none';
+          document.getElementById('preprocess-running').style.display = 'block';
+          document.getElementById('preprocess-paused').style.display = 'none';
+          document.getElementById('preprocess-done').style.display = 'none';
+          pollPreprocessStatus();
+        } else if (job.status === 'paused') {
+          preprocessJobId = job.id;
+          _preprocessPaused = true;
+          document.getElementById('preprocess-idle').style.display = 'none';
+          document.getElementById('preprocess-running').style.display = 'none';
+          document.getElementById('preprocess-done').style.display = 'none';
+          document.getElementById('preprocess-paused').style.display = 'block';
+          document.getElementById('preprocess-msg').textContent = '일시정지됨 — 재개 버튼을 눌러 계속하세요';
+        }
+      } else if (job.job_type === 'train') {
+        if (job.status === 'running' || job.status === 'submitting') {
+          currentTrainJobId = job.id;
+          _trainPaused = false;
+          _trainPollErrors = 0;
+          _trainStartTime = Date.now();
+          document.getElementById('train-upload').style.display = 'none';
+          document.getElementById('train-progress').style.display = 'block';
+          document.getElementById('train-done').style.display = 'none';
+          document.getElementById('train-error-area').style.display = 'none';
+          document.getElementById('train-paused-area').style.display = 'none';
+          document.getElementById('train-cancel-area').style.display = 'block';
+          document.getElementById('train-status-msg').textContent = job.message || '학습 중...';
+          updateNavBadges();
+          pollTrainingStatus();
+        } else if (job.status === 'paused') {
+          currentTrainJobId = job.id;
+          _trainPaused = true;
+          document.getElementById('train-upload').style.display = 'none';
+          document.getElementById('train-progress').style.display = 'block';
+          document.getElementById('train-done').style.display = 'none';
+          document.getElementById('train-error-area').style.display = 'none';
+          document.getElementById('train-cancel-area').style.display = 'none';
+          document.getElementById('train-paused-area').style.display = 'block';
+          document.getElementById('train-info-status').textContent = '일시정지';
+          document.getElementById('train-status-msg').textContent = '일시정지됨 — 재개 버튼을 눌러 계속하세요';
+        }
+      } else if (job.job_type === 'convert') {
+        if (job.status === 'running' || job.status === 'submitting') {
+          currentConvertJobId = job.id;
+          _convertPaused = false;
+          _convertPollErrors = 0;
+          _convertStartTime = Date.now();
+          document.getElementById('convert-main').style.display = 'none';
+          document.getElementById('convert-progress').style.display = 'block';
+          document.getElementById('convert-done').style.display = 'none';
+          document.getElementById('convert-error-area').style.display = 'none';
+          document.getElementById('convert-paused-area').style.display = 'none';
+          document.getElementById('convert-cancel-area').style.display = 'block';
+          document.getElementById('convert-status-msg').textContent = job.message || '변환 중...';
+          updateNavBadges();
+          pollConvertStatus();
+        } else if (job.status === 'paused') {
+          currentConvertJobId = job.id;
+          _convertPaused = true;
+          document.getElementById('convert-main').style.display = 'none';
+          document.getElementById('convert-progress').style.display = 'block';
+          document.getElementById('convert-done').style.display = 'none';
+          document.getElementById('convert-error-area').style.display = 'none';
+          document.getElementById('convert-cancel-area').style.display = 'none';
+          document.getElementById('convert-paused-area').style.display = 'block';
+          document.getElementById('convert-status-msg').textContent = '일시정지됨 — 재개 버튼을 눌러 계속하세요';
+        }
+      }
+    }
+    if (jobs.length > 0) {
+      toast('진행 중인 작업이 복원되었습니다', 'info');
+    }
+  } catch(e) {
+    // 복원 실패는 무시 (비필수 기능)
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 진행 중인 작업이 있을 때 페이지 이탈 경고
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+window.addEventListener('beforeunload', function(e) {
+  if (preprocessJobId || currentTrainJobId || currentConvertJobId) {
+    var msg = '진행 중인 작업이 있습니다. 페이지를 나가면 폴링이 중단됩니다.';
+    e.preventDefault();
+    e.returnValue = msg;
+    return msg;
+  }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Nav 배지: 진행 중 작업 표시
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function updateNavBadges() {
+  var trainBtn = document.querySelector('[data-page="train"]');
+  var convertBtn = document.querySelector('[data-page="convert"]');
+  if (trainBtn) {
+    var badge = trainBtn.querySelector('.nav-badge');
+    if (currentTrainJobId && !_trainPaused) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'nav-badge';
+        trainBtn.appendChild(badge);
+      }
+    } else if (badge) { badge.remove(); }
+  }
+  if (convertBtn) {
+    var badge2 = convertBtn.querySelector('.nav-badge');
+    if (currentConvertJobId && !_convertPaused) {
+      if (!badge2) {
+        badge2 = document.createElement('span');
+        badge2.className = 'nav-badge';
+        convertBtn.appendChild(badge2);
+      }
+    } else if (badge2) { badge2.remove(); }
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Init
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 loadDashboard();
@@ -5222,12 +5541,17 @@ initAllSliders();
 setupDragDrop('train-dropzone', 'train-file-input');
 setupDragDrop('convert-dropzone', 'convert-file-input');
 
-// 파일 목록을 먼저 로드한 후 전처리 상태 확인 (race condition 방지)
+// 파일 목록 로드 → 전처리 상태 확인 → 활성 작업 복원 (순서 보장)
 api('/files').then(function(res) {
   uploadedFiles = res.files || [];
   renderFileList();
   return checkPreprocessStatus();
-}).catch(function() { checkPreprocessStatus(); });
+}).then(function() {
+  return restoreActiveJobs();
+}).catch(function() {
+  checkPreprocessStatus();
+  restoreActiveJobs();
+});
 </script>
 
 </body>
