@@ -1637,7 +1637,10 @@ async def start_training(
     # 학습 파일 수집
     with get_db() as db:
         if file_ids:
-            ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+            try:
+                ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+            except ValueError:
+                raise HTTPException(400, "잘못된 파일 ID 형식입니다.")
             if not ids:
                 rows = db.execute("SELECT * FROM training_files WHERE deleted=0").fetchall()
             else:
@@ -1666,7 +1669,10 @@ async def start_training(
             except Exception as e:
                 print(f"[Warning] Failed to parse metadata: {e}")
 
-        ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+        try:
+            ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(400, "잘못된 파일 ID 형식입니다.")
         selected_seg_names = set()
         for fid in ids:
             selected_seg_names.update(seg_map.get(str(fid), []))
@@ -1802,7 +1808,10 @@ async def start_preprocess(
     if not runpod_client.is_configured():
         raise HTTPException(400, "RunPod API 설정이 필요합니다. 설정 페이지에서 API Key와 Endpoint ID를 입력하세요.")
 
-    ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+    try:
+        ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(400, "잘못된 파일 ID 형식입니다.")
     if not ids:
         raise HTTPException(400, "전처리할 파일을 선택하세요.")
 
@@ -1989,7 +1998,10 @@ async def clear_preprocess():
 @app.post("/api/preprocess/reset")
 async def reset_preprocess_selected(file_ids: str = Form(...)):
     """선택한 파일의 전처리 상태만 초기화 — 해당 파일의 세그먼트 삭제 + DB 플래그 리셋"""
-    ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+    try:
+        ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(400, "잘못된 파일 ID 형식입니다.")
     if not ids:
         raise HTTPException(400, "초기화할 파일을 선택하세요.")
 

@@ -514,7 +514,7 @@ select {
 .model-train-files-header svg { transition: transform 0.2s; }
 .model-train-files.expanded .model-train-files-header svg { transform: rotate(90deg); }
 .model-train-files-list {
-  display: none; margin-top: 4px; padding-left: 14px;
+  /* max-height animation handles visibility */ margin-top: 0; padding-left: 14px;
 }
 .model-train-files.expanded .model-train-files-list { display: block; }
 .model-train-file {
@@ -1993,6 +1993,260 @@ input[type="range"].has-fill {
   border-left: 2px solid rgba(139,92,246,0.35);
   border-radius: 0 6px 6px 0;
 }
+/* ─── Ripple Effect ─── */
+@keyframes rippleAnim {
+  0%   { transform: scale(0); opacity: 0.6; }
+  100% { transform: scale(3.5); opacity: 0; }
+}
+.btn-ripple {
+  position: absolute;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.28);
+  transform: scale(0);
+  animation: rippleAnim 0.55s ease-out forwards;
+  pointer-events: none;
+}
+
+/* ─── Cost Panel Fade-In ─── */
+@keyframes panelSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.cost-panel.panel-enter { animation: panelSlideIn 0.22s cubic-bezier(0.4,0,0.2,1) forwards; }
+
+/* ─── Connection Dot Online Ping ─── */
+@keyframes onlinePing {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.55), 0 0 8px rgba(16,185,129,0.4); }
+  50%       { box-shadow: 0 0 0 7px rgba(16,185,129,0), 0 0 14px rgba(16,185,129,0.5); }
+}
+.connection-dot.online { animation: onlinePing 2.8s ease-in-out infinite; }
+
+/* ─── Filter Button Improvements ─── */
+.filter-btn:hover { border-color:var(--violet); color:var(--violet); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(139,92,246,0.2); }
+.filter-btn:active { transform: scale(0.94); }
+.filter-btn.active { background:var(--violet); border-color:var(--violet); color:#fff; box-shadow: 0 2px 10px rgba(139,92,246,0.38); }
+
+/* ─── Slider Focus State ─── */
+input[type="range"]:focus { outline: none; }
+input[type="range"]:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(139,92,246,0.22), 0 0 14px rgba(139,92,246,0.55);
+}
+
+/* ─── Skip Link Improved Hover ─── */
+.skip-link:hover { color: var(--violet); text-decoration-color: rgba(139,92,246,0.45); }
+
+/* ─── Model Card Selected Scale ─── */
+.model-card.selected {
+  border-color: var(--violet);
+  background: var(--violet-g);
+  box-shadow: 0 0 0 2px rgba(139,92,246,0.25);
+  transform: translateY(-1px);
+}
+
+/* ─── Model Files Expand Animation ─── */
+.model-train-files-list {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  padding-left: 14px;
+  transition: max-height 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, margin-top 0.2s ease;
+  display: block !important;
+  margin-top: 0;
+}
+.model-train-files.expanded .model-train-files-list {
+  max-height: 320px;
+  opacity: 1;
+  margin-top: 5px;
+}
+
+/* ─── Batch Item Hover ─── */
+.batch-item:hover {
+  border-color: rgba(139,92,246,0.25);
+  background: rgba(139,92,246,0.04);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139,92,246,0.1);
+}
+
+/* ─── Progress Bar Shimmer ─── */
+@keyframes progressShimmer {
+  0%   { left: -100%; }
+  100% { left: 200%; }
+}
+.batch-progress-fill,
+.download-progress-fill {
+  position: relative;
+  overflow: hidden;
+}
+.batch-progress-fill::after,
+.download-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+  animation: progressShimmer 1.6s ease-in-out infinite;
+}
+
+/* ─── Input Validation States ─── */
+input.input-error   { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.15) !important; }
+input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0 3px rgba(16,185,129,0.12) !important; }
+
+/* ─── Conversion Item Shadow ─── */
+.conversion-item:hover { box-shadow: 0 4px 14px rgba(139,92,246,0.1); }
+
+/* ─── Empty State Glow ─── */
+.empty-state-enhanced .empty-icon:hover {
+  background: rgba(139,92,246,0.06);
+  border-color: rgba(139,92,246,0.18);
+  box-shadow: 0 0 24px rgba(139,92,246,0.12);
+}
+
+/* ─── Pagination Active Scale ─── */
+.page-btn.active { transform: scale(1.04); }
+.page-btn.active:hover { transform: scale(1.06) translateY(-1px); }
+
+/* ─── Tooltip Appear Animation ─── */
+@keyframes tipFadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.tip:hover::before { animation: tipFadeIn 0.18s ease forwards; }
+
+/* ─── Job Item Active State ─── */
+.job-item:active { transform: translateX(3px) scale(0.99); }
+
+/* ─── Stat Card Number Hover Color ─── */
+.stat-card:hover .stat-value { filter: brightness(1.12); }
+
+/* ─── Toast Progress Bar ─── */
+.toast { position: relative; overflow: hidden; }
+@keyframes toastProgress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+.toast-progress-bar {
+  position: absolute;
+  bottom: 0; left: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left;
+  border-radius: 0 0 0 12px;
+  opacity: 0.5;
+}
+.toast-success .toast-progress-bar { background: var(--emerald); }
+.toast-error   .toast-progress-bar { background: var(--red); }
+.toast-info    .toast-progress-bar { background: var(--violet); }
+.toast-warning .toast-progress-bar { background: var(--amber); }
+
+/* ─── Sub-Tab Active Indicator ─── */
+.sub-tab.active {
+  background: var(--violet);
+  color: white;
+  box-shadow: 0 2px 12px rgba(139,92,246,0.45);
+}
+
+/* ─── Logo Active State ─── */
+.sidebar .logo:active { transform: scale(0.95); }
+
+/* ─── Preprocess Card Success Border ─── */
+.preprocess-card.preprocess-success {
+  border-color: rgba(16,185,129,0.3);
+  box-shadow: 0 0 24px rgba(16,185,129,0.08);
+}
+
+/* ─── Copy Button ─── */
+.copy-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: none; background: transparent;
+  color: var(--text3); cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--transition), color var(--transition), transform var(--transition-fast);
+  flex-shrink: 0;
+}
+.copy-btn:hover { background: rgba(139,92,246,0.12); color: var(--violet); transform: scale(1.1); }
+.copy-btn:active { transform: scale(0.9); }
+.copy-btn svg { width: 13px; height: 13px; }
+.input-with-copy { display: flex; gap: 6px; align-items: center; }
+.input-with-copy input { flex: 1; }
+
+/* ─── Active Job Banner Gradient Animation ─── */
+@keyframes bannerShimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+#active-job-banner {
+  background-size: 200% 200% !important;
+  animation: bannerShimmer 4s ease infinite;
+}
+
+/* ─── Improve Scrollbar Track ─── */
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.015); border-radius: 4px; }
+
+/* ─── Result Audio Toggle ─── */
+#convert-result-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+  margin-top: 12px;
+  width: fit-content;
+}
+#toggle-mix, #toggle-vocal {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+  font-family: inherit;
+}
+#toggle-mix:hover, #toggle-vocal:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+#toggle-mix.active, #toggle-vocal.active {
+  background: var(--violet);
+  color: white;
+  box-shadow: 0 2px 8px rgba(139,92,246,0.4);
+}
+
+/* ─── Preprocess Stats Bar Fade In ─── */
+@keyframes statsBarIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+#preprocess-stats-bar { animation: statsBarIn 0.25s ease when visible; }
+
+/* ─── File Item Checkbox Row Highlight ─── */
+.file-item input[type="checkbox"]:checked ~ .file-info .file-name { color: var(--text); }
+.file-item:has(input[type="checkbox"]:not(:checked)) { opacity: 0.72; }
+.file-item:has(input[type="checkbox"]:not(:checked)):hover { opacity: 1; }
+
+/* ─── Dropzone Content Transition ─── */
+.dropzone-text { transition: color var(--transition); }
+.dropzone:hover .dropzone-text, .dropzone.drag-over .dropzone-text { color: var(--violet); }
+.dropzone.drag-over .dropzone-sub { color: var(--text2); }
+
+/* ─── Improved Alert ─── */
+.alert {
+  transition: background var(--transition), border-color var(--transition);
+}
+
+/* ─── Nav Button Active Highlight ─── */
+.nav-btn.active { box-shadow: inset 0 0 0 1px rgba(139,92,246,0.2); }
+
+/* ─── Settings Input Row ─── */
+.settings-input-row { display: flex; flex-direction: column; gap: 6px; }
+.settings-input-hint { font-size: 11px; color: var(--text3); }
+
+/* ─── Advanced Settings Toggle Chevron ─── */
+.adv-toggle-header:active { transform: scale(0.98); }
+.adv-toggle-header svg { transition: transform 0.25s cubic-bezier(0.4,0,0.2,1); }
+
 </style>
 </head>
 <body>
@@ -2295,7 +2549,7 @@ input[type="range"].has-fill {
       <div class="grid-3">
         <div>
           <label class="label">모델 이름 <i class="tip" data-tip="학습이 끝난 후 변환 탭에서 이 이름으로 모델을 선택하게 됩니다. 나중에 구분하기 쉬운 이름으로 설정하세요. 예: 홍권_고음버전, 홍권_원키">ⓘ</i></label>
-          <input type="text" id="model-name" value="My Voice v1" placeholder="모델 이름">
+          <input type="text" id="model-name" value="My Voice v1" placeholder="모델 이름" onfocus="this.select()" autocomplete="off">
         </div>
         <div>
           <label class="label">에폭 수 <i class="tip" data-tip="AI가 여러분의 음성 데이터를 몇 번 반복해서 공부할지 정합니다. 숫자가 클수록 목소리가 더 정교하게 학습되지만, 필요 이상으로 높이면 오히려 어색해지거나 노이즈가 생길 수 있습니다. 학습 시간은 전처리 데이터 양에 따라 크게 달라집니다 — 데이터가 많거나 에폭이 크면 수 시간이 걸릴 수도 있습니다. 처음엔 500으로 결과를 먼저 확인해보세요.">ⓘ</i></label>
@@ -2537,7 +2791,7 @@ input[type="range"].has-fill {
           <span class="slider-value" id="pitch-val">0</span>
           <span id="pitch-note" style="font-size:11px;color:var(--text3);margin-left:6px">원음</span>
         </div>
-        <input type="range" id="pitch-slider" min="-12" max="12" value="0" oninput="document.getElementById('pitch-val').textContent=this.value; document.getElementById('pitch-note').textContent=pitchToNote(parseInt(this.value))">
+        <input type="range" id="pitch-slider" min="-12" max="12" value="0" class="has-fill" oninput="updatePitchColor(); document.getElementById('pitch-val').textContent=this.value; document.getElementById('pitch-note').textContent=pitchToNote(parseInt(this.value)); updateSliderFill(this)">
       </div>
       <div class="slider-group">
         <div class="slider-header">
@@ -2606,18 +2860,18 @@ input[type="range"].has-fill {
         <div style="font-size:12px;color:var(--text3);margin-bottom:10px">믹스 볼륨 <i class="tip" data-tip="최종 결과물에서 변환된 보컬과 반주(MR)의 음량 비율을 조절합니다. 기본값(1.0)은 원본과 동일한 음량입니다. 보컬이 너무 작게 들리면 보컬 볼륨을 1.2~1.5로 높여보세요.">ⓘ</i> — 변환된 보컬과 반주 음량 조절</div>
         <div class="slider-group">
           <div class="slider-header">
-            <span class="slider-label">보컬 볼륨</span>
+            <span class="slider-label" style="display:flex;align-items:center;gap:5px">보컬 볼륨 <svg id="vocal-vol-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></span>
             <span class="slider-value" id="vocal-vol-val">1.0</span>
           </div>
-          <input type="range" id="vocal-vol-slider" min="0" max="200" value="100" oninput="document.getElementById('vocal-vol-val').textContent=(this.value/100).toFixed(1)">
+          <input type="range" id="vocal-vol-slider" min="0" max="200" value="100" class="has-fill" oninput="updateVolumeIcon('vocal-vol-slider','vocal-vol-icon'); document.getElementById('vocal-vol-val').textContent=(this.value/100).toFixed(1); updateSliderFill(this)">
           <div style="font-size:11px;color:var(--text3);margin-top:2px">변환된 보컬 크기 (1.0 = 원본과 동일)</div>
         </div>
         <div class="slider-group">
           <div class="slider-header">
-            <span class="slider-label">반주(MR) 볼륨</span>
+            <span class="slider-label" style="display:flex;align-items:center;gap:5px">반주(MR) 볼륨 <svg id="mr-vol-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0"><path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></span>
             <span class="slider-value" id="mr-vol-val">1.0</span>
           </div>
-          <input type="range" id="mr-vol-slider" min="0" max="200" value="100" oninput="document.getElementById('mr-vol-val').textContent=(this.value/100).toFixed(1)">
+          <input type="range" id="mr-vol-slider" min="0" max="200" value="100" class="has-fill" oninput="updateVolumeIcon('mr-vol-slider','mr-vol-icon'); document.getElementById('mr-vol-val').textContent=(this.value/100).toFixed(1); updateSliderFill(this)">
           <div style="font-size:11px;color:var(--text3);margin-top:2px">반주·악기 소리 크기 (1.0 = 원본과 동일)</div>
         </div>
       </div>
@@ -2732,8 +2986,8 @@ input[type="range"].has-fill {
       <div id="convert-result-toggle" class="mt-16" style="display:none">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="display:inline-flex;gap:4px;background:var(--bg3);padding:3px;border-radius:10px">
-            <button class="btn" id="toggle-mix" onclick="switchResultAudio('mix')" style="padding:6px 14px;font-size:12px;border-radius:8px;background:var(--violet);color:white" title="변환된 보컬과 원곡 반주를 합친 완성본">최종 믹스</button>
-            <button class="btn" id="toggle-vocal" onclick="switchResultAudio('vocal')" style="padding:6px 14px;font-size:12px;border-radius:8px;background:transparent;color:var(--text2)" title="반주 없이 변환된 목소리만 들을 수 있습니다">변환 보컬만</button>
+            <button class="btn" id="toggle-mix" onclick="switchResultAudio('mix')" title="변환된 보컬과 원곡 반주를 합친 완성본">🎵 최종 믹스</button>
+            <button class="btn" id="toggle-vocal" onclick="switchResultAudio('vocal')" title="반주 없이 변환된 목소리만 들을 수 있습니다">🎤 변환 보컬만</button>
           </div>
           <span style="font-size:11px;color:var(--text3)">최종 믹스 = 변환 보컬 + 반주 / 변환 보컬만 = 목소리만</span>
         </div>
@@ -2845,12 +3099,10 @@ input[type="range"].has-fill {
     </div>
     <div style="margin-top:16px">
       <label class="label">RunPod API Key <i class="tip" data-tip="RunPod 사이트에 로그인 후 Settings → API Keys에서 발급받을 수 있습니다. 'rpa_'로 시작하는 긴 문자열입니다. 외부에 노출되지 않도록 주의하세요.">ⓘ</i></label>
-      <input type="text" id="cfg-api-key" placeholder="rpa_xxxxxxxxxxxxxxxx">
-    </div>
+      <div class="input-with-copy"><input type="text" id="cfg-api-key" placeholder="rpa_xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" style="font-family:'JetBrains Mono',monospace;font-size:12px"><button class="copy-btn" onclick="copyToClipboard('cfg-api-key')" title="복사"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
     <div style="margin-top:12px">
       <label class="label">Serverless Endpoint ID <i class="tip" data-tip="RunPod에서 배포한 AI 서버의 고유 주소입니다. RunPod 대시보드 → Serverless → 배포한 엔드포인트 이름을 클릭하면 ID를 확인할 수 있습니다.">ⓘ</i></label>
-      <input type="text" id="cfg-endpoint-id" placeholder="xxxxxxxxxxxxxxxx">
-    </div>
+      <div class="input-with-copy"><input type="text" id="cfg-endpoint-id" placeholder="xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" style="font-family:'JetBrains Mono',monospace;font-size:12px"><button class="copy-btn" onclick="copyToClipboard('cfg-endpoint-id')" title="복사"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
     <div class="flex gap-8 mt-16">
       <button class="btn btn-primary" id="btn-save-settings" data-loading-label="저장 중..." onclick="saveSettings()">설정 저장</button>
       <button class="btn btn-secondary" id="btn-test-connection" data-loading-label="테스트 중..." onclick="testRunPodConnection()">연결 테스트</button>
@@ -3371,36 +3623,55 @@ function showPage(page) {
   if (!nextPage) return;
   if (currentPage === nextPage) return;
 
+  // Save scroll position for current tab
+  if (currentPage) {
+    var mainEl2 = document.querySelector('.main');
+    if (mainEl2) _saveScrollPos(currentPage.id.replace('page-', ''), mainEl2.scrollTop);
+  }
+
   document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
   var navBtn = document.querySelector('[data-page="' + page + '"]');
   if (navBtn) navBtn.classList.add('active');
 
-  // Fade out current page (capture in closure to prevent race condition)
+  // Fade out current page with animation
   if (currentPage) {
     var pageToHide = currentPage;
+    pageToHide.style.transition = 'opacity 0.18s ease, transform 0.18s ease';
+    pageToHide.style.opacity = '0';
+    pageToHide.style.transform = 'translateY(-4px)';
     pageToHide.classList.remove('active');
     setTimeout(function() {
       if (!pageToHide.classList.contains('active')) {
         pageToHide.style.display = 'none';
         pageToHide.style.opacity = '';
         pageToHide.style.transform = '';
+        pageToHide.style.transition = '';
       }
-    }, 320);
+    }, 200);
   }
 
-  // Fade in new page
+  // Fade in new page with subtle slide
   nextPage.style.display = 'block';
   nextPage.style.opacity = '0';
-  nextPage.style.transform = 'translateY(10px)';
+  nextPage.style.transform = 'translateY(8px)';
+  nextPage.style.transition = 'opacity 0.28s ease, transform 0.28s cubic-bezier(0.4,0,0.2,1)';
   // Force reflow
   void nextPage.offsetWidth;
   nextPage.classList.add('active');
-  nextPage.style.opacity = '';
-  nextPage.style.transform = '';
+  nextPage.style.opacity = '1';
+  nextPage.style.transform = 'translateY(0)';
+  setTimeout(function() {
+    nextPage.style.transition = '';
+    nextPage.style.opacity = '';
+    nextPage.style.transform = '';
+  }, 300);
 
-  // Scroll to top on page switch (instant - smooth causes jank during page transition)
+  // Restore saved scroll position for this tab, or scroll to top
   var mainEl = document.querySelector('.main');
-  if (mainEl) mainEl.scrollTo(0, 0);
+  if (mainEl) {
+    var savedPos = _restoreScrollPos(page);
+    mainEl.scrollTo(0, typeof savedPos === 'number' ? savedPos : 0);
+  }
 
   // 페이지 이동 시 대시보드 타이머 정리
   if (page !== 'home' && _dashboardTimer) {
@@ -3615,7 +3886,7 @@ function estimatePreprocessCost() {
   var panel = document.getElementById('preprocess-cost-panel');
   if (!panel) return;
   var selectedIds = getSelectedFileIds();
-  if (selectedIds.length === 0) { panel.style.display = 'none'; _showCostWarn('preprocess-cost-warn','ok',''); return; }
+  if (selectedIds.length === 0) { hideCostPanel('preprocess-cost-panel'); _showCostWarn('preprocess-cost-warn','ok',''); return; }
 
   var totalSecs = 0, videoCount = 0, fileCount = selectedIds.length;
   selectedIds.forEach(function(id) {
@@ -3641,7 +3912,7 @@ function estimatePreprocessCost() {
   document.getElementById('cost-pre-gpu').textContent =
     _formatGpuTime(gpuSecs) + ' (' + _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec) + ')';
   document.getElementById('cost-pre-cost').textContent = _formatCostRange(minSec, maxSec);
-  panel.style.display = 'block';
+  showCostPanel('preprocess-cost-panel');
 
   // ── 동적 경고 (4단계) ──
   var costStr   = _formatCostRange(minSec, maxSec);
@@ -3753,7 +4024,7 @@ function estimateTrainingCost() {
   }
   _showCostWarn('train-cost-warn', warnLevel, warnMsg);
 
-  panel.style.display = 'block';
+  showCostPanel('train-cost-panel');
   if (staticEl) staticEl.style.display = 'none';
 }
 
@@ -3793,7 +4064,7 @@ function estimateConversionCost() {
   document.getElementById('cost-conv-gpu').textContent =
     _formatGpuTime(totalGpu) + ' (' + _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec) + ')';
   document.getElementById('cost-conv-cost').textContent = _formatCostRange(minSec, maxSec);
-  panel.style.display = 'block';
+  showCostPanel('convert-cost-panel');
 
   // ── 동적 경고 (4단계) ──
   var costStr = _formatCostRange(minSec, maxSec);
@@ -4171,7 +4442,7 @@ function renderFileList() {
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
       '</div>' +
       '<div class="file-info">' +
-        '<div class="file-name">' + f.original_name + ppBadge + '</div>' +
+        '<div class="file-name">' + escapeHtml(f.original_name) + ppBadge + '</div>' +
         '<div class="file-meta">' + metaStr + '</div>' +
       '</div>' +
       '<button class="file-delete" onclick="deleteFile(' + f.id + ')">&#x2715;</button>' +
@@ -5020,7 +5291,7 @@ function renderBatchQueue() {
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>' +
       '</div>' +
       '<div class="batch-item-info">' +
-        '<div class="batch-item-name">' + f.name + '</div>' +
+        '<div class="batch-item-name">' + escapeHtml(f.name) + '</div>' +
         '<div class="batch-item-status">' + formatSize(f.size) + ' \u00B7 대기 중</div>' +
       '</div>' +
       '<button class="batch-remove" onclick="removeBatchItem(' + i + ')">&#x2715;</button>' +
@@ -5303,6 +5574,7 @@ async function pollConvertStatus() {
                   var dm = Math.floor(audioEl.duration / 60);
                   var ds = Math.floor(audioEl.duration % 60);
                   durEl.textContent = dm + ':' + ds.toString().padStart(2, '0');
+                  drawStaticWaveform('result-waveform', 'rgba(139,92,246,0.5)');
                 }
               };
             }
@@ -5414,7 +5686,7 @@ async function startBatchConversion() {
   if (!models.find(function(m) { return m.id === selectedModelId; })) {
     toast('선택한 모델이 더 이상 존재하지 않습니다. 모델을 다시 선택해주세요.', 'error');
     selectedModelId = models.length ? models[0].id : null;
-    renderModels(models);
+    loadModels();
     return;
   }
 
@@ -5474,17 +5746,17 @@ async function startBatchConversion() {
       ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     var dlBtn = r.resultUrl
-      ? '<a class="btn btn-secondary" href="' + r.resultUrl + '" download style="padding:6px 12px;font-size:11px">보컬</a>'
+      ? '<button class="btn btn-secondary" onclick="downloadFile(\'' + r.resultUrl.replace(/'/g, "\\'") + '\')" style="padding:6px 12px;font-size:11px">보컬</button>'
       : '';
     var mixBtn = r.mixedUrl
-      ? '<a class="btn btn-primary" href="' + r.mixedUrl + '" download style="padding:6px 12px;font-size:11px">믹스</a>'
+      ? '<button class="btn btn-primary" onclick="downloadFile(\'' + r.mixedUrl.replace(/'/g, "\\'") + '\')" style="padding:6px 12px;font-size:11px">믹스</button>'
       : '';
     dlBtn = dlBtn + mixBtn;
     var playerHtml = (r.mixedUrl || r.resultUrl) ? createAudioPlayer(r.mixedUrl || r.resultUrl, 'br_' + idx) : '';
     return '<div class="batch-item ' + r.status + '" style="flex-wrap:wrap">' +
       '<div class="batch-item-icon ' + r.status + '">' + icon + '</div>' +
       '<div class="batch-item-info">' +
-        '<div class="batch-item-name">' + r.file.name + '</div>' +
+        '<div class="batch-item-name">' + escapeHtml(r.file.name) + '</div>' +
         '<div class="batch-item-status">' + (r.status === 'completed' ? '완료' : (r.error || '실패')) + '</div>' +
       '</div>' +
       dlBtn +
@@ -5569,7 +5841,7 @@ function renderBatchProgress() {
     return '<div class="batch-item ' + r.status + '">' +
       '<div class="batch-item-icon ' + r.status + '">' + iconMap[r.status] + '</div>' +
       '<div class="batch-item-info">' +
-        '<div class="batch-item-name">' + r.file.name + '</div>' +
+        '<div class="batch-item-name">' + escapeHtml(r.file.name) + '</div>' +
         '<div class="batch-item-status">' + (r.error || statusText[r.status]) + '</div>' +
       '</div>' +
     '</div>';
@@ -5583,8 +5855,7 @@ function downloadAllBatch() {
   if (items.length === 0) { toast('다운로드할 완료된 파일이 없습니다', 'info'); return; }
   items.forEach(function(r, i) {
     var url = r.mixedUrl || r.resultUrl;
-    var baseName = r.file.name.replace(/\.[^.]+$/, '');
-    var fname = baseName + '_converted.wav';
+    var fname = decodeURIComponent(url.split('/').pop());
     setTimeout(function() { downloadFile(url, fname); }, i * 400);
   });
   toast(items.length + '개 파일 다운로드 시작', 'info');
@@ -5619,7 +5890,7 @@ function resetConversion() {
   var mixedBtn = document.getElementById('convert-mixed-btn');
   if (mixedBtn) mixedBtn.style.display = 'none';
   setButtonLoading('btn-convert', false);
-  document.getElementById('btn-convert').disabled = false;
+  updateConvertBtn();
   // file input 초기화 (같은 파일 재선택 시 change 이벤트 발생하도록)
   document.getElementById('convert-file-input').value = '';
   // 오디오 재생 중지 + waveform 메모리 정리
@@ -6108,19 +6379,24 @@ function setModelPage(page) {
 // Scroll to Top
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  var mainEl = document.querySelector('.main');
+  if (mainEl) mainEl.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-window.addEventListener('scroll', function() {
-  var btn = document.getElementById('scroll-top-btn');
-  if (btn) {
-    if (window.scrollY > 300) {
-      btn.classList.add('visible');
-    } else {
-      btn.classList.remove('visible');
+(function() {
+  var mainEl = document.querySelector('.main');
+  if (!mainEl) return;
+  mainEl.addEventListener('scroll', function() {
+    var btn = document.getElementById('scroll-top-btn');
+    if (btn) {
+      if (mainEl.scrollTop > 300) {
+        btn.classList.add('visible');
+      } else {
+        btn.classList.remove('visible');
+      }
     }
-  }
-});
+  });
+})();
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Keyboard Shortcuts
@@ -6301,6 +6577,187 @@ async function restoreActiveJobs() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // 진행 중인 작업이 있을 때 페이지 이탈 경고
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ═══════════════════════════════════════════════════
+// ✨ UI/UX Enhancement Functions
+// ═══════════════════════════════════════════════════
+
+// ─── Button Ripple Effect ───
+(function() {
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.btn:not(:disabled)');
+    if (!btn) return;
+    var rect = btn.getBoundingClientRect();
+    var size = Math.max(rect.width, rect.height) * 0.8;
+    var x = e.clientX - rect.left - size / 2;
+    var y = e.clientY - rect.top  - size / 2;
+    var r = document.createElement('span');
+    r.className = 'btn-ripple';
+    r.style.cssText = 'width:' + size + 'px;height:' + size + 'px;left:' + x + 'px;top:' + y + 'px';
+    btn.appendChild(r);
+    setTimeout(function() { if (r.parentNode) r.parentNode.removeChild(r); }, 600);
+  }, true);
+})();
+
+// ─── Copy to Clipboard ───
+function copyToClipboard(inputId) {
+  var el = document.getElementById(inputId);
+  if (!el || !el.value) { toast('복사할 내용이 없습니다.', 'warning'); return; }
+  navigator.clipboard.writeText(el.value).then(function() {
+    toast('클립보드에 복사되었습니다.', 'success');
+  }).catch(function() {
+    el.select();
+    document.execCommand('copy');
+    toast('클립보드에 복사되었습니다.', 'success');
+  });
+}
+
+// ─── Pitch Slider Color Update ───
+function updatePitchColor() {
+  var val = parseInt(document.getElementById('pitch-slider').value) || 0;
+  var badge = document.getElementById('pitch-val');
+  if (!badge) return;
+  if (val > 0) {
+    badge.style.color = '#4ade80';
+    badge.style.background = 'rgba(74,222,128,0.1)';
+    badge.style.borderColor = 'rgba(74,222,128,0.3)';
+  } else if (val < 0) {
+    badge.style.color = '#f87171';
+    badge.style.background = 'rgba(248,113,113,0.1)';
+    badge.style.borderColor = 'rgba(248,113,113,0.3)';
+  } else {
+    badge.style.color = '';
+    badge.style.background = '';
+    badge.style.borderColor = '';
+  }
+}
+
+// ─── Volume Icon Update ───
+function updateVolumeIcon(sliderId, iconId) {
+  var val = parseFloat(document.getElementById(sliderId).value) || 0;
+  var icon = document.getElementById(iconId);
+  if (!icon) return;
+  var level = val <= 0 ? 0 : val < 0.3 ? 1 : val < 1.0 ? 2 : 3;
+  var paths = [
+    '<line x1="23" y1="9" x2="23" y2="15"/><path d="M11 5L6 9H2v6h4l5 4z"/>',
+    '<path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>',
+    '<path d="M11 5L6 9H2v6h4l5 4z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+    '<path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>'
+  ];
+  icon.innerHTML = paths[level];
+}
+
+// ─── Cost Panel Entrance Animation ───
+function showCostPanel(panelId) {
+  var panel = document.getElementById(panelId);
+  if (!panel) return;
+  if (panel.style.display === 'none' || panel.style.display === '') {
+    panel.style.display = 'block';
+    panel.classList.remove('panel-enter');
+    void panel.offsetWidth; // force reflow
+    panel.classList.add('panel-enter');
+    setTimeout(function() { panel.classList.remove('panel-enter'); }, 300);
+  }
+}
+function hideCostPanel(panelId) {
+  var panel = document.getElementById(panelId);
+  if (panel) panel.style.display = 'none';
+}
+
+// ─── Toast Progress Bar ───
+var _origToast = typeof toast === 'function' ? toast : null;
+// Wrap toast to add progress bar (called after DOM ready)
+function _enhanceToasts() {
+  var container = document.getElementById('toast-container');
+  if (!container) return;
+  var observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+      m.addedNodes.forEach(function(node) {
+        if (node.nodeType === 1 && node.classList && node.classList.contains('toast')) {
+          var bar = document.createElement('div');
+          bar.className = 'toast-progress-bar';
+          bar.style.animation = 'toastProgress ' + ((node._dismissMs || 5000) / 1000) + 's linear forwards';
+          node.appendChild(bar);
+        }
+      });
+    });
+  });
+  observer.observe(container, { childList: true });
+}
+
+// ─── Model Card Keyboard Navigation ───
+function _initModelCardKeys() {
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var card = document.activeElement;
+    if (!card || !card.classList.contains('model-card')) return;
+    e.preventDefault();
+    card.click();
+  });
+}
+
+// ─── Scroll Position per Tab ───
+var _tabScrollPos = {};
+function _saveScrollPos(pageId, pos) {
+  _tabScrollPos[pageId] = pos || 0;
+}
+function _restoreScrollPos(pageId) {
+  return _tabScrollPos[pageId] || 0;
+}
+
+// ─── Slider Fill All ───
+function updateAllSliderFills() {
+  document.querySelectorAll('input[type="range"].has-fill').forEach(function(s) {
+    if (typeof updateSliderFill === 'function') updateSliderFill(s);
+  });
+}
+
+// ─── Waveform: draw static procedural waveform on canvas ───
+function drawStaticWaveform(canvasId, color) {
+  color = color || 'rgba(139,92,246,0.45)';
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext('2d');
+  var W = canvas.offsetWidth || 200, H = canvas.offsetHeight || 28;
+  canvas.width = W; canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  var bars = Math.floor(W / 3);
+  for (var i = 0; i < bars; i++) {
+    var x = i * 3 + 1;
+    var amp = (0.3 + 0.7 * Math.abs(Math.sin(i * 0.42 + 1.1) * Math.cos(i * 0.17))) * (H / 2 - 2);
+    var y1 = H / 2 - amp, y2 = H / 2 + amp;
+    ctx.beginPath();
+    ctx.moveTo(x, y1);
+    ctx.lineTo(x, y2);
+    ctx.stroke();
+  }
+}
+
+// ─── Preprocess done: add success class ───
+function _markPreprocessSuccess(done) {
+  var card = document.querySelector('.preprocess-card');
+  if (card) {
+    if (done) card.classList.add('preprocess-success');
+    else card.classList.remove('preprocess-success');
+  }
+}
+
+// ─── Initialize all enhancements ───
+document.addEventListener('DOMContentLoaded', function() {
+  _enhanceToasts();
+  _initModelCardKeys();
+  updatePitchColor();
+  // Draw waveform placeholder
+  setTimeout(function() {
+    drawStaticWaveform('result-waveform');
+  }, 200);
+  // Initialize all slider fills
+  updateAllSliderFills();
+});
+
 window.addEventListener('beforeunload', function(e) {
   // 연결 폴링 타이머 정리
   if (connectionTimer) {
