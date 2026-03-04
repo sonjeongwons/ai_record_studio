@@ -2219,7 +2219,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-#preprocess-stats-bar { animation: statsBarIn 0.25s ease when visible; }
+.stats-bar-visible { animation: statsBarIn 0.25s ease both; }
 
 /* ─── File Item Checkbox Row Highlight ─── */
 .file-item input[type="checkbox"]:checked ~ .file-info .file-name { color: var(--text); }
@@ -2246,6 +2246,148 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 /* ─── Advanced Settings Toggle Chevron ─── */
 .adv-toggle-header:active { transform: scale(0.98); }
 .adv-toggle-header svg { transition: transform 0.25s cubic-bezier(0.4,0,0.2,1); }
+
+/* ═══════════════════════════════════════════════════
+   2차 UI/UX 개선 패치
+═══════════════════════════════════════════════════ */
+
+/* ─── Billing Table Row Hover ─── */
+.billing-table tbody tr { transition: background var(--transition-fast); }
+.billing-table tbody tr:hover td { background: rgba(139,92,246,0.04); }
+.billing-table td em { display: inline-block; }
+
+/* ─── Section Desc Interactive ─── */
+.section-desc { transition: border-left-color var(--transition); }
+.section-desc:hover { border-left-color: rgba(139,92,246,0.65); }
+
+/* ─── Badge Hover (animated 제외) ─── */
+.badge { transition: transform var(--transition-fast), box-shadow var(--transition-fast); }
+.badge:not(.badge-amber):hover { transform: scale(1.06); box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+
+/* ─── Job Paused Area Hover ─── */
+.job-paused-area { transition: box-shadow var(--transition), border-color var(--transition); }
+.job-paused-area:hover {
+  box-shadow: 0 4px 20px rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.4);
+}
+
+/* ─── Connection Status Focus-Visible ─── */
+.connection-status:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+/* ─── Dropzone Focus-Visible ─── */
+.dropzone:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px rgba(139,92,246,0.1);
+}
+
+/* ─── Preprocess Done Checkmark Pop ─── */
+@keyframes checkPop {
+  0%  { transform: scale(0.5); opacity: 0; }
+  65% { transform: scale(1.2); }
+  100% { transform: scale(1); opacity: 1; }
+}
+#preprocess-done .flex svg { animation: checkPop 0.42s cubic-bezier(0.34,1.56,0.64,1) both; }
+
+/* ─── Training/Convert Done Success Circle Pop ─── */
+#train-done .progress-container > div:first-child,
+#convert-done .card > .flex > div:first-child {
+  transition: box-shadow var(--transition-slow);
+}
+#train-done .progress-container > div:first-child:hover {
+  box-shadow: 0 0 0 8px rgba(16,185,129,0.08), 0 0 24px rgba(16,185,129,0.2);
+}
+
+/* ─── Download Item Hover ─── */
+.download-item { transition: border-color var(--transition), box-shadow var(--transition); }
+.download-item:hover { border-color: rgba(139,92,246,0.25); box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+
+/* ─── Sub-tab Hover (개선) ─── */
+.sub-tab:hover:not(.active) { background: rgba(139,92,246,0.07); color: var(--text1); }
+
+/* ─── Alert Hover Lift ─── */
+.alert { transition: box-shadow var(--transition); }
+.alert:hover { box-shadow: 0 3px 16px rgba(0,0,0,0.14); }
+
+/* ─── Seekbar Drag Cursor ─── */
+.audio-seekbar { cursor: ew-resize; user-select: none; }
+
+/* ─── Batch Item Processing Visual Bar ─── */
+.batch-item.processing {
+  position: relative;
+  overflow: hidden;
+}
+.batch-item.processing::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0;
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--violet) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: bannerShimmer 1.5s ease-in-out infinite;
+}
+
+/* ─── Conversion History Action Button SVG ─── */
+.btn-conv-action svg { transition: transform var(--transition-fast); }
+.btn-conv-action:hover svg { transform: scale(1.12); }
+
+/* ─── Progress Ring 100% Complete Glow ─── */
+@keyframes ringComplete {
+  0%   { filter: drop-shadow(0 0 3px rgba(16,185,129,0.4)); }
+  50%  { filter: drop-shadow(0 0 14px rgba(16,185,129,0.9)); }
+  100% { filter: drop-shadow(0 0 5px rgba(16,185,129,0.5)); }
+}
+.fg.complete-ring { stroke: var(--emerald) !important; animation: ringComplete 0.8s ease-in-out 3 !important; }
+
+/* ─── Net Error Banner Hover ─── */
+.net-error-banner { transition: background var(--transition), border-color var(--transition); }
+.net-error-banner:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.28); }
+
+/* ─── Waveform cursor ─── */
+.audio-waveform { cursor: ew-resize; }
+
+/* ─── Preprocess Idle Alert hover ─── */
+.alert-info:hover { background: rgba(139,92,246,0.1); }
+
+/* ─── Cost Panel Row hover ─── */
+.cost-panel-row { transition: background var(--transition-fast); }
+.cost-panel-row:hover { background: rgba(255,255,255,0.03); }
+
+/* ─── Toggle Button Container hover ─── */
+#convert-result-toggle { transition: opacity var(--transition); }
+
+/* ─── Settings card h2 with emoji ─── */
+.card h2 { letter-spacing: -0.3px; }
+
+/* ─── file-item hover animation reset ─── */
+.file-item { transition: background var(--transition), border-color var(--transition), transform var(--transition), box-shadow var(--transition); }
+.file-item:hover { box-shadow: 0 3px 12px rgba(139,92,246,0.08); }
+
+/* ─── Active tab nav button 글로우 ─── */
+.nav-btn.active { box-shadow: inset 0 0 0 1px rgba(139,92,246,0.2), 0 2px 8px rgba(139,92,246,0.08); }
+
+/* ─── 전처리 완료 downloads 버튼 ─── */
+#btn-download-mr, #btn-download-vocal {
+  transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
+}
+#btn-download-mr:hover, #btn-download-vocal:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.2);
+}
+
+/* ─── Conversion history empty state button ─── */
+.empty-state-enhanced .btn { margin-top: 16px; }
+
+/* ─── Stat grid item color accent line transition ─── */
+.stat-card::before { transition: opacity var(--transition), height var(--transition); }
+.stat-card:hover::before { height: 80%; opacity: 0.55; }
+
+/* ─── 설정 카드 입력 row 스타일 ─── */
+#page-settings .card > div + div { margin-top: 12px; }
 
 </style>
 </head>
@@ -4836,6 +4978,9 @@ function updatePreprocessStatsBar(segCount, totalDuration, preprocessedFileCount
   var bar = document.getElementById('preprocess-stats-bar');
   if (segCount > 0) {
     bar.style.display = 'block';
+    bar.classList.remove('stats-bar-visible');
+    void bar.offsetWidth; // reflow → re-trigger animation
+    bar.classList.add('stats-bar-visible');
     document.getElementById('stats-segments').textContent = segCount;
     document.getElementById('stats-duration').textContent =
       totalDuration > 0 ? formatDuration(totalDuration) : '-';
@@ -5523,7 +5668,14 @@ async function pollConvertStatus() {
           mixedBtn.dataset.fname = mixedFile;
           mixedBtn.style.display = 'inline-flex';
           _resultUrls.mix = mixUrl;
-          if (toggleEl) toggleEl.style.display = 'block';
+          if (toggleEl) {
+            toggleEl.style.display = 'block';
+            // 믹스가 기본 재생 → 믹스 버튼 active 초기화
+            var tMix = document.getElementById('toggle-mix');
+            var tVocal = document.getElementById('toggle-vocal');
+            if (tMix) tMix.classList.add('active');
+            if (tVocal) tVocal.classList.remove('active');
+          }
         } else {
           if (mixedBtn) mixedBtn.style.display = 'none';
           _resultUrls.mix = null;
@@ -5657,6 +5809,43 @@ function resultSeek(e) {
   audio.currentTime = pct * audio.duration;
 }
 
+// ─── Seekbar drag support ───
+(function() {
+  var _dragBar = null; // { el, audioEl, fillEl, isResult }
+  document.addEventListener('mousedown', function(e) {
+    var bar = e.target.closest('.audio-seekbar');
+    if (!bar) return;
+    e.preventDefault();
+    var isResult = bar.id === 'result-seekbar';
+    var audioEl, fillEl;
+    if (isResult) {
+      audioEl = document.getElementById('result-audio');
+      fillEl  = document.getElementById('result-seekbar-fill');
+    } else {
+      var uid = bar.id.replace('_seekbar', '');
+      audioEl = document.getElementById(uid + '_audio');
+      fillEl  = document.getElementById(uid + '_fill');
+    }
+    if (!audioEl) return;
+    _dragBar = { el: bar, audioEl: audioEl, fillEl: fillEl };
+    _applySeekDrag(e);
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!_dragBar) return;
+    e.preventDefault();
+    _applySeekDrag(e);
+  });
+  document.addEventListener('mouseup', function() { _dragBar = null; });
+  function _applySeekDrag(e) {
+    var rect = _dragBar.el.getBoundingClientRect();
+    var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    if (_dragBar.audioEl.duration) {
+      _dragBar.audioEl.currentTime = pct * _dragBar.audioEl.duration;
+    }
+    if (_dragBar.fillEl) _dragBar.fillEl.style.width = (pct * 100).toFixed(1) + '%';
+  }
+})();
+
 var _resultUrls = { vocal: null, mix: null };
 function switchResultAudio(mode) {
   var audio = document.getElementById('result-audio');
@@ -5665,15 +5854,14 @@ function switchResultAudio(mode) {
   var wasPlaying = !audio.paused;
   audio.src = url;
   if (wasPlaying) audio.play();
-  // Toggle button styles
   var mixBtn = document.getElementById('toggle-mix');
   var vocalBtn = document.getElementById('toggle-vocal');
   if (mode === 'mix') {
-    mixBtn.style.background = 'var(--violet)'; mixBtn.style.color = 'white';
-    vocalBtn.style.background = 'transparent'; vocalBtn.style.color = 'var(--text2)';
+    mixBtn.classList.add('active');
+    vocalBtn.classList.remove('active');
   } else {
-    vocalBtn.style.background = 'var(--violet)'; vocalBtn.style.color = 'white';
-    mixBtn.style.background = 'transparent'; mixBtn.style.color = 'var(--text2)';
+    vocalBtn.classList.add('active');
+    mixBtn.classList.remove('active');
   }
 }
 
@@ -6083,6 +6271,14 @@ function renderConvHistoryPage() {
     '</div>';
   }).join('');
   applyListEnter(listEl, '.conversion-item', 35);
+
+  // 변환 기록 오디오 플레이어 파형 그리기
+  setTimeout(function() {
+    listEl.querySelectorAll('.audio-player').forEach(function(ap) {
+      var uid = ap.id;
+      if (uid && !apWaveData[uid]) apDrawWaveform(uid);
+    });
+  }, 80);
 
   renderPagination('conv-history-pagination', _convHistoryPage, filtered.length, 'setConvHistoryPage');
 }
