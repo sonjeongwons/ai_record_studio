@@ -32,6 +32,7 @@ import logging
 import traceback
 import tempfile
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any, Optional
 
@@ -221,7 +222,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
 
         # --- Step 6: Segment into 3-12s clips ---
         runpod.serverless.progress_update(job, "Segmenting audio clips... (6/6)")
-        segments = _segment_audio(cleaned_paths, segment_dir)
+        segments, skipped_files = _segment_audio(cleaned_paths, segment_dir)
 
         # Convert segments to MP3 for transfer
         segment_data = []
@@ -377,6 +378,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
             "segments": segment_data,
             "accompaniment_files": accomp_data,
             "vocal_files": vocal_data,
+            "skipped_files": skipped_files,
         }
 
         # Final payload size safety check
@@ -692,16 +694,18 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
         return audio_paths
 
 
-def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
+def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path], list[str]]:
     """
     Split audio files into 3-12 second segments using silence detection.
     Uses FFmpeg silencedetect to find natural split points,
     falling back to fixed-length splitting.
+    Returns (segments, skipped_files) where skipped_files lists corrupted file names.
     """
     import soundfile as sf
 
     ensure_dir(output_dir)
     all_segments: list[Path] = []
+    skipped_files: list[str] = []
     seg_idx = 0
 
     for ap in audio_paths:
@@ -715,6 +719,7 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
         audio_data, sr = sf.read(str(ap))
         if np.any(np.isnan(audio_data)) or np.any(np.isinf(audio_data)):
             log.warning(f"Skipping corrupted audio file: {ap.name}")
+            skipped_files.append(ap.name)
             continue
         total_samples = len(audio_data)
         total_duration = total_samples / sr
@@ -743,8 +748,13 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
             pos = 0.0
             while pos < total_duration:
                 end = min(pos + 10.0, total_duration)
-                if (end - pos) >= 2.0:
+                remaining = end - pos
+                if remaining >= 2.0:
                     split_points.append((pos, end))
+                elif remaining > 0 and split_points:
+                    # Merge short tail into preceding segment to avoid data loss
+                    prev_start, _ = split_points[-1]
+                    split_points[-1] = (prev_start, end)
                 pos = end
 
         for start_sec, end_sec in split_points:
@@ -757,8 +767,8 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> list[Path]:
             all_segments.append(out)
             seg_idx += 1
 
-    log.info(f"Total segments created: {len(all_segments)}")
-    return all_segments
+    log.info(f"Total segments created: {len(all_segments)}, skipped: {len(skipped_files)}")
+    return all_segments, skipped_files
 
 
 def _detect_silence_splits(
@@ -1267,21 +1277,33 @@ def _rvc_extract(
     )
 
     last_lines = []
-    for line in iter(proc.stdout.readline, ""):
-        line = line.strip()
-        if not line:
-            continue
-        log.info(f"[extract] {line}")
-        last_lines.append(line)
-        if len(last_lines) > 20:
-            last_lines.pop(0)
+    extract_timeout = 7200  # 2 hours
 
-    try:
-        proc.wait(timeout=7200)
-    except subprocess.TimeoutExpired:
+    def _drain_stdout():
+        for line in iter(proc.stdout.readline, ""):
+            line = line.strip()
+            if not line:
+                continue
+            log.info(f"[extract] {line}")
+            last_lines.append(line)
+            if len(last_lines) > 20:
+                last_lines.pop(0)
+
+    reader = threading.Thread(target=_drain_stdout, daemon=True)
+    reader.start()
+    reader.join(timeout=extract_timeout)
+
+    if reader.is_alive():
         proc.kill()
         proc.wait(timeout=10)
         raise RuntimeError("Feature extraction 타임아웃 (2시간 초과). 학습 데이터가 너무 많을 수 있습니다.")
+
+    try:
+        proc.wait(timeout=60)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=10)
+        raise RuntimeError("Feature extraction 타임아웃 (stdout 종료 후 프로세스 미종료)")
     if proc.returncode != 0:
         tail = "\n".join(last_lines[-10:])
         raise RuntimeError(
@@ -1398,7 +1420,11 @@ def _rvc_train(
                 "Check that preprocessing and extraction produced matching files."
             )
     else:
-        log.error(f"filelist.txt not found at {filelist_txt} — training will likely fail")
+        raise RuntimeError(
+            f"filelist.txt not found at {filelist_txt}. "
+            "Preprocessing or extraction did not produce training data. "
+            "Check that audio files were properly preprocessed."
+        )
 
     # Call train.py DIRECTLY — bypassing core.py which swallows subprocess errors.
     # train.py uses positional sys.argv arguments in this exact order:
@@ -2270,8 +2296,8 @@ def _rvc_infer(
         stdout_lines = [l for l in cli_result.stdout.strip().splitlines() if l.strip()]
         tail = "\n".join(stdout_lines[-5:]) if stdout_lines else "(no stdout)"
         stderr_tail = cli_result.stderr.strip()[-500:] if cli_result.stderr.strip() else ""
-        log.error(
-            f"CLI failed with code {cli_result.returncode}.\n"
+        raise RuntimeError(
+            f"All 4 RVC inference strategies failed. CLI exit code: {cli_result.returncode}.\n"
             f"Last stdout:\n{tail}"
             + (f"\nStderr:\n{stderr_tail}" if stderr_tail else "")
         )

@@ -3060,11 +3060,19 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
             <div class="slider-header">
               <span class="slider-label">노이즈 제거 <i class="tip" data-tip="변환된 결과물에서 '쉬익' 하는 기계음이나 잡음을 자동으로 제거합니다.\n\n📖 비유: 사진의 '노이즈 제거' 필터와 같습니다.\n\n🔢 언제 켜야 하나요?\n• OFF (기본) = 변환 결과가 깨끗하면 그대로 두세요\n• ON = 변환 후 기계음·잡음이 들릴 때 켜세요\n\n⚠️ 주의: 이미 깨끗한 결과에 켜면 오히려 목소리가 뭉개져 들릴 수 있습니다. '잡음이 있을 때만' 켜세요.\n\n💰 비용 영향: ON으로 켜면 변환 시간이 약 10~20% 더 걸립니다 (비용도 그만큼 증가).">ⓘ</i></span>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                <input type="checkbox" id="clean-audio-cb" style="accent-color:var(--violet)" onchange="document.getElementById('clean-audio-val').textContent=this.checked?'ON':'OFF';estimateConversionCost()">
+                <input type="checkbox" id="clean-audio-cb" style="accent-color:var(--violet)" onchange="document.getElementById('clean-audio-val').textContent=this.checked?'ON':'OFF';document.getElementById('clean-strength-row').style.display=this.checked?'':'none';estimateConversionCost()">
                 <span class="slider-value" id="clean-audio-val">OFF</span>
               </label>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">변환 결과에 기계음·잡음이 들릴 때 켜세요</div>
+            <div id="clean-strength-row" style="display:none;margin-top:8px">
+              <div class="slider-header">
+                <span class="slider-label">노이즈 제거 강도 <i class="tip" data-tip="노이즈 제거를 얼마나 강하게 적용할지 정합니다.\n\n🔢 설정 가이드:\n• 0.5~0.7 = 기본 (추천)\n• 0.8~1.0 = 강하게 (잡음이 심한 경우)\n• 0.2~0.4 = 약하게 (목소리가 뭉개질 때)">ⓘ</i></span>
+                <span class="slider-value" id="clean-strength-val">0.70</span>
+              </div>
+              <input type="range" id="clean-strength-slider" min="0" max="100" value="70" oninput="document.getElementById('clean-strength-val').textContent=(this.value/100).toFixed(2)">
+              <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 강한 노이즈 제거 (0.5~0.7 권장)</div>
+            </div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -3968,6 +3976,18 @@ async function api(path, opts) {
   return res.json();
 }
 
+// DOM helper — safe value/checked access with fallback
+function getVal(id, fallback) {
+  var el = document.getElementById(id);
+  if (!el) { console.warn('Missing DOM element: ' + id); return fallback !== undefined ? fallback : ''; }
+  return el.value;
+}
+function getChecked(id) {
+  var el = document.getElementById(id);
+  if (!el) { console.warn('Missing DOM element: ' + id); return false; }
+  return el.checked;
+}
+
 function downloadFile(url, filename) {
   if (!url) { toast('다운로드 URL이 없습니다', 'error'); return; }
   var displayName = filename || decodeURIComponent(url.split('/').pop());
@@ -4431,15 +4451,15 @@ function applyConvertPreset(preset) {
   var presets = {
     default: {
       f0: 'crepe', protect: 35, rms: 10, filter: 4, hop: 1, // hop slider idx: 0=64, 1=128, 2=256
-      clean: false, index: 55, desc: '기본 설정으로 되돌렸습니다'
+      clean: false, cleanStr: 70, index: 55, desc: '기본 설정으로 되돌렸습니다'
     },
     falsetto: {
       f0: 'crepe', protect: 48, rms: 25, filter: 1, hop: 0, // hop=64
-      clean: false, index: 65, desc: '🎤 가성/고음 최적화 프리셋 적용 — protect↑0.48, filter↓1, hop↓64, rms↑0.25'
+      clean: false, cleanStr: 70, index: 65, desc: '🎤 가성/고음 최적화 프리셋 적용 — protect↑0.48, filter↓1, hop↓64, rms↑0.25'
     },
     natural: {
       f0: 'rmvpe', protect: 42, rms: 15, filter: 3, hop: 1, // hop=128
-      clean: false, index: 70, desc: '🎵 자연스러운 변환 프리셋 적용 — protect 0.42, filter 3, index↑0.70'
+      clean: false, cleanStr: 70, index: 70, desc: '🎵 자연스러운 변환 프리셋 적용 — protect 0.42, filter 3, index↑0.70'
     }
   };
   var p = presets[preset];
@@ -4461,6 +4481,9 @@ function applyConvertPreset(preset) {
   document.getElementById('hop-val').textContent = hopVals[p.hop];
   document.getElementById('clean-audio-cb').checked = p.clean;
   document.getElementById('clean-audio-val').textContent = p.clean ? 'ON' : 'OFF';
+  document.getElementById('clean-strength-row').style.display = p.clean ? '' : 'none';
+  document.getElementById('clean-strength-slider').value = p.cleanStr;
+  document.getElementById('clean-strength-val').textContent = (p.cleanStr / 100).toFixed(2);
   var indexSlider = document.getElementById('index-slider');
   indexSlider.value = p.index;
   document.getElementById('index-val').textContent = (p.index / 100).toFixed(2);
@@ -5108,6 +5131,7 @@ function cancelPreprocess() {
 
 async function pausePreprocess() {
   if (!preprocessJobId) return;
+  if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
   setButtonLoading('btn-pause-preprocess', true);
   try {
     await api('/jobs/' + preprocessJobId + '/pause', { method: 'POST' });
@@ -5535,6 +5559,7 @@ async function cancelTraining() {
 
 async function pauseTraining() {
   if (!currentTrainJobId) return;
+  if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
   setButtonLoading('btn-pause-train', true);
   try {
     await api('/jobs/' + currentTrainJobId + '/pause', { method: 'POST' });
@@ -5831,17 +5856,18 @@ async function startConversion() {
 
   var form = new FormData();
   form.append('model_id', selectedModelId);
-  form.append('pitch_shift', document.getElementById('pitch-slider').value);
-  form.append('index_rate', (document.getElementById('index-slider').value / 100).toFixed(2));
-  form.append('f0_method', document.getElementById('convert-f0').value);
-  form.append('vocal_volume', (document.getElementById('vocal-vol-slider').value / 100).toFixed(1));
-  form.append('mr_volume', (document.getElementById('mr-vol-slider').value / 100).toFixed(1));
-  form.append('clean_audio', document.getElementById('clean-audio-cb').checked);
-  form.append('protect', (document.getElementById('protect-slider').value / 100).toFixed(2));
-  form.append('rms_mix_rate', (document.getElementById('rms-slider').value / 100).toFixed(2));
-  form.append('filter_radius', document.getElementById('filter-slider').value);
+  form.append('pitch_shift', getVal('pitch-slider', '0'));
+  form.append('index_rate', (getVal('index-slider', '55') / 100).toFixed(2));
+  form.append('f0_method', getVal('convert-f0', 'crepe'));
+  form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
+  form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
+  form.append('clean_audio', getChecked('clean-audio-cb'));
+  form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
+  form.append('protect', (getVal('protect-slider', '35') / 100).toFixed(2));
+  form.append('rms_mix_rate', (getVal('rms-slider', '10') / 100).toFixed(2));
+  form.append('filter_radius', getVal('filter-slider', '4'));
   var hopSteps = [64, 128, 256];
-  form.append('hop_length', hopSteps[document.getElementById('hop-slider').value] || 128);
+  form.append('hop_length', hopSteps[getVal('hop-slider', '1')] || 128);
   form.append('audio', convertFile);
 
   try {
@@ -6129,6 +6155,15 @@ function switchResultAudio(mode) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function startBatchConversion() {
   if (!selectedModelId || batchFiles.length === 0) return;
+
+  // 배치 파일 크기 검증 (개별 파일 최대 500MB)
+  var oversized = batchFiles.filter(function(f) { return f.size > 500 * 1024 * 1024; });
+  if (oversized.length > 0) {
+    var names = oversized.map(function(f) { return f.name; }).join(', ');
+    toast('다음 파일이 너무 큽니다 (최대 500MB): ' + names, 'error');
+    return;
+  }
+
   // 배치 시작 직전 selectedModelId가 여전히 유효한지 확인 (목록 갱신으로 삭제된 경우 방지)
   if (!models.find(function(m) { return m.id === selectedModelId; })) {
     toast('선택한 모델이 더 이상 존재하지 않습니다. 모델을 다시 선택해주세요.', 'error');
@@ -6156,17 +6191,18 @@ async function startBatchConversion() {
     try {
       var form = new FormData();
       form.append('model_id', selectedModelId);
-      form.append('pitch_shift', document.getElementById('pitch-slider').value);
-      form.append('index_rate', (document.getElementById('index-slider').value / 100).toFixed(2));
-      form.append('f0_method', document.getElementById('convert-f0').value);
-      form.append('vocal_volume', (document.getElementById('vocal-vol-slider').value / 100).toFixed(1));
-      form.append('mr_volume', (document.getElementById('mr-vol-slider').value / 100).toFixed(1));
-      form.append('clean_audio', document.getElementById('clean-audio-cb').checked);
-      form.append('protect', (document.getElementById('protect-slider').value / 100).toFixed(2));
-      form.append('rms_mix_rate', (document.getElementById('rms-slider').value / 100).toFixed(2));
-      form.append('filter_radius', document.getElementById('filter-slider').value);
+      form.append('pitch_shift', getVal('pitch-slider', '0'));
+      form.append('index_rate', (getVal('index-slider', '55') / 100).toFixed(2));
+      form.append('f0_method', getVal('convert-f0', 'crepe'));
+      form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
+      form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
+      form.append('clean_audio', getChecked('clean-audio-cb'));
+      form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
+      form.append('protect', (getVal('protect-slider', '35') / 100).toFixed(2));
+      form.append('rms_mix_rate', (getVal('rms-slider', '10') / 100).toFixed(2));
+      form.append('filter_radius', getVal('filter-slider', '4'));
       var hopSteps2 = [64, 128, 256];
-      form.append('hop_length', hopSteps2[document.getElementById('hop-slider').value] || 128);
+      form.append('hop_length', hopSteps2[getVal('hop-slider', '1')] || 128);
       form.append('audio', batchResults[i].file);
 
       var res = await api('/convert', { method: 'POST', body: form });
@@ -6408,6 +6444,7 @@ async function cancelConversion() {
 
 async function pauseConversion() {
   if (!currentConvertJobId) return;
+  if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
   setButtonLoading('btn-pause-convert', true);
   try {
     await api('/jobs/' + currentConvertJobId + '/pause', { method: 'POST' });
