@@ -2591,7 +2591,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
           </div>
           <div>
-            <h2 style="margin-bottom:2px">전처리 <i class="tip" data-tip="AI에게 목소리를 가르치기 전에, 음원 파일을 '공부하기 좋은 형태'로 자동 정리하는 준비 단계입니다.\n\n📖 비유: 선생님에게 배우기 전에 교재를 정리하는 것과 같습니다.\n\n🔧 이 단계에서 자동으로 하는 일:\n① 노래나 영상에서 '목소리만' 분리 (반주·배경음 제거)\n② 잡음·소음 제거\n③ 긴 파일을 짧은 조각으로 나누기\n\n💡 이미 반주 없이 목소리만 녹음된 파일이 있다면 이 단계를 '건너뛰기' 할 수 있습니다.\n\n💰 비용: 파일 길이에 비례합니다. 예시) 5분 노래 1곡 → 약 5~10분, $0.22~0.44">ⓘ</i></h2>
+            <h2 style="margin-bottom:2px">전처리 <i class="tip" data-tip="AI에게 목소리를 가르치기 전에, 음원 파일을 '공부하기 좋은 형태'로 자동 정리하는 준비 단계입니다.\n\n📖 비유: 선생님에게 배우기 전에 교재를 정리하는 것과 같습니다.\n\n🔧 이 단계에서 자동으로 하는 일:\n① 노래나 영상에서 '목소리만' 분리 (반주·배경음 제거)\n② 잡음·소음 제거\n③ 긴 파일을 짧은 조각으로 나누기\n\n💡 이미 반주 없이 목소리만 녹음된 파일이 있다면 이 단계를 '건너뛰기' 할 수 있습니다.\n\n💰 비용: 파일 길이에 비례합니다 (RTX 4090 기준).\n• 5분 노래 1곡 → 약 7~14분, $0.30~0.60\n• 30분(앨범) → 약 35~55분, $1.50~2.40\n(Docker 시작·Demucs 보컬 분리 포함 추정)">ⓘ</i></h2>
             <div style="font-size:12px;color:var(--text3)">보컬 분리 → 노이즈 제거 → 세그먼트 분할을 자동으로 처리합니다</div>
           </div>
         </div>
@@ -2761,7 +2761,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
           <input type="text" id="model-name" value="My Voice v1" placeholder="모델 이름" onfocus="this.select()" autocomplete="off">
         </div>
         <div>
-          <label class="label">에폭 수 <i class="tip" data-tip="쉽게 말해, AI가 여러분의 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n📖 비유: 노래를 배울 때 한 번만 들으면 어색하지만, 여러 번 반복하면 자연스러워지는 것과 같습니다.\n\n🔢 추천값:\n• 300 = 빠르게 맛보기 (30분~1시간)\n• 500 = 대부분의 경우 충분 (1~3시간)\n• 800~1000 = 최고 품질 (3~10시간 이상)\n\n⚠️ 너무 높이면? 오히려 목소리가 어색해질 수 있습니다 (과학습).\n\n💰 비용 영향: 에폭이 2배 → 학습 시간·비용도 약 2배. 처음엔 500으로 결과를 먼저 들어보고, 만족스러우면 그대로, 아쉬우면 800으로 다시 학습해보세요.">ⓘ</i></label>
+          <label class="label">에폭 수 <i class="tip" data-tip="쉽게 말해, AI가 여러분의 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n📖 비유: 노래를 배울 때 한 번만 들으면 어색하지만, 여러 번 반복하면 자연스러워지는 것과 같습니다.\n\n🔢 추천값:\n• 300 = 빠르게 결과 확인용\n• 500 = 대부분의 경우 충분 (추천)\n• 800~1000 = 최고 품질 시도\n\n📊 예상 소요 시간·비용 (RMVPE·자동배치·40kHz 기준):\n\n[데이터 5분]\n• 300에폭 → 약 40분, $1.70\n• 500에폭 → 약 1시간, $2.50\n\n[데이터 10분]\n• 300에폭 → 약 1.2시간, $3.20\n• 500에폭 → 약 1.8시간, $4.90\n• 1000에폭 → 약 3.4시간, $8.90\n\n[데이터 30분]\n• 300에폭 → 약 3.6시간, $9.50\n• 500에폭 → 약 5.4시간, $14\n• 1000에폭 → 약 10시간, $27\n\n⚠️ 실측 참고: 30분 데이터 + Crepe + 500에폭 = 약 6시간, $15 (2026.03 RTX 4090 실측).\nCrepe 사용 시 RMVPE보다 약 20% 추가됩니다.\n\n⚠️ 에폭을 너무 높이면 오히려 목소리가 어색해질 수 있습니다 (과학습).\n\n💰 비용 핵심: 에폭 2배 → 시간·비용 약 2배. 데이터 2배 → 역시 약 2배.\n처음엔 500으로 결과를 들어보고, 아쉬우면 800으로 재학습하세요.">ⓘ</i></label>
           <select id="train-epochs" onchange="estimateTrainingCost()">
             <option value="300">300 (빠른 결과 확인용)</option>
             <option value="500" selected>500 (권장 · 균형 잡힌 품질)</option>
@@ -2779,7 +2779,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
       </div>
       <div class="grid-2 mt-16">
         <div>
-          <label class="label">피치 추출 방식 <i class="tip" data-tip="AI가 목소리의 '음 높낮이'를 어떤 방법으로 분석할지 선택합니다.\n\n📖 비유: 노래를 악보로 옮길 때 사용하는 도구의 종류입니다.\n\n🔢 추천:\n• RMVPE = 빠르고 정확 → 대부분 이것으로 충분 (추천!)\n• Crepe = 더 정밀하지만 2~3배 느림 → 고음이 많은 특수한 경우에만\n• Crepe-tiny = Crepe의 가벼운 버전\n\n💰 비용 영향 (매우 큼!):\n• RMVPE: 30분 데이터 + 500에폭 → 약 2~4시간, 약 $5~11\n• Crepe: 같은 조건 → 약 5~8시간, 약 $13~21\n→ Crepe는 RMVPE보다 비용이 약 2배! 품질 차이는 미미하므로 RMVPE 권장.\n\n💡 학습할 때와 변환할 때 같은 방식을 쓰는 것이 좋습니다.">ⓘ</i></label>
+          <label class="label">피치 추출 방식 <i class="tip" data-tip="AI가 목소리의 '음 높낮이'를 어떤 방법으로 분석할지 선택합니다.\n\n📖 비유: 노래를 악보로 옮길 때 사용하는 도구의 종류입니다.\n\n🔢 추천:\n• RMVPE = 빠르고 정확 → 대부분 이것으로 충분 (추천!)\n• Crepe = 더 정밀하지만 특징 추출이 2~3배 느림\n• Crepe-tiny = Crepe의 가벼운 버전\n\n💰 비용 영향 (30분 데이터 + 500에폭 기준, RTX 4090 실측):\n• RMVPE → 약 4~7시간, 약 $11~20\n• Crepe → 약 5~9시간, 약 $13~24 (실측 6시간, $15)\n→ Crepe는 RMVPE보다 총 비용이 약 20% 추가됩니다.\n(특징 추출 단계만 2~3배 느리지만, 학습 자체 시간이 대부분이라 총 차이는 ~20%)\n→ 품질 차이는 미미하므로 RMVPE 권장.\n\n💡 학습할 때와 변환할 때 같은 방식을 쓰는 것이 좋습니다.">ⓘ</i></label>
           <select id="train-f0" onchange="estimateTrainingCost()">
             <option value="rmvpe" selected>RMVPE (권장 · 빠르고 비용 절약)</option>
             <option value="crepe">Crepe (특징 추출 2~3배 느림 · 비용 증가)</option>
