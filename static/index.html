@@ -2200,8 +2200,7 @@ input[type="range"].has-fill {
               </div>
             </div>
             <div class="cost-panel-note" id="cost-pre-note">
-              Demucs 줄기 분리(보컬/반주 분리) 포함 기준. RTX 4090 ($0.00074/sec) 기준 추정값입니다.<br>
-              <b>예시:</b> 5분짜리 음원 1곡 → GPU 약 7분 → 약 $0.31 &nbsp;|&nbsp; 3곡(합계 15분) → 약 20분 → 약 $0.89
+              RTX 4090 ($0.00074/sec) 기준 <b>추정값</b>이며, 실제 시간은 파일 포맷·음질·서버 상황에 따라 달라집니다.<br>              <b>예시:</b> 5분 MP3 1곡 → GPU 약 5~10분 → 약 $0.22~$0.44 &nbsp;|&nbsp; 3곡(합계 15분) → 약 15~30분 → 약 $0.67~$1.33<br>              <b>참고:</b> MP4·MKV 영상 파일은 오디오 추출 시간이 추가됩니다. RunPod GPU 대기 시간(0~5분)은 별도입니다.
             </div>
           </div>
           <div class="flex gap-8">
@@ -2362,15 +2361,15 @@ input[type="range"].has-fill {
           </div>
         </div>
         <div class="cost-panel-note">
-          RTX 4090 ($0.00074/sec) 기준 추정값. 실제 비용은 GPU 종류·대기 시간에 따라 달라질 수 있습니다.<br>
-          <b>예시:</b> 10분 데이터 + 500에폭 → 약 80분 GPU → 약 $3.5 &nbsp;|&nbsp; 5분 + 1000에폭 → 약 65분 → 약 $2.9<br>
-          <b>절약 팁:</b> 처음엔 300~500 에폭으로 시작하고, 결과가 부족할 때만 에폭을 늘리세요.
+          RTX 4090 ($0.00074/sec) 기준 <b>추정값</b>. 실제 값은 GPU 종류·서버 부하·RunPod 큐 대기 시간에 따라 크게 달라집니다.<br>          <b>소규모 예시:</b> 10분 데이터 + 500에폭(RMVPE) → 약 1~2시간 → 약 $2~6<br>          <b>대용량 예시:</b> 60분 데이터 + 500에폭 → 약 7~16시간 → 약 $19~43 &nbsp;|&nbsp; 30분 + 1000에폭 → 약 8~18시간<br>          <b>절약 팁:</b> 데이터가 많을수록 에폭 수를 낮춰도 품질이 유지됩니다. Crepe는 RMVPE보다 2배 오래 걸립니다.
         </div>
+        <!-- 동적 긴 학습 경고 -->
+        <div id="train-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);font-size:12px;color:#fbbf24;line-height:1.55"></div>
       </div>
       <!-- 파일 미선택 시 정적 안내 -->
       <div id="train-cost-static" class="alert alert-info mt-16" style="line-height:1.6">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <div>파일을 선택하면 예상 GPU 시간과 RunPod 비용이 표시됩니다 · RTX 4090 기준 500 에폭 약 $2~5</div>
+        <div>파일을 선택하면 예상 GPU 시간과 RunPod 비용이 표시됩니다.<br><b>학습 시간은 데이터 양과 에폭 수에 따라 수분~수십 시간으로 크게 달라집니다.</b></div>
       </div>
     </div>
 
@@ -2644,9 +2643,7 @@ input[type="range"].has-fill {
         </div>
       </div>
       <div class="cost-panel-note">
-        RTX 4090 ($0.00074/sec) 기준 추정값. 오디오 길이는 파일 크기로부터 추정합니다.<br>
-        <b>예시:</b> 3분 노래 1곡 → GPU 약 60~90초 → 약 $0.04~0.07 &nbsp;|&nbsp; 5곡 일괄 → 약 4~6분 → 약 $0.18~0.27<br>
-        <b>참고:</b> 변환은 전처리·학습에 비해 매우 저렴합니다. 1곡당 수 센트(¢) 수준입니다.
+        RTX 4090 ($0.00074/sec) 기준 <b>추정값</b>. 실제 시간은 파일 길이·품질·F0 방식에 따라 달라집니다.<br>        <b>예시:</b> 3분 노래 1곡 → GPU 약 1~2분 → 약 $0.04~0.09 &nbsp;|&nbsp; 5곡 일괄 → 약 5~10분 → 약 $0.22~0.44<br>        <b>참고:</b> 변환은 학습에 비해 매우 저렴합니다 (1곡당 수 센트 수준). Crepe는 RMVPE보다 약간 느립니다. 노이즈 제거(ON) 시 처리 시간이 10~20% 추가됩니다.
       </div>
     </div>
     <button class="btn btn-gradient btn-full" id="btn-convert" onclick="startConversion()" disabled data-loading-label="변환 제출 중...">
@@ -3577,18 +3574,32 @@ function estimatePreprocessCost() {
   if (selectedIds.length === 0) { panel.style.display = 'none'; return; }
 
   var totalSecs = 0;
+  var hasVideo = false;
   selectedIds.forEach(function(id) {
     var f = uploadedFiles.find(function(u) { return String(u.id) === String(id); });
-    if (f) totalSecs += (f.duration_seconds || f.duration || 0);
+    if (f) {
+      totalSecs += (f.duration_seconds || f.duration || 0);
+      var name = (f.name || f.filename || '').toLowerCase();
+      if (name.endsWith('.mp4') || name.endsWith('.mkv') || name.endsWith('.webm')) hasVideo = true;
+    }
   });
   if (totalSecs <= 0) { panel.style.display = 'none'; return; }
 
   // 전처리 = Demucs 줄기 분리 (~1.0x realtime) + 슬라이싱/정규화 + 오버헤드
-  var gpuSecs = totalSecs * 1.0 + 120;
-  var minSec  = gpuSecs * 0.75;
-  var maxSec  = gpuSecs * 1.40;
+  // 영상 파일은 오디오 추출 오버헤드 추가 (~30%)
+  var videoFactor = hasVideo ? 1.30 : 1.0;
+  var gpuSecs = totalSecs * 1.0 * videoFactor + 120;
+  // 실제 Demucs 처리는 파일 품질·서버 부하에 따라 0.5배~2배 편차 발생
+  var minSec  = gpuSecs * 0.55;
+  var maxSec  = gpuSecs * 1.80;
 
-  document.getElementById('cost-pre-duration').textContent = formatDuration(totalSecs);
+  var noteEl = document.getElementById('cost-pre-note');
+  var extraNote = hasVideo ? ' ⚠️ 영상 파일 포함 — 오디오 추출 시간이 추가됩니다.' : '';
+  if (noteEl) {
+    noteEl.querySelector && (noteEl.innerHTML = noteEl.innerHTML.split('⚠️')[0] + extraNote);
+  }
+
+  document.getElementById('cost-pre-duration').textContent = formatDuration(totalSecs) + (hasVideo ? ' (영상 포함)' : '');
   document.getElementById('cost-pre-gpu').textContent =
     _formatGpuTime(gpuSecs) + ' (' + _formatGpuTime(minSec) + '~' + _formatGpuTime(maxSec) + ')';
   document.getElementById('cost-pre-cost').textContent = _formatCostRange(minSec, maxSec);
@@ -3639,8 +3650,9 @@ function estimateTrainingCost() {
   // 오버헤드: 모델 다운로드·설정
   var overheadSecs = 120;
   var totalGpu  = featureSecs + trainingSecs + overheadSecs;
-  var minSec    = totalGpu * 0.75;
-  var maxSec    = totalGpu * 1.45;
+  // 학습 시간 불확실성: 서버 부하·GPU 종류·데이터 특성에 따라 실제 편차 큼
+  var minSec    = totalGpu * 0.55;
+  var maxSec    = totalGpu * 2.00;
 
   var f0Label = { rmvpe: 'RMVPE (권장)', crepe: 'Crepe (+시간 2배)', 'crepe-tiny': 'Crepe-tiny' }[f0] || f0;
 
@@ -3650,6 +3662,18 @@ function estimateTrainingCost() {
   document.getElementById('cost-train-gpu').textContent =
     _formatGpuTime(totalGpu) + ' (' + _formatGpuTime(minSec) + '~' + _formatGpuTime(maxSec) + ')';
   document.getElementById('cost-train-cost').textContent = _formatCostRange(minSec, maxSec);
+
+  // 동적 경고: 예상 학습 시간이 1시간 초과 시 경고 표시
+  var warnEl = document.getElementById('train-cost-warn');
+  if (warnEl) {
+    if (totalGpu > 3600) {
+      var hrs = (totalGpu / 3600).toFixed(1);
+      warnEl.textContent = '⚠️ 예상 학습 시간이 ' + hrs + '시간 이상입니다. RunPod 크레딧과 시간을 충분히 확보하세요. 에폭을 줄이거나 학습 파일 수를 조정하면 시간을 단축할 수 있습니다.';
+      warnEl.style.display = 'block';
+    } else {
+      warnEl.style.display = 'none';
+    }
+  }
 
   panel.style.display = 'block';
   if (staticEl) staticEl.style.display = 'none';
@@ -3672,10 +3696,12 @@ function estimateConversionCost() {
 
   // GPU 시간: 모델 로딩 오버헤드 + 파일당 처리
   var overheadSecs  = 30 + (files.length - 1) * 5; // 첫 파일 30s, 이후 파일 5s 추가
-  var processSecs   = totalDuration * 0.30 * f0Factor;
+  var cleanCb = document.getElementById('clean-audio-cb');
+  var cleanFactor = (cleanCb && cleanCb.checked) ? 1.15 : 1.0; // 노이즈 제거 시 +15%
+  var processSecs   = totalDuration * 0.30 * f0Factor * cleanFactor;
   var totalGpu  = overheadSecs + processSecs;
-  var minSec    = totalGpu * 0.60;
-  var maxSec    = totalGpu * 1.80;
+  var minSec    = totalGpu * 0.50;
+  var maxSec    = totalGpu * 2.00;
 
   var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)' }[f0] || f0;
 
