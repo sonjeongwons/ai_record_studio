@@ -2059,15 +2059,17 @@ async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
     index_rate: float = Form(0.55),
-    f0_method: str = Form("crepe"),
+    f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
     clean_audio: bool = Form(False),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.35),
-    rms_mix_rate: float = Form(0.1),
-    filter_radius: int = Form(4),
-    hop_length: int = Form(128),
+    protect: float = Form(0.45),
+    rms_mix_rate: float = Form(0.25),
+    filter_radius: int = Form(3),
+    hop_length: int = Form(64),
+    post_reverb: float = Form(0.10),
+    harmonic_enhance: bool = Form(True),
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2094,6 +2096,8 @@ async def start_conversion(
         raise HTTPException(400, f"MR 볼륨은 0.0~2.0 사이여야 합니다. (입력: {mr_volume})")
     if not (0.0 <= clean_strength <= 1.0):
         raise HTTPException(400, f"Clean Strength는 0.0~1.0 사이여야 합니다. (입력: {clean_strength})")
+    if not (0.0 <= post_reverb <= 0.5):
+        raise HTTPException(400, f"Post Reverb는 0.0~0.5 사이여야 합니다. (입력: {post_reverb})")
 
     # 모델 조회
     with get_db() as db:
@@ -2131,6 +2135,8 @@ async def start_conversion(
         "rms_mix_rate": rms_mix_rate,
         "filter_radius": filter_radius,
         "hop_length": hop_length,
+        "post_reverb": post_reverb,
+        "harmonic_enhance": harmonic_enhance,
     }
     with get_db() as db:
         db.execute("""
@@ -2161,6 +2167,8 @@ async def start_conversion(
             "separate_vocals": True,
             "vocal_volume": vocal_volume,
             "mr_volume": mr_volume,
+            "post_reverb": post_reverb,
+            "harmonic_enhance": harmonic_enhance,
             "bucket_name": r2_bucket,
         }
 
@@ -2563,16 +2571,18 @@ async def resume_job(job_id: str):
                 "audio_filename": pause_state.get("audio_filename", input_file),
                 "pitch_shift": pause_state.get("pitch_shift", 0),
                 "index_rate": pause_state.get("index_rate", 0.55),
-                "f0_method": pause_state.get("f0_method", "crepe"),
+                "f0_method": pause_state.get("f0_method", "rmvpe"),
                 "clean_audio": pause_state.get("clean_audio", False),
                 "clean_strength": pause_state.get("clean_strength", 0.7),
-                "protect": pause_state.get("protect", 0.35),
-                "rms_mix_rate": pause_state.get("rms_mix_rate", 0.1),
-                "filter_radius": pause_state.get("filter_radius", 4),
-                "hop_length": pause_state.get("hop_length", 128),
+                "protect": pause_state.get("protect", 0.45),
+                "rms_mix_rate": pause_state.get("rms_mix_rate", 0.25),
+                "filter_radius": pause_state.get("filter_radius", 3),
+                "hop_length": pause_state.get("hop_length", 64),
                 "separate_vocals": True,
                 "vocal_volume": pause_state.get("vocal_volume", 1.0),
                 "mr_volume": pause_state.get("mr_volume", 1.0),
+                "post_reverb": pause_state.get("post_reverb", 0.10),
+                "harmonic_enhance": pause_state.get("harmonic_enhance", True),
                 "bucket_name": r2_bucket,
             }
 

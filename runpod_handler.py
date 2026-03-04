@@ -1761,6 +1761,70 @@ def _find_index(logs_dir: Path, model_name: str) -> Optional[Path]:
 # 3. CONVERT (inference) task
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
+def _post_process_vocal(
+    vocal_path: Path,
+    output_path: Path,
+    reverb_amount: float = 0.10,
+    harmonic_enhance: bool = True,
+) -> None:
+    """Post-process converted vocal to reduce AI/robotic artifacts.
+
+    Processing chain:
+    1. Pre-comp EQ: remove harsh AI artifacts
+       - highshelf cut at 9kHz  → soften metallic high-frequency harshness
+       - peaking cut at 1.5kHz  → reduce AI metallic ring/nasal quality
+    2. Gentle dynamic compression (2:1) → even out RVC's unnatural level jumps
+    3. Post-comp EQ: restore warmth and presence lost during RVC
+       - lowshelf boost at 180Hz → add body/warmth
+       - peaking boost at 3.5kHz → restore clarity/presence
+    4. Optional soft saturation (tanh) → adds warm 2nd harmonic overtones,
+       reduces digital/metallic texture without sounding distorted
+    5. Optional tiny room reverb (4 early reflections) → eliminates the
+       completely "dry/booth" AI sound, adds subtle natural space
+    """
+    filters = [
+        # --- Pre-comp EQ ---
+        "highshelf=f=9000:width_type=o:width=1:g=-2.5",    # soften harsh AI highs
+        "equalizer=f=1500:width_type=o:width=0.8:g=-1.5",  # cut AI metallic ring
+        # --- Gentle dynamic compression ---
+        "acompressor=threshold=0.5:ratio=2:attack=20:release=250:makeup=1.1:knee=8",
+        # --- Post-comp EQ ---
+        "lowshelf=f=180:width_type=o:width=1:g=1.5",       # warmth / body
+        "equalizer=f=3500:width_type=o:width=1:g=1.5",     # presence / clarity
+    ]
+
+    if harmonic_enhance:
+        # tanh soft saturation: smooth tube-amp-like harmonic richness
+        # threshold=0.82 → only affects signal peaks, not quieter passages
+        # output=0.94 → slight gain reduction to compensate for saturation
+        filters.append("asoftclip=type=tanh:threshold=0.82:output=0.94")
+
+    if reverb_amount > 0.005:
+        # 4 early reflections simulate a small recording space.
+        # Very subtle at default (0.10): all reflections below -20dB.
+        # Delays 10|23|41|67ms approximate typical small room resonance modes.
+        c1 = reverb_amount * 0.90
+        c2 = reverb_amount * 0.65
+        c3 = reverb_amount * 0.47
+        c4 = reverb_amount * 0.29
+        filters.append(
+            f"aecho=0.85:0.90:10|23|41|67:{c1:.4f}|{c2:.4f}|{c3:.4f}|{c4:.4f}"
+        )
+
+    run_ffmpeg([
+        "-i", str(vocal_path),
+        "-af", ",".join(filters),
+        "-acodec", "pcm_s24le",
+        "-ar", "44100",
+        str(output_path),
+    ])
+    log.info(
+        f"Vocal post-processed → {output_path.name} "
+        f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance})"
+    )
+
+
 def _mix_audio(
     vocal_path: Path,
     accomp_path: Path,
@@ -1782,7 +1846,7 @@ def _mix_audio(
         f"[0:a]aresample=resampler=soxr,volume={vocal_volume}[v];"
         f"[1:a]aresample=resampler=soxr,volume={mr_volume}[m];"
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.99:attack=5:release=50",
+        f"alimiter=limit=0.99:attack=10:release=100",
         "-acodec", "pcm_s24le",  # 24-bit for maximum dynamic range
         "-ar", "44100",
         str(output_path),
@@ -1796,7 +1860,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
       1) Decode model (.pth, .index) and input audio
       2) Demucs vocal separation → vocals + accompaniment (MR)
       3) RVC voice conversion on vocals only
-      4) Mix converted vocals + original MR
+      3b) Post-process vocals: EQ, compression, optional harmonic enhance + room reverb
+      4) Mix post-processed vocals + original MR
       5) Return converted vocals + mixed output as base64
     """
     pth_b64: str = job_input.get("pth_data", "")
@@ -1808,11 +1873,16 @@ def task_convert(job_input: dict, job: dict) -> dict:
     audio_filename: str = job_input.get("audio_filename", "input.wav")
     pitch_shift: int = job_input.get("pitch_shift", 0)
     index_rate: float = job_input.get("index_rate", 0.55)
-    f0_method: str = job_input.get("f0_method", "crepe")
-    filter_radius: int = job_input.get("filter_radius", 4)
-    rms_mix_rate: float = job_input.get("rms_mix_rate", 0.10)
-    protect: float = job_input.get("protect", 0.35)
-    hop_length: int = job_input.get("hop_length", 128)
+    # rmvpe: stable, fast, accurate for singing — better default than crepe
+    f0_method: str = job_input.get("f0_method", "rmvpe")
+    # filter_radius 3: less over-smoothing → more natural pitch movement
+    filter_radius: int = job_input.get("filter_radius", 3)
+    # rms_mix_rate 0.25: moderate volume envelope blending → natural dynamics
+    rms_mix_rate: float = job_input.get("rms_mix_rate", 0.25)
+    # protect 0.45: better consonant/breathiness preservation
+    protect: float = job_input.get("protect", 0.45)
+    # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
+    hop_length: int = job_input.get("hop_length", 64)
     clean_audio: bool = job_input.get("clean_audio", False)
     clean_strength: float = job_input.get("clean_strength", 0.7)
     export_format: str = job_input.get("export_format", "wav").lower().strip()
@@ -1820,6 +1890,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     separate_vocals: bool = job_input.get("separate_vocals", True)
     vocal_volume: float = job_input.get("vocal_volume", 1.0)
     mr_volume: float = job_input.get("mr_volume", 1.0)
+    # Post-processing for naturalness (applied after RVC conversion)
+    post_reverb: float = job_input.get("post_reverb", 0.10)   # 0=off, 0.01-0.30 subtle→strong
+    harmonic_enhance: bool = job_input.get("harmonic_enhance", True)  # tanh saturation
 
     if not pth_b64 and not pth_url:
         raise ValueError("No model provided (pth_data or pth_url required)")
@@ -1961,6 +2034,26 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 f"Work dir contains: {[f.name for f in all_files if f.is_file()]}"
             )
 
+        # --- Step 3b: Post-process converted vocals for naturalness ---
+        # EQ + compression + optional harmonic saturation + optional room reverb
+        # Reduces AI metallic/robotic artifacts → more human-sounding result
+        runpod.serverless.progress_update(job, "Post-processing vocals for naturalness... (3.5/4)")
+        processed_vocals_path = work / "processed_vocals.wav"
+        try:
+            _post_process_vocal(
+                vocal_path=converted_vocals_path,
+                output_path=processed_vocals_path,
+                reverb_amount=post_reverb,
+                harmonic_enhance=harmonic_enhance,
+            )
+            if processed_vocals_path.exists() and processed_vocals_path.stat().st_size > 1000:
+                converted_vocals_path = processed_vocals_path
+                log.info("Vocal post-processing applied successfully")
+            else:
+                log.warning("Post-processing produced empty/small output, using raw conversion")
+        except Exception as pp_err:
+            log.warning(f"Post-processing failed, using raw RVC output: {pp_err}")
+
         # --- Step 4: Mix converted vocals + original accompaniment ---
         mixed_path = None
         if accomp_path and accomp_path.exists():
@@ -2057,15 +2150,15 @@ def _rvc_infer(
     input_audio: Path,
     output_path: Path,
     pitch_shift: int = 0,
-    f0_method: str = "crepe",
+    f0_method: str = "rmvpe",
     index_rate: float = 0.55,
-    protect: float = 0.35,
-    hop_length: int = 128,
+    protect: float = 0.45,
+    hop_length: int = 64,
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 4,
-    rms_mix_rate: float = 0.10,
+    filter_radius: int = 3,
+    rms_mix_rate: float = 0.25,
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.
