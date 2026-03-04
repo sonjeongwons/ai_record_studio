@@ -693,9 +693,12 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
                             pass
+                    _active_job_states.pop(job_id, None)
+                    _poll_error_counts.pop(job_id, None)
                     return
                 try:
                     handle_job_result(job_id, job_type, output)
+                    # handle_job_result의 finally 블록에서 _active_job_states 정리됨
                 except Exception as e:
                     update_job(job_id, status="failed",
                               message=f"결과 처리 실패: {e}")
@@ -705,6 +708,8 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
                             pass
+                    _active_job_states.pop(job_id, None)
+                    _poll_error_counts.pop(job_id, None)
                 return
 
             elif status in ("FAILED", "TIMED_OUT", "CANCELLED"):
@@ -735,6 +740,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                     except Exception:
                         pass
+                _active_job_states.pop(job_id, None)
                 return
 
             elif status == "IN_QUEUE":
@@ -820,6 +826,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
 
             if elapsed > 10 * 3600:  # 10시간 타임아웃
                 _poll_error_counts.pop(job_id, None)
+                _active_job_states.pop(job_id, None)
                 update_job(job_id, status="failed", message="시간 초과 (10시간)")
                 return
 
@@ -828,6 +835,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             _poll_error_counts[job_id] = poll_errors
             if poll_errors > 30:  # 30 consecutive errors = ~5 min of failures
                 _poll_error_counts.pop(job_id, None)
+                _active_job_states.pop(job_id, None)
                 update_job(job_id, status="failed",
                           message=f"RunPod 상태 확인 반복 실패: {e}")
                 return
@@ -902,14 +910,22 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     saved_vocals = _save_file_list(vocal_files, "vocal")
 
     # 전처리 완료된 파일 마킹 + 세그먼트 매핑 기록
-    file_ids = preprocess_file_map.pop(job_id, [])
+    # pop 은 DB 업데이트 성공 후에 실행 (실패하면 재시도 가능하도록)
+    file_ids = preprocess_file_map.get(job_id, [])
     if file_ids:
-        with get_db() as db:
-            placeholders = ",".join("?" * len(file_ids))
-            db.execute(
-                f"UPDATE training_files SET preprocessed=1 WHERE id IN ({placeholders})",
-                file_ids
-            )
+        try:
+            with get_db() as db:
+                placeholders = ",".join("?" * len(file_ids))
+                db.execute(
+                    f"UPDATE training_files SET preprocessed=1 WHERE id IN ({placeholders})",
+                    file_ids
+                )
+        except Exception as e:
+            print(f"[Preprocess] DB update failed for file_ids (will retry next poll): {e}")
+        else:
+            preprocess_file_map.pop(job_id, None)
+    else:
+        preprocess_file_map.pop(job_id, None)
 
     # 전체 전처리 세그먼트 수 (학습용 세그먼트만 카운트, mr_/vocal_ 제외)
     all_files = _list_preprocessed_files()
@@ -935,7 +951,14 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
         for fid in file_ids:
             seg_map[str(fid)] = seg_map.get(str(fid), []) + seg_names
     meta["file_segments"] = seg_map
-    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    # 원자적 쓰기: 임시 파일에 먼저 쓰고 rename (크래시 시 손상 방지)
+    meta_tmp = meta_path.with_suffix(".json.tmp")
+    try:
+        meta_tmp.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+        meta_tmp.replace(meta_path)
+    except Exception as e:
+        print(f"[Warning] metadata write failed: {e}")
+        meta_tmp.unlink(missing_ok=True)
 
     return {
         "segment_count": len(training_files),
@@ -1107,6 +1130,10 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
 
     except Exception as e:
         update_job(job_id, status="failed", message=f"결과 처리 오류: {str(e)}")
+    finally:
+        # 완료/실패 시 인메모리 재개 상태 정리 (메모리 누수 방지)
+        _active_job_states.pop(job_id, None)
+        _poll_error_counts.pop(job_id, None)
 
 
 def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):

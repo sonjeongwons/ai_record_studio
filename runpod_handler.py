@@ -913,8 +913,11 @@ def task_train(job_input: dict, job: dict) -> dict:
             fname = uobj.get("filename", f"audio_{i}.wav")
             dest = dataset_dir / fname
             import requests as _req
-            resp = _req.get(uobj["url"], timeout=120)
-            resp.raise_for_status()
+            try:
+                resp = _req.get(uobj["url"], timeout=120)
+                resp.raise_for_status()
+            except Exception as dl_err:
+                raise RuntimeError(f"학습 파일 다운로드 실패 ({fname}): {dl_err}") from dl_err
             with open(dest, "wb") as f:
                 f.write(resp.content)
             log.info(f"Downloaded training file: {fname} ({len(resp.content) / 1024:.1f} KB)")
@@ -944,7 +947,7 @@ def task_train(job_input: dict, job: dict) -> dict:
         try:
             _rvc_preprocess(model_name, str(wav_dir), sample_rate, logs_dir)
         except Exception as e:
-            raise RuntimeError(f"[2/6 전처리] {e}") from e
+            raise RuntimeError(f"[2/5 전처리] {e}") from e
 
         # --- Step 3+4: Extract F0 + features + config + filelist ---
         runpod.serverless.progress_update(job, f"Extracting F0 & features ({f0_method}, {embedder_model})... (3/5)")
@@ -1059,18 +1062,20 @@ def task_train(job_input: dict, job: dict) -> dict:
 
         # Fallback: base64 encode model if bucket upload failed
         # RunPod payload limit ~20MB, RVC models ~50MB → only works for small models
+        # base64 expands size by 4/3, so effective raw-file limit is ~13.5MB (13.5 * 4/3 = 18MB)
         if not upload_ok:
             import base64
             pth_size_mb = pth_path.stat().st_size / (1024 * 1024)
-            if pth_size_mb <= 18:
-                log.info(f"Using base64 fallback for {pth_path.name} ({pth_size_mb:.1f} MB)")
+            pth_b64_mb = pth_size_mb * 4 / 3  # base64 overhead
+            if pth_b64_mb <= 18:
+                log.info(f"Using base64 fallback for {pth_path.name} ({pth_size_mb:.1f} MB raw / {pth_b64_mb:.1f} MB b64)")
                 with open(pth_path, "rb") as f:
                     result["pth_base64"] = base64.b64encode(f.read()).decode()
                 result["upload_method"] = "base64"
 
                 if index_path is not None:
                     idx_size_mb = index_path.stat().st_size / (1024 * 1024)
-                    remaining_mb = 18 - pth_size_mb
+                    remaining_mb = (18 - pth_b64_mb) * 3 / 4  # convert back to raw MB
                     if idx_size_mb <= remaining_mb:
                         with open(index_path, "rb") as f:
                             result["index_base64"] = base64.b64encode(f.read()).decode()
@@ -1079,7 +1084,7 @@ def task_train(job_input: dict, job: dict) -> dict:
                     else:
                         log.warning(f"Index too large for base64 ({idx_size_mb:.1f} MB), skipped")
             else:
-                log.error(f"Model too large for base64 ({pth_size_mb:.1f} MB) and bucket upload failed")
+                log.error(f"Model too large for base64 ({pth_size_mb:.1f} MB raw / {pth_b64_mb:.1f} MB b64) and bucket upload failed")
                 result["upload_method"] = "failed"
                 result["error"] = (
                     "모델 파일이 너무 크고 클라우드 스토리지가 설정되지 않았습니다. "
@@ -1784,7 +1789,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     hop_length: int = job_input.get("hop_length", 128)
     clean_audio: bool = job_input.get("clean_audio", False)
     clean_strength: float = job_input.get("clean_strength", 0.7)
-    export_format: str = job_input.get("export_format", "wav")
+    export_format: str = job_input.get("export_format", "wav").lower().strip()
     # SVC pipeline options
     separate_vocals: bool = job_input.get("separate_vocals", True)
     vocal_volume: float = job_input.get("vocal_volume", 1.0)
@@ -1794,6 +1799,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
         raise ValueError("No model provided (pth_data or pth_url required)")
     if not audio_b64 and not audio_url:
         raise ValueError("No audio provided (audio_data or audio_url required)")
+    # Whitelist export_format to prevent path traversal / unexpected filenames
+    _VALID_FORMATS = {"wav", "mp3", "flac", "ogg", "m4a"}
+    if export_format not in _VALID_FORMATS:
+        log.warning(f"Invalid export_format '{export_format}', defaulting to 'wav'")
+        export_format = "wav"
 
     job_id = job.get("id", uuid.uuid4().hex[:12])
     work = ensure_dir(WORK_DIR / f"convert_{job_id}")
@@ -1807,8 +1817,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
         if pth_url:
             import requests as _req
             log.info(f"Downloading model from URL: {pth_url[:80]}...")
-            resp = _req.get(pth_url, timeout=120)
-            resp.raise_for_status()
+            try:
+                resp = _req.get(pth_url, timeout=120)
+                resp.raise_for_status()
+            except Exception as dl_err:
+                raise RuntimeError(f"모델 파일 다운로드 실패: {dl_err}") from dl_err
             pth_path = work / "model.pth"
             with open(pth_path, "wb") as f:
                 f.write(resp.content)
@@ -1821,11 +1834,16 @@ def task_convert(job_input: dict, job: dict) -> dict:
         if index_url:
             import requests as _req
             log.info(f"Downloading index from URL: {index_url[:80]}...")
-            resp = _req.get(index_url, timeout=60)
-            resp.raise_for_status()
-            index_path = work / "model.index"
-            with open(index_path, "wb") as f:
-                f.write(resp.content)
+            try:
+                resp = _req.get(index_url, timeout=60)
+                resp.raise_for_status()
+            except Exception as dl_err:
+                log.warning(f"인덱스 파일 다운로드 실패 (선택사항, 계속 진행): {dl_err}")
+                index_path = None
+            else:
+                index_path = work / "model.index"
+                with open(index_path, "wb") as f:
+                    f.write(resp.content)
         elif index_b64:
             index_path = decode_b64_file(index_b64, work / "model.index")
         if index_path:
@@ -1836,8 +1854,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
         if audio_url:
             import requests as _req
             log.info(f"Downloading audio from URL: {audio_url[:80]}...")
-            resp = _req.get(audio_url, timeout=120)
-            resp.raise_for_status()
+            try:
+                resp = _req.get(audio_url, timeout=120)
+                resp.raise_for_status()
+            except Exception as dl_err:
+                raise RuntimeError(f"오디오 파일 다운로드 실패: {dl_err}") from dl_err
             raw_input = work / f"input{input_ext}"
             with open(raw_input, "wb") as f:
                 f.write(resp.content)
@@ -2193,8 +2214,14 @@ def _rvc_infer(
             1.0,  # f0_autotune_strength
         )
 
-        # Save output
-        sf.write(str(output_path), audio_opt, tgt_sr, format="WAV")
+        # Save output — always write as WAV first, then convert to target format if needed
+        wav_tmp = output_path.with_suffix(".wav")
+        sf.write(str(wav_tmp), audio_opt, tgt_sr, format="WAV")
+        if output_path.suffix.lower() != ".wav":
+            run_ffmpeg(["-i", str(wav_tmp), str(output_path)])
+            wav_tmp.unlink(missing_ok=True)
+        elif wav_tmp != output_path:
+            wav_tmp.rename(output_path)
         log.info(f"Inference completed via low-level pipeline (output: {output_path.stat().st_size / 1024:.1f} KB)")
         return
     except Exception as e:
