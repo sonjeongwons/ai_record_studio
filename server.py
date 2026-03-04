@@ -1345,9 +1345,12 @@ async def set_download_folder(folder: str = Form(...)):
 
 @app.post("/api/save-to-folder")
 async def save_to_folder(filename: str = Form(...)):
-    """output 디렉토리의 파일을 사용자 지정 다운로드 폴더에 복사"""
+    """output 또는 preprocessed 디렉토리의 파일을 사용자 지정 다운로드 폴더에 복사"""
     safe_name = Path(filename).name
+    # OUTPUT_DIR 먼저 확인, 없으면 PREPROCESSED_DIR 확인 (전처리 MR/보컬 파일)
     src = OUTPUT_DIR / safe_name
+    if not src.exists():
+        src = PREPROCESSED_DIR / safe_name
     if not src.exists():
         raise HTTPException(404, "파일을 찾을 수 없습니다.")
 
@@ -1775,6 +1778,8 @@ async def start_training(
         print(f"[Train] Payload size: {payload_size:,} bytes, segments: {total_segments}")
 
         runpod_job_id = runpod_client.submit_job(payload)
+        if not runpod_job_id:
+            raise RuntimeError("RunPod 작업 ID를 받지 못했습니다. 잠시 후 다시 시도해주세요.")
 
         msg = f"GPU에 작업 제출됨 ({total_segments}개 세그먼트)"
         update_job(job_id, status="running", progress=5,
@@ -1863,6 +1868,8 @@ async def start_preprocess(
                 "audio_files": batches[0],
                 "bucket_name": config.get("r2_bucket_name", ""),
             })
+            if not runpod_job_id:
+                raise RuntimeError("RunPod 작업 ID를 받지 못했습니다. 잠시 후 다시 시도해주세요.")
             update_job(job_id, status="running", progress=5,
                       message=f"GPU에 전처리 작업 제출됨 ({len(unprocessed)}개 파일{skip_msg})",
                       runpod_job_id=runpod_job_id)
@@ -2210,6 +2217,8 @@ async def start_conversion(
         print(f"[Convert] Payload size: {payload_size:,} bytes, keys: {payload_keys}")
 
         runpod_job_id = runpod_client.submit_job(payload)
+        if not runpod_job_id:
+            raise RuntimeError("RunPod 작업 ID를 받지 못했습니다. 잠시 후 다시 시도해주세요.")
 
         update_job(job_id, status="running", progress=10,
                   message="GPU 변환 시작", runpod_job_id=runpod_job_id)
@@ -2402,6 +2411,8 @@ async def resume_job(job_id: str):
                     "audio_files": batches[0],
                     "bucket_name": config.get("r2_bucket_name", ""),
                 })
+                if not runpod_job_id:
+                    raise RuntimeError("RunPod 작업 ID를 받지 못했습니다.")
                 update_job(job_id, status="running", progress=8,
                           message="전처리 재개 — GPU 작업 제출됨",
                           runpod_job_id=runpod_job_id)
@@ -2496,6 +2507,8 @@ async def resume_job(job_id: str):
                 }
 
             runpod_job_id = runpod_client.submit_job(payload)
+            if not runpod_job_id:
+                raise RuntimeError("RunPod 작업 ID를 받지 못했습니다.")
             update_job(job_id, status="running", progress=5,
                       message=f"학습 재개 — GPU 작업 제출됨 (모델: {model_name})",
                       runpod_job_id=runpod_job_id)
@@ -2568,6 +2581,8 @@ async def resume_job(job_id: str):
                 payload["index_url"] = index_url
 
             runpod_job_id = runpod_client.submit_job(payload)
+            if not runpod_job_id:
+                raise RuntimeError("RunPod 작업 ID를 받지 못했습니다.")
             update_job(job_id, status="running", progress=10,
                       message="변환 재개 — GPU 작업 제출됨",
                       runpod_job_id=runpod_job_id)

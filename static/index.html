@@ -4955,6 +4955,7 @@ async function pollPreprocessStatus() {
       document.getElementById('preprocess-msg').textContent = '서버 연결 실패';
       toast('서버 연결 실패 - 전처리가 일시정지됩니다', 'error');
       _preprocessPaused = true;
+      _showPausedCost('preprocess-paused-cost-info', 'preprocess-paused-cost-val', _preprocessStartTime);
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-paused').style.display = 'block';
       return;
@@ -5337,6 +5338,7 @@ async function pollTrainingStatus() {
     if (_trainPollErrors > 20) {
       // 20 consecutive failures (~3 min) — auto-pause to stop billing
       _trainPaused = true;
+      _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
       document.getElementById('train-status-msg').textContent = '서버 연결 실패';
       document.getElementById('train-info-status').textContent = '연결 오류';
       document.getElementById('train-cancel-area').style.display = 'none';
