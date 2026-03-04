@@ -324,6 +324,11 @@ def init_db():
             db.execute("ALTER TABLE conversions ADD COLUMN job_id TEXT")
         except Exception:
             pass
+        # jobs에 pause_state_json 컬럼 추가 (일시정지 재개용)
+        try:
+            db.execute("ALTER TABLE jobs ADD COLUMN pause_state_json TEXT")
+        except Exception:
+            pass
         # file_hash 인덱스 (중복 체크 성능)
         try:
             db.execute("CREATE INDEX IF NOT EXISTS idx_training_files_hash ON training_files(file_hash)")
@@ -512,6 +517,23 @@ class RunPodClient:
         )
         return resp.json()
 
+    def cancel_runpod_job(self, runpod_job_id: str) -> bool:
+        """RunPod 서버리스 작업 실제 취소 — 과금 즉시 중지.
+        실패해도 예외를 던지지 않고 False 반환."""
+        if not runpod_job_id or not self.is_configured():
+            return False
+        try:
+            resp = requests.post(
+                f"{self.base_url}/cancel/{runpod_job_id}",
+                headers=self.headers,
+                timeout=30
+            )
+            print(f"[RunPod] Cancel {runpod_job_id}: HTTP {resp.status_code}")
+            return resp.status_code in (200, 201, 202)
+        except Exception as e:
+            print(f"[RunPod] Cancel failed for {runpod_job_id}: {e}")
+            return False
+
     def encode_files(self, file_paths: list) -> list:
         """파일들을 base64 인코딩"""
         encoded = []
@@ -529,6 +551,9 @@ runpod_client = RunPodClient()
 
 # 학습 작업별 사용된 훈련 파일 목록 (job_id → [파일명, ...])
 _training_file_map: dict[str, list[str]] = {}
+
+# 활성 작업 상태 (일시정지/재개용 파라미터 저장, job_id → dict)
+_active_job_states: dict[str, dict] = {}
 
 
 def upload_to_r2(file_path: Path, key: str) -> str:
@@ -585,11 +610,11 @@ def update_job(job_id: str, **kwargs):
 
 
 def _is_job_cancelled(job_id: str) -> bool:
-    """작업이 취소/실패 상태인지 확인 (폴링 루프 종료용)"""
+    """작업이 취소/실패/일시정지 상태인지 확인 (폴링 루프 종료용)"""
     try:
         with get_db() as db:
             row = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
-            return row and row["status"] == "failed"
+            return row and row["status"] in ("failed", "cancelled", "paused")
     except Exception:
         return False
 
@@ -1578,6 +1603,16 @@ async def start_training(
     # Job 생성
     job_id = uuid.uuid4().hex[:12]
     _training_file_map[job_id] = training_file_names
+    # 재개용 상태 저장 (일시정지/재개 시 사용)
+    _active_job_states[job_id] = {
+        "type": "train",
+        "model_name": model_name,
+        "epochs": epochs,
+        "sample_rate": sample_rate,
+        "batch_size": batch_size,
+        "f0_method": f0_method,
+        "file_ids": file_ids,
+    }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -1705,6 +1740,11 @@ async def start_preprocess(
 
     job_id = uuid.uuid4().hex[:12]
     preprocess_file_map[job_id] = preprocess_file_ids
+    # 재개용 상태 저장
+    _active_job_states[job_id] = {
+        "type": "preprocess",
+        "file_ids": preprocess_file_ids,
+    }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -1947,6 +1987,23 @@ async def start_conversion(
 
     # Job + 변환 기록 동시 생성 (원자성: RunPod 제출 전에 모든 DB 레코드 삽입)
     job_id = uuid.uuid4().hex[:12]
+    # 재개용 상태 저장
+    _active_job_states[job_id] = {
+        "type": "convert",
+        "model_id": model_id,
+        "input_file": temp_name,
+        "audio_filename": audio.filename,
+        "pitch_shift": pitch_shift,
+        "index_rate": index_rate,
+        "f0_method": f0_method,
+        "vocal_volume": vocal_volume,
+        "mr_volume": mr_volume,
+        "clean_audio": clean_audio,
+        "clean_strength": clean_strength,
+        "protect": protect,
+        "rms_mix_rate": rms_mix_rate,
+        "filter_radius": filter_radius,
+    }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -2088,18 +2145,321 @@ async def get_job(job_id: str):
 
 @app.post("/api/jobs/{job_id}/cancel")
 async def cancel_job(job_id: str):
-    """실행 중인 작업 취소 (DB 상태만 변경, 백그라운드 스레드는 다음 폴링 시 자동 종료)"""
+    """실행 중인 작업 취소 — RunPod 작업도 실제로 취소하여 과금 즉시 중지"""
     with get_db() as db:
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
             raise HTTPException(404, "작업을 찾을 수 없습니다.")
-        if row["status"] in ("completed", "failed"):
-            return {"status": "already_done"}
+        if row["status"] in ("completed", "cancelled"):
+            return {"status": "already_done", "current_status": row["status"]}
+
+        # RunPod 작업 실제 취소 (과금 즉시 중지)
+        runpod_job_id = row["runpod_job_id"] if row["runpod_job_id"] else None
+        if runpod_job_id and runpod_client.is_configured():
+            runpod_client.cancel_runpod_job(runpod_job_id)
+
         db.execute(
-            "UPDATE jobs SET status='failed', message='사용자가 취소함', updated_at=? WHERE id=?",
+            "UPDATE jobs SET status='cancelled', message='사용자가 취소함', updated_at=? WHERE id=?",
             (datetime.now().isoformat(), job_id)
         )
+
+    # 활성 상태 정리
+    _active_job_states.pop(job_id, None)
+    _poll_error_counts.pop(job_id, None)
+    preprocess_file_map.pop(job_id, None)
+
     return {"status": "cancelled"}
+
+
+@app.post("/api/jobs/{job_id}/pause")
+async def pause_job(job_id: str):
+    """실행 중인 작업 일시정지 — RunPod 작업 취소(과금 중지) + 재개 가능한 상태 저장"""
+    with get_db() as db:
+        row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "작업을 찾을 수 없습니다.")
+        if row["status"] in ("completed", "cancelled", "paused"):
+            return {"status": "already_done", "current_status": row["status"]}
+
+        # RunPod 작업 취소 (과금 중지)
+        runpod_job_id = row["runpod_job_id"] if row["runpod_job_id"] else None
+        cancelled_runpod = False
+        if runpod_job_id and runpod_client.is_configured():
+            cancelled_runpod = runpod_client.cancel_runpod_job(runpod_job_id)
+
+        # 재개용 상태 저장 (_active_job_states에서 읽기)
+        pause_state = _active_job_states.get(job_id, {})
+        pause_state_json = json.dumps(pause_state, ensure_ascii=False)
+
+        db.execute(
+            "UPDATE jobs SET status='paused', message='일시정지됨 (RunPod 과금 중지)', "
+            "pause_state_json=?, updated_at=? WHERE id=?",
+            (pause_state_json, datetime.now().isoformat(), job_id)
+        )
+
+    _poll_error_counts.pop(job_id, None)
+    # _active_job_states는 보존 (재개 시 필요)
+
+    return {
+        "status": "paused",
+        "runpod_cancelled": cancelled_runpod,
+        "can_resume": bool(pause_state)
+    }
+
+
+@app.post("/api/jobs/{job_id}/resume")
+async def resume_job(job_id: str):
+    """일시정지된 작업 재개 — 저장된 파라미터로 RunPod에 재제출"""
+    with get_db() as db:
+        row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "작업을 찾을 수 없습니다.")
+        if row["status"] != "paused":
+            raise HTTPException(400, f"일시정지된 작업이 아닙니다. 현재 상태: {row['status']}")
+
+        # pause_state 읽기
+        pause_state_str = row["pause_state_json"] or ""
+        pause_state: dict = {}
+        if pause_state_str:
+            try:
+                pause_state = json.loads(pause_state_str)
+            except Exception:
+                pass
+
+    if not pause_state:
+        raise HTTPException(400, "재개 상태 정보가 없습니다. 처음부터 다시 시작해주세요.")
+
+    if not runpod_client.is_configured():
+        raise HTTPException(400, "RunPod API 설정이 필요합니다. 설정 페이지에서 확인하세요.")
+
+    job_type = row["job_type"]
+
+    try:
+        if job_type == "preprocess":
+            # ─── 전처리 재개 ───
+            # DB에서 아직 전처리되지 않은 파일만 다시 처리
+            file_ids = pause_state.get("file_ids", [])
+            if not file_ids:
+                raise HTTPException(400, "재개할 파일 정보가 없습니다.")
+
+            with get_db() as db:
+                placeholders = ",".join("?" * len(file_ids))
+                rows = db.execute(
+                    f"SELECT * FROM training_files WHERE id IN ({placeholders}) AND deleted=0", file_ids
+                ).fetchall()
+
+            unprocessed = [r for r in rows if not r["preprocessed"]]
+            if not unprocessed:
+                # 모든 파일 이미 완료
+                update_job(job_id, status="completed", progress=100,
+                          message="전처리 완료 (모든 파일 이미 처리됨)")
+                return {"status": "already_completed"}
+
+            file_paths = [str(UPLOAD_DIR / r["filename"]) for r in unprocessed]
+            batches = prepare_files_for_runpod(file_paths)
+
+            preprocess_file_map[job_id] = [r["id"] for r in unprocessed]
+            _active_job_states[job_id] = pause_state.copy()
+
+            update_job(job_id, status="running", progress=3,
+                      message=f"전처리 재개 중... ({len(unprocessed)}개 파일)")
+
+            config = load_config()
+            if len(batches) == 1:
+                runpod_job_id = runpod_client.submit_job({
+                    "task_type": "preprocess",
+                    "audio_files": batches[0],
+                    "bucket_name": config.get("r2_bucket_name", ""),
+                })
+                update_job(job_id, status="running", progress=8,
+                          message="전처리 재개 — GPU 작업 제출됨",
+                          runpod_job_id=runpod_job_id)
+                threading.Thread(
+                    target=poll_runpod_job,
+                    args=(job_id, runpod_job_id, "preprocess"),
+                    daemon=True
+                ).start()
+            else:
+                update_job(job_id, status="running", progress=2,
+                          message=f"전처리 재개 ({len(batches)}개 배치)")
+                threading.Thread(
+                    target=_run_batched_preprocess,
+                    args=(job_id, batches),
+                    daemon=True
+                ).start()
+
+        elif job_type == "train":
+            # ─── 학습 재개 (처음부터 재시작) ───
+            model_name = pause_state.get("model_name", "")
+            epochs = pause_state.get("epochs", 500)
+            sample_rate = pause_state.get("sample_rate", 40000)
+            batch_size = pause_state.get("batch_size", 0)
+            f0_method = pause_state.get("f0_method", "rmvpe")
+            file_ids_str = pause_state.get("file_ids", "")
+
+            if not model_name:
+                raise HTTPException(400, "학습 재개 정보가 없습니다. 처음부터 다시 시작해주세요.")
+
+            # 이름 중복 체크 — 기존 모델이 있으면 suffix 추가
+            with get_db() as db:
+                existing = db.execute(
+                    "SELECT id FROM voice_models WHERE name=?", (model_name,)
+                ).fetchone()
+            if existing:
+                model_name = f"{model_name}_재개"
+
+            update_job(job_id, status="running", progress=3, message="학습 재개 중...")
+
+            ids = [int(x.strip()) for x in file_ids_str.split(",") if x.strip()] if file_ids_str else []
+            with get_db() as db:
+                if ids:
+                    placeholders = ",".join("?" * len(ids))
+                    rows = db.execute(
+                        f"SELECT * FROM training_files WHERE id IN ({placeholders}) AND deleted=0", ids
+                    ).fetchall()
+                else:
+                    rows = db.execute("SELECT * FROM training_files WHERE deleted=0").fetchall()
+
+            all_preprocessed = [f for f in _list_preprocessed_files()
+                                 if not f.name.startswith(("mr_", "vocal_"))]
+            file_paths = ([str(p) for p in all_preprocessed] if all_preprocessed
+                          else [str(UPLOAD_DIR / r["filename"]) for r in rows])
+
+            training_file_names = [r["original_name"] for r in rows]
+            _training_file_map[job_id] = training_file_names
+            _active_job_states[job_id] = pause_state.copy()
+            _active_job_states[job_id]["model_name"] = model_name  # 업데이트된 이름
+
+            config = load_config()
+            r2_bucket = config.get("r2_bucket_name", "")
+            audio_urls = []
+            total_size = sum(Path(p).stat().st_size for p in file_paths if Path(p).exists())
+
+            if total_size > 5_000_000:
+                for fp in file_paths:
+                    if not Path(fp).exists():
+                        continue
+                    r2_key = f"train/{job_id}_resume/{Path(fp).name}"
+                    try:
+                        url = upload_to_r2(Path(fp), r2_key)
+                        audio_urls.append({"filename": Path(fp).name, "url": url})
+                    except Exception as e:
+                        update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
+                        return {"job_id": job_id, "status": "failed"}
+
+            if audio_urls:
+                payload = {
+                    "task_type": "train", "model_name": model_name,
+                    "audio_urls": audio_urls, "sample_rate": sample_rate,
+                    "epochs": epochs, "batch_size": batch_size,
+                    "f0_method": f0_method, "bucket_name": r2_bucket,
+                }
+            else:
+                batches = prepare_files_for_runpod(file_paths)
+                payload = {
+                    "task_type": "train", "model_name": model_name,
+                    "audio_files": batches[0] if batches else [],
+                    "sample_rate": sample_rate, "epochs": epochs,
+                    "batch_size": batch_size, "f0_method": f0_method,
+                    "bucket_name": r2_bucket,
+                }
+
+            runpod_job_id = runpod_client.submit_job(payload)
+            update_job(job_id, status="running", progress=5,
+                      message=f"학습 재개 — GPU 작업 제출됨 (모델: {model_name})",
+                      runpod_job_id=runpod_job_id)
+            threading.Thread(
+                target=poll_runpod_job,
+                args=(job_id, runpod_job_id, "train"),
+                daemon=True
+            ).start()
+
+        elif job_type == "convert":
+            # ─── 변환 재개 ───
+            model_id = pause_state.get("model_id")
+            input_file = pause_state.get("input_file")
+            if not model_id or not input_file:
+                raise HTTPException(400, "변환 재개 정보가 없습니다. 파일을 다시 업로드해주세요.")
+
+            temp_path = UPLOAD_DIR / input_file
+            if not temp_path.exists():
+                raise HTTPException(
+                    400,
+                    f"입력 파일을 찾을 수 없습니다 ({input_file}). "
+                    "변환할 파일을 다시 업로드해주세요."
+                )
+
+            with get_db() as db:
+                model = db.execute("SELECT * FROM voice_models WHERE id=?", (model_id,)).fetchone()
+            if not model:
+                raise HTTPException(404, "모델을 찾을 수 없습니다.")
+
+            update_job(job_id, status="running", progress=3, message="변환 재개 중...")
+            _active_job_states[job_id] = pause_state.copy()
+
+            config = load_config()
+            r2_bucket = config.get("r2_bucket_name", "")
+            payload = {
+                "task_type": "convert",
+                "audio_filename": pause_state.get("audio_filename", input_file),
+                "pitch_shift": pause_state.get("pitch_shift", 0),
+                "index_rate": pause_state.get("index_rate", 0.55),
+                "f0_method": pause_state.get("f0_method", "crepe"),
+                "clean_audio": pause_state.get("clean_audio", False),
+                "clean_strength": pause_state.get("clean_strength", 0.7),
+                "protect": pause_state.get("protect", 0.35),
+                "rms_mix_rate": pause_state.get("rms_mix_rate", 0.1),
+                "filter_radius": pause_state.get("filter_radius", 4),
+                "hop_length": 128, "separate_vocals": True,
+                "vocal_volume": pause_state.get("vocal_volume", 1.0),
+                "mr_volume": pause_state.get("mr_volume", 1.0),
+                "bucket_name": r2_bucket,
+            }
+
+            # 오디오 R2 업로드
+            audio_r2_key = f"convert/{job_id}_resume/{input_file}"
+            try:
+                audio_url = upload_to_r2(temp_path, audio_r2_key)
+                payload["audio_url"] = audio_url
+            except Exception as e:
+                file_size = temp_path.stat().st_size
+                if file_size > 7_000_000:
+                    update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
+                    raise HTTPException(500, f"R2 업로드 실패: {e}")
+                with open(temp_path, "rb") as f:
+                    payload["audio_data"] = base64.b64encode(f.read()).decode()
+
+            pth_url = model["pth_url"] if model["pth_url"] else None
+            index_url = model["index_url"] if model["index_url"] else None
+            if pth_url:
+                payload["pth_url"] = pth_url
+            if index_url:
+                payload["index_url"] = index_url
+
+            runpod_job_id = runpod_client.submit_job(payload)
+            update_job(job_id, status="running", progress=10,
+                      message="변환 재개 — GPU 작업 제출됨",
+                      runpod_job_id=runpod_job_id)
+
+            with get_db() as db:
+                db.execute("UPDATE conversions SET status='processing' WHERE job_id=?", (job_id,))
+
+            threading.Thread(
+                target=poll_runpod_job,
+                args=(job_id, runpod_job_id, "convert"),
+                daemon=True
+            ).start()
+
+        else:
+            raise HTTPException(400, f"지원하지 않는 작업 유형: {job_type}")
+
+        return {"status": "resumed", "job_id": job_id, "job_type": job_type}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        update_job(job_id, status="failed", message=f"재개 실패: {e}")
+        raise HTTPException(500, f"재개 실패: {e}")
 
 
 @app.post("/api/jobs/cleanup")
@@ -2108,11 +2468,14 @@ async def cleanup_all_stuck_jobs():
     with get_db() as db:
         result = db.execute("""
             UPDATE jobs
-            SET status='failed',
+            SET status='cancelled',
                 message='수동 정리',
                 updated_at=?
             WHERE status IN ('running', 'submitting')
         """, (datetime.now().isoformat(),))
+    # 메모리 상태도 정리
+    _active_job_states.clear()
+    _poll_error_counts.clear()
     return {"cleaned": result.rowcount}
 
 

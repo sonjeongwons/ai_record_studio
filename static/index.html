@@ -11,11 +11,14 @@
   --bg2: #0f0f1e;
   --bg3: #161628;
   --border: rgba(255,255,255,0.06);
+  --border-hover: rgba(139,92,246,0.3);
   --text: #e2e2f0;
   --text2: #8888a8;
   --text3: #55556a;
   --violet: #8b5cf6;
+  --violet-dark: #7c3aed;
   --violet-g: rgba(139,92,246,0.15);
+  --violet-g2: rgba(139,92,246,0.08);
   --cyan: #06b6d4;
   --emerald: #10b981;
   --amber: #f59e0b;
@@ -23,6 +26,11 @@
   --rose: #f43f5e;
   --text1: #d0d0e0;
   --radius: 16px;
+  --shadow-violet: 0 4px 20px rgba(139,92,246,0.25);
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
+  --transition-fast: 0.15s cubic-bezier(0.4,0,0.2,1);
+  --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
+  --transition-slow: 0.35s cubic-bezier(0.4,0,0.2,1);
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
@@ -34,21 +42,21 @@ body {
   display: flex;
 }
 body.busy, body.busy * { cursor: wait !important; }
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.25); border-radius: 4px; transition: background 0.2s; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.5); }
 
 /* ─── Sidebar ─── */
 .sidebar {
   width: 68px;
-  background: rgba(0,0,0,0.3);
+  background: rgba(0,0,0,0.35);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 20px 0;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
 }
 .sidebar .logo {
@@ -57,7 +65,13 @@ body.busy, body.busy * { cursor: wait !important; }
   border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 24px;
-  box-shadow: 0 4px 20px rgba(139,92,246,0.3);
+  box-shadow: 0 4px 20px rgba(139,92,246,0.35);
+  transition: transform var(--transition), box-shadow var(--transition);
+  cursor: pointer;
+}
+.sidebar .logo:hover {
+  transform: scale(1.08) rotate(-3deg);
+  box-shadow: 0 6px 28px rgba(139,92,246,0.55);
 }
 .sidebar .logo svg { width: 20px; height: 20px; fill: white; }
 .nav-btn {
@@ -67,10 +81,15 @@ body.busy, body.busy * { cursor: wait !important; }
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   color: var(--text3);
-  transition: all 0.2s;
+  transition: background var(--transition), color var(--transition), transform var(--transition);
   position: relative;
 }
-.nav-btn:hover { background: rgba(255,255,255,0.05); color: var(--text2); }
+.nav-btn:hover {
+  background: rgba(255,255,255,0.07);
+  color: var(--text);
+  transform: scale(1.07);
+}
+.nav-btn:active { transform: scale(0.95); }
 .nav-btn.active {
   background: var(--violet-g);
   color: var(--violet);
@@ -81,17 +100,18 @@ body.busy, body.busy * { cursor: wait !important; }
   left: 0; top: 50%;
   transform: translateY(-50%);
   width: 3px; height: 20px;
-  background: var(--violet);
+  background: linear-gradient(to bottom, var(--violet), var(--cyan));
   border-radius: 0 3px 3px 0;
+  box-shadow: 2px 0 8px rgba(139,92,246,0.5);
 }
 .nav-btn svg { width: 20px; height: 20px; }
 .nav-btn .tooltip {
   position: absolute;
-  left: 56px; top: 50%;
-  transform: translateY(-50%);
+  left: 58px; top: 50%;
+  transform: translateY(-50%) translateX(-4px);
   background: var(--bg3);
-  border: 1px solid var(--border);
-  padding: 4px 10px;
+  border: 1px solid rgba(139,92,246,0.2);
+  padding: 5px 10px;
   border-radius: 8px;
   font-size: 12px;
   color: var(--text);
@@ -99,9 +119,13 @@ body.busy, body.busy * { cursor: wait !important; }
   z-index: 100;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  box-shadow: var(--shadow-sm);
 }
-.nav-btn:hover .tooltip { opacity: 1; }
+.nav-btn:hover .tooltip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
 
 /* ─── Main Content ─── */
 .main {
@@ -116,8 +140,25 @@ body.busy, body.busy * { cursor: wait !important; }
 /* .page styles defined in Tab Fade Transitions section below */
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulseRing {
+  0% { box-shadow: 0 0 0 0 rgba(139,92,246,0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(139,92,246,0); }
+  100% { box-shadow: 0 0 0 0 rgba(139,92,246,0); }
+}
+@keyframes badgePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
 }
 
 /* ─── Common Components ─── */
@@ -131,9 +172,13 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
   border-radius: var(--radius);
   padding: 20px;
   margin-bottom: 16px;
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: border-color var(--transition-slow), box-shadow var(--transition-slow), transform var(--transition-slow);
 }
-.card:hover { border-color: rgba(139,92,246,0.3); box-shadow: 0 4px 20px rgba(139,92,246,0.1); }
+.card:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 6px 24px rgba(139,92,246,0.12);
+  transform: translateY(-1px);
+}
 
 .btn {
   padding: 10px 20px;
@@ -143,41 +188,67 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition), transform var(--transition), border-color var(--transition);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   position: relative;
   overflow: hidden;
+  white-space: nowrap;
 }
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0);
+  transition: background var(--transition-fast);
+}
+.btn:hover::after { background: rgba(255,255,255,0.04); }
 .btn:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: scale(0.96) !important;
 }
+.btn:disabled { cursor: not-allowed; }
 .btn-primary {
   background: var(--violet);
   color: white;
 }
-.btn-primary:hover { background: #7c3aed; box-shadow: 0 4px 15px rgba(139,92,246,0.4); }
-.btn-primary:disabled { background: #2a2a3a; color: var(--text3); cursor: not-allowed; box-shadow: none; }
+.btn-primary:not(:disabled):hover {
+  background: var(--violet-dark);
+  box-shadow: 0 6px 20px rgba(139,92,246,0.45);
+  transform: translateY(-1px);
+}
+.btn-primary:disabled { background: #2a2a3a; color: var(--text3); box-shadow: none; }
 .btn-secondary {
   background: rgba(255,255,255,0.05);
   color: var(--text);
   border: 1px solid var(--border);
 }
-.btn-secondary:hover { background: rgba(255,255,255,0.08); }
-.btn-secondary:disabled { background: rgba(255,255,255,0.03); color: var(--text3); cursor: not-allowed; border-color: transparent; }
+.btn-secondary:not(:disabled):hover {
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.12);
+  transform: translateY(-1px);
+}
+.btn-secondary:disabled { background: rgba(255,255,255,0.03); color: var(--text3); border-color: transparent; }
 .btn-danger {
   background: rgba(239,68,68,0.1);
   color: var(--red);
   border: 1px solid rgba(239,68,68,0.2);
 }
-.btn-danger:hover { background: rgba(239,68,68,0.2); }
+.btn-danger:not(:disabled):hover {
+  background: rgba(239,68,68,0.2);
+  border-color: rgba(239,68,68,0.35);
+  transform: translateY(-1px);
+}
 .btn-full { width: 100%; justify-content: center; padding: 14px; font-size: 14px; }
 .btn-gradient {
   background: linear-gradient(135deg, var(--violet), #6366f1);
   color: white;
 }
-.btn-gradient:hover { box-shadow: 0 4px 20px rgba(139,92,246,0.3); }
+.btn-gradient:not(:disabled):hover {
+  box-shadow: 0 6px 24px rgba(139,92,246,0.45);
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
 .btn-gradient:disabled { background: #2a2a3a; color: var(--text3); box-shadow: none; }
 
 input[type="text"], input[type="number"], input[type="password"], select, textarea {
@@ -190,10 +261,26 @@ input[type="text"], input[type="number"], input[type="password"], select, textar
   color: var(--text);
   width: 100%;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
 }
-input:focus, select:focus, textarea:focus { border-color: var(--violet); box-shadow: 0 0 0 3px rgba(139,92,246,0.15); }
-select { -webkit-appearance: none; cursor: pointer; }
+input[type="text"]:hover:not(:focus), input[type="number"]:hover:not(:focus),
+input[type="password"]:hover:not(:focus), select:hover:not(:focus), textarea:hover:not(:focus) {
+  border-color: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.065);
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--violet);
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.18);
+  background: rgba(139,92,246,0.04);
+}
+select {
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238888a8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
 
 .label {
   display: block;
@@ -219,9 +306,17 @@ select { -webkit-appearance: none; cursor: pointer; }
   padding: 3px 10px;
   border-radius: 20px;
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 .badge-green { background: rgba(16,185,129,0.1); color: var(--emerald); border: 1px solid rgba(16,185,129,0.2); }
-.badge-amber { background: rgba(245,158,11,0.1); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+.badge-amber {
+  background: rgba(245,158,11,0.1); color: var(--amber);
+  border: 1px solid rgba(245,158,11,0.2);
+  animation: badgePulse 1.8s ease-in-out infinite;
+}
 .badge-red { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
 .badge-violet { background: var(--violet-g); color: var(--violet); border: 1px solid rgba(139,92,246,0.2); }
 
@@ -232,24 +327,34 @@ select { -webkit-appearance: none; cursor: pointer; }
   padding: 40px;
   text-align: center;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: border-color var(--transition-slow), background var(--transition-slow), box-shadow var(--transition-slow);
   background: rgba(255,255,255,0.01);
 }
 .dropzone:hover, .dropzone.drag-over, .dropzone.dragover {
   border-color: var(--violet);
-  background: var(--violet-g);
+  background: rgba(139,92,246,0.06);
+  box-shadow: inset 0 0 32px rgba(139,92,246,0.06);
+}
+.dropzone.drag-over, .dropzone.dragover {
+  border-style: solid;
+  box-shadow: inset 0 0 40px rgba(139,92,246,0.1), 0 0 0 3px rgba(139,92,246,0.15);
 }
 .dropzone-icon {
-  width: 48px; height: 48px;
-  border-radius: 14px;
+  width: 52px; height: 52px;
+  border-radius: 15px;
   background: rgba(255,255,255,0.05);
   display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 12px;
+  margin: 0 auto 14px;
   color: var(--text2);
+  transition: background var(--transition), color var(--transition), transform var(--transition);
 }
-.dropzone:hover .dropzone-icon { background: var(--violet-g); color: var(--violet); }
+.dropzone:hover .dropzone-icon, .dropzone.drag-over .dropzone-icon {
+  background: var(--violet-g);
+  color: var(--violet);
+  transform: scale(1.12) translateY(-2px);
+}
 .dropzone-text { font-size: 14px; color: var(--text); font-weight: 500; }
-.dropzone-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+.dropzone-sub { font-size: 12px; color: var(--text3); margin-top: 5px; }
 
 /* ─── File List ─── */
 .file-item {
@@ -261,6 +366,11 @@ select { -webkit-appearance: none; cursor: pointer; }
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
   margin-bottom: 6px;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+.file-item:hover {
+  background: rgba(139,92,246,0.08) !important;
+  border-color: rgba(139,92,246,0.15);
 }
 .file-icon {
   width: 36px; height: 36px;
@@ -269,20 +379,31 @@ select { -webkit-appearance: none; cursor: pointer; }
   display: flex; align-items: center; justify-content: center;
   color: var(--violet);
   flex-shrink: 0;
+  transition: background var(--transition), transform var(--transition);
 }
+.file-item:hover .file-icon { background: rgba(139,92,246,0.22); transform: scale(1.05); }
 .file-info { flex: 1; min-width: 0; }
 .file-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-meta { font-size: 11px; color: var(--text3); }
 .file-delete {
   background: none; border: none;
   color: var(--text3); cursor: pointer;
-  padding: 4px;
+  padding: 6px;
   border-radius: 6px;
-  transition: all 0.2s;
+  transition: background var(--transition), color var(--transition), transform var(--transition-fast);
+  display: flex; align-items: center;
 }
-.file-delete:hover { background: rgba(239,68,68,0.1); color: var(--red); }
+.file-delete:hover {
+  background: rgba(239,68,68,0.12);
+  color: var(--red);
+  transform: scale(1.15);
+}
 
 /* ─── Progress ─── */
+@keyframes ringGlow {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(139,92,246,0.5)); }
+  50% { filter: drop-shadow(0 0 10px rgba(139,92,246,0.8)); }
+}
 .progress-container {
   display: flex;
   flex-direction: column;
@@ -295,7 +416,11 @@ select { -webkit-appearance: none; cursor: pointer; }
 }
 .progress-ring svg { transform: rotate(-90deg); }
 .progress-ring .bg { fill: none; stroke: var(--bg3); stroke-width: 5; }
-.progress-ring .fg { fill: none; stroke: url(#pg); stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+.progress-ring .fg {
+  fill: none; stroke: url(#pg); stroke-width: 5; stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease;
+  animation: ringGlow 2.5s ease-in-out infinite;
+}
 .progress-text {
   position: absolute;
   top: 50%; left: 50%;
@@ -316,32 +441,60 @@ select { -webkit-appearance: none; cursor: pointer; }
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: border-color var(--transition), background var(--transition), transform var(--transition), box-shadow var(--transition);
   margin-bottom: 8px;
 }
-.model-card:hover { border-color: rgba(139,92,246,0.3); }
-.model-card.selected { border-color: var(--violet); background: var(--violet-g); }
+.model-card:hover {
+  border-color: var(--border-hover);
+  background: rgba(139,92,246,0.04);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(139,92,246,0.1);
+}
+.model-card.selected {
+  border-color: var(--violet);
+  background: var(--violet-g);
+  box-shadow: 0 0 0 2px rgba(139,92,246,0.25);
+}
 .btn-model-delete {
   background: none; border: none; cursor: pointer; padding: 6px;
-  border-radius: 8px; color: var(--text3); transition: all 0.2s;
+  border-radius: 8px; color: var(--text3);
+  transition: background var(--transition), color var(--transition), transform var(--transition-fast);
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
 }
-.btn-model-delete:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+.btn-model-delete:hover {
+  background: rgba(239,68,68,0.15);
+  color: #ef4444;
+  transform: scale(1.15);
+}
 .conversion-item {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border-radius: 10px;
   background: rgba(255,255,255,0.02); border: 1px solid var(--border);
-  margin-bottom: 6px; transition: border-color 0.2s;
+  margin-bottom: 6px;
+  transition: border-color var(--transition), background var(--transition), transform var(--transition);
 }
-.conversion-item:hover { border-color: rgba(139,92,246,0.3); }
+.conversion-item:hover {
+  border-color: var(--border-hover);
+  background: rgba(139,92,246,0.04);
+  transform: translateY(-1px);
+}
 .btn-conv-action {
   background: none; border: none; cursor: pointer; padding: 6px;
-  border-radius: 8px; color: var(--text3); transition: all 0.2s;
+  border-radius: 8px; color: var(--text3);
+  transition: background var(--transition), color var(--transition), transform var(--transition-fast);
   flex-shrink: 0; display: flex; align-items: center; justify-content: center;
   text-decoration: none;
 }
-.btn-conv-action:hover { background: rgba(139,92,246,0.15); color: var(--violet); }
-.btn-conv-delete:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
+.btn-conv-action:hover {
+  background: rgba(139,92,246,0.15);
+  color: var(--violet);
+  transform: scale(1.15);
+}
+.btn-conv-delete:hover {
+  background: rgba(239,68,68,0.15) !important;
+  color: #ef4444 !important;
+  transform: scale(1.15);
+}
 .model-train-files { margin-top: 4px; cursor: pointer; }
 .model-train-files-header {
   display: flex; align-items: center; gap: 4px;
@@ -367,17 +520,31 @@ select { -webkit-appearance: none; cursor: pointer; }
 }
 
 /* ─── Slider ─── */
-.slider-group { margin-bottom: 14px; }
-.slider-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.slider-group { margin-bottom: 16px; }
+.slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .slider-label { font-size: 12px; color: var(--text2); }
-.slider-value { font-size: 12px; color: var(--violet); font-family: 'JetBrains Mono', monospace; }
+.slider-value {
+  font-size: 12px;
+  color: var(--violet);
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(139,92,246,0.1);
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(139,92,246,0.2);
+  transition: background var(--transition), color var(--transition);
+  min-width: 36px;
+  text-align: center;
+}
 input[type="range"] {
   -webkit-appearance: none;
   width: 100%; height: 6px;
   border-radius: 3px;
   background: var(--bg3);
   outline: none;
+  cursor: pointer;
+  transition: height var(--transition-fast);
 }
+input[type="range"]:hover { height: 7px; }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 16px; height: 16px;
@@ -386,6 +553,19 @@ input[type="range"]::-webkit-slider-thumb {
   cursor: pointer;
   border: 2px solid var(--bg);
   box-shadow: 0 0 8px rgba(139,92,246,0.4);
+  transition: width var(--transition-fast), height var(--transition-fast), box-shadow var(--transition-fast);
+}
+input[type="range"]:hover::-webkit-slider-thumb {
+  width: 18px; height: 18px;
+  box-shadow: 0 0 14px rgba(139,92,246,0.65);
+}
+input[type="range"]:active::-webkit-slider-thumb {
+  width: 20px; height: 20px;
+  box-shadow: 0 0 18px rgba(139,92,246,0.7);
+}
+/* Slider fill: set via JS updateSliderFill() */
+input[type="range"].has-fill {
+  background: linear-gradient(to right, var(--violet) 0%, var(--violet) var(--fill, 50%), var(--bg3) var(--fill, 50%), var(--bg3) 100%);
 }
 
 /* ─── Alert Box ─── */
@@ -410,12 +590,26 @@ input[type="range"]::-webkit-slider-thumb {
   background: linear-gradient(135deg, rgba(30,30,50,0.8), rgba(20,20,40,0.6));
   backdrop-filter: blur(10px);
   border: 1px solid rgba(139,92,246,0.1);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: border-color var(--transition-slow), box-shadow var(--transition-slow), transform var(--transition-slow);
+  position: relative;
+  overflow: hidden;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px; height: 100%;
+  background: currentColor;
+  opacity: 0.3;
+  border-radius: 0 2px 2px 0;
+  transition: opacity var(--transition);
 }
 .stat-card:hover {
-  border-color: rgba(139,92,246,0.3);
-  box-shadow: 0 4px 20px rgba(139,92,246,0.1);
+  border-color: var(--border-hover);
+  box-shadow: 0 6px 24px rgba(139,92,246,0.12);
+  transform: translateY(-2px);
 }
+.stat-card:hover::before { opacity: 0.7; }
 .stat-value {
   font-size: 24px;
   font-weight: 700;
@@ -433,13 +627,21 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
   margin-bottom: 6px;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+.job-item:hover {
+  background: rgba(139,92,246,0.08) !important;
+  border-color: rgba(139,92,246,0.15);
+  transform: translateX(2px);
 }
 .job-icon {
   width: 36px; height: 36px;
   border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  transition: transform var(--transition);
 }
+.job-item:hover .job-icon { transform: scale(1.1); }
 .job-icon.train { background: rgba(139,92,246,0.1); color: var(--violet); }
 .job-icon.convert { background: rgba(6,182,212,0.1); color: var(--cyan); }
 .job-icon.preprocess { background: rgba(245,158,11,0.1); color: var(--amber); }
@@ -451,8 +653,25 @@ input[type="range"]::-webkit-slider-thumb {
   border-top-color: white;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── Button Loading State ─── */
+.btn.loading {
+  pointer-events: none;
+  opacity: 0.8;
+}
+.btn.loading .btn-spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+.btn-spinner { display: none; }
 
 /* ─── Empty State ─── */
 .empty-state {
@@ -630,44 +849,48 @@ input[type="range"]::-webkit-slider-thumb {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 8px 0;
+  padding: 10px 0;
   cursor: pointer;
   position: relative;
+  transition: opacity var(--transition);
 }
+.connection-status:hover { opacity: 0.85; }
 .connection-dot {
   width: 10px; height: 10px;
   border-radius: 50%;
   background: var(--text3);
-  transition: background 0.3s, box-shadow 0.3s;
+  transition: background 0.4s, box-shadow 0.4s;
 }
 .connection-dot.online {
   background: var(--emerald);
-  box-shadow: 0 0 8px rgba(16,185,129,0.5);
+  box-shadow: 0 0 0 3px rgba(16,185,129,0.2), 0 0 8px rgba(16,185,129,0.5);
 }
 .connection-dot.offline {
   background: var(--red);
-  box-shadow: 0 0 8px rgba(239,68,68,0.4);
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.15), 0 0 8px rgba(239,68,68,0.4);
 }
 .connection-dot.checking {
   background: var(--amber);
   animation: connPulse 1.2s ease infinite;
+  box-shadow: 0 0 8px rgba(245,158,11,0.4);
 }
 @keyframes connPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
 }
 .connection-label {
   font-size: 9px;
   color: var(--text3);
   text-align: center;
   line-height: 1.2;
+  letter-spacing: 0.3px;
 }
 .connection-status .tooltip {
   position: absolute;
-  left: 56px; top: 50%;
-  transform: translateY(-50%);
+  left: 58px; top: 50%;
+  transform: translateY(-50%) translateX(-4px);
   background: var(--bg3);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(139,92,246,0.2);
   padding: 6px 12px;
   border-radius: 8px;
   font-size: 11px;
@@ -676,23 +899,32 @@ input[type="range"]::-webkit-slider-thumb {
   z-index: 100;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  box-shadow: var(--shadow-sm);
 }
-.connection-status:hover .tooltip { opacity: 1; }
+.connection-status:hover .tooltip {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
 
 /* ─── Inline Audio Player ─── */
 .audio-player {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 7px 12px;
   border-radius: 10px;
   background: rgba(255,255,255,0.03);
   border: 1px solid var(--border);
-  margin-top: 6px;
+  margin-top: 8px;
+  transition: border-color var(--transition), background var(--transition);
+}
+.audio-player:hover {
+  border-color: rgba(139,92,246,0.2);
+  background: rgba(255,255,255,0.04);
 }
 .audio-play-btn {
-  width: 28px; height: 28px;
+  width: 30px; height: 30px;
   border-radius: 50%;
   background: var(--violet-g);
   border: none;
@@ -700,9 +932,14 @@ input[type="range"]::-webkit-slider-thumb {
   cursor: pointer;
   color: var(--violet);
   flex-shrink: 0;
-  transition: background 0.2s;
+  transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
 }
-.audio-play-btn:hover { background: rgba(139,92,246,0.25); }
+.audio-play-btn:hover {
+  background: rgba(139,92,246,0.28);
+  transform: scale(1.1);
+  box-shadow: 0 0 12px rgba(139,92,246,0.4);
+}
+.audio-play-btn:active { transform: scale(0.92); }
 .audio-play-btn svg { width: 12px; height: 12px; fill: currentColor; }
 .audio-progress-wrap {
   flex: 1;
@@ -754,6 +991,12 @@ input[type="range"]::-webkit-slider-thumb {
   background: var(--bg2);
   padding: 20px;
   margin-bottom: 16px;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+.preprocess-card:hover {
+  border-color: rgba(139,92,246,0.3);
+  box-shadow: 0 4px 16px rgba(139,92,246,0.1);
+  transform: translateY(-1px);
 }
 .preprocess-header {
   display: flex;
@@ -767,6 +1010,11 @@ input[type="range"]::-webkit-slider-thumb {
   background: var(--violet-g);
   display: flex; align-items: center; justify-content: center;
   color: var(--violet);
+  transition: background var(--transition), transform var(--transition);
+}
+.preprocess-card:hover .preprocess-icon {
+  background: rgba(139,92,246,0.18);
+  transform: scale(1.07);
 }
 .preprocess-results {
   display: grid;
@@ -780,17 +1028,58 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(255,255,255,0.03);
   border: 1px solid var(--border);
   text-align: center;
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  cursor: default;
+}
+.preprocess-stat:hover {
+  background: rgba(139,92,246,0.06);
+  border-color: rgba(139,92,246,0.2);
+  transform: translateY(-2px);
 }
 .preprocess-stat-value {
   font-size: 20px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   color: var(--violet);
+  transition: color var(--transition);
 }
+.preprocess-stat:hover .preprocess-stat-value { color: #a78bfa; }
 .preprocess-stat-label {
   font-size: 11px;
   color: var(--text3);
   margin-top: 2px;
+}
+/* ─── Advanced Settings Toggle ─── */
+.adv-toggle-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: background var(--transition-fast);
+  user-select: none;
+}
+.adv-toggle-header:hover { background: rgba(255,255,255,0.04); }
+.adv-toggle-header:hover .adv-toggle-label { color: var(--text2); }
+.adv-toggle-arrow {
+  font-size: 10px;
+  color: var(--text3);
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), color var(--transition-fast);
+  display: inline-block;
+}
+.adv-toggle-arrow.open { transform: rotate(90deg); color: var(--violet); }
+.adv-toggle-label { font-size: 12px; color: var(--text3); transition: color var(--transition-fast); }
+.adv-panel {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease;
+  opacity: 0;
+}
+.adv-panel.open {
+  max-height: 600px;
+  opacity: 1;
 }
 .preprocess-progress {
   display: flex;
@@ -824,16 +1113,26 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
   margin-bottom: 6px;
-  transition: border-color 0.2s;
+  transition: border-color var(--transition), background var(--transition);
 }
-.batch-item.processing { border-color: rgba(139,92,246,0.3); }
-.batch-item.completed { border-color: rgba(16,185,129,0.3); }
-.batch-item.failed { border-color: rgba(239,68,68,0.3); }
+.batch-item.processing {
+  border-color: rgba(139,92,246,0.35);
+  background: rgba(139,92,246,0.03);
+}
+.batch-item.completed {
+  border-color: rgba(16,185,129,0.3);
+  background: rgba(16,185,129,0.02);
+}
+.batch-item.failed {
+  border-color: rgba(239,68,68,0.3);
+  background: rgba(239,68,68,0.02);
+}
 .batch-item-icon {
   width: 32px; height: 32px;
   border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  transition: background var(--transition);
 }
 .batch-item-icon.pending { background: rgba(255,255,255,0.05); color: var(--text3); }
 .batch-item-icon.processing { background: var(--violet-g); color: var(--violet); }
@@ -841,15 +1140,19 @@ input[type="range"]::-webkit-slider-thumb {
 .batch-item-icon.failed { background: rgba(239,68,68,0.1); color: var(--red); }
 .batch-item-info { flex: 1; min-width: 0; }
 .batch-item-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.batch-item-status { font-size: 11px; color: var(--text3); }
+.batch-item-status { font-size: 11px; color: var(--text3); margin-top: 2px; }
 .batch-remove {
   background: none; border: none;
   color: var(--text3); cursor: pointer;
-  padding: 4px; border-radius: 6px;
-  transition: all 0.2s;
-  font-size: 12px;
+  padding: 5px; border-radius: 6px;
+  transition: background var(--transition), color var(--transition), transform var(--transition-fast);
+  display: flex; align-items: center;
 }
-.batch-remove:hover { background: rgba(239,68,68,0.1); color: var(--red); }
+.batch-remove:hover {
+  background: rgba(239,68,68,0.12);
+  color: var(--red);
+  transform: scale(1.15);
+}
 .batch-overall {
   margin-top: 12px;
   padding: 10px 14px;
@@ -873,13 +1176,24 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 /* ─── Hover & Focus Refinements ─── */
-.file-item:nth-child(even) { background: rgba(255,255,255,0.02); }
-.file-item:hover { background: rgba(139,92,246,0.08); }
-.job-item:nth-child(even) { background: rgba(255,255,255,0.02); }
-.job-item:hover { background: rgba(139,92,246,0.08); }
-.conversion-item:nth-child(even) { background: rgba(255,255,255,0.02); }
-.conversion-item:hover { background: rgba(139,92,246,0.08); }
-.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+.file-item:nth-child(even) { background: rgba(255,255,255,0.015); }
+.job-item:nth-child(even) { background: rgba(255,255,255,0.015); }
+.conversion-item:nth-child(even) { background: rgba(255,255,255,0.015); }
+.btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Active job banner hover */
+#active-job-banner {
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition) !important;
+}
+#active-job-banner:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(139,92,246,0.15) !important;
+  border-color: rgba(139,92,246,0.35) !important;
+}
+
+/* Model icon hover */
+.model-card:hover .model-icon { transform: scale(1.08); }
+.model-icon { transition: transform var(--transition); }
 
 /* Focus-visible for keyboard accessibility */
 .btn:focus-visible, .nav-btn:focus-visible, input:focus-visible, select:focus-visible,
@@ -977,25 +1291,30 @@ input[type="range"]::-webkit-slider-thumb {
   justify-content: center;
   cursor: pointer;
   z-index: 9990;
-  box-shadow: 0 4px 16px rgba(139,92,246,0.4);
+  box-shadow: 0 4px 18px rgba(139,92,246,0.45);
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.3s, transform 0.3s, background 0.2s;
+  transform: translateY(20px) scale(0.8);
+  transition: opacity 0.3s, transform 0.3s cubic-bezier(0.34,1.56,0.64,1), background var(--transition);
   pointer-events: none;
 }
 .scroll-top-btn.visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
   pointer-events: auto;
 }
-.scroll-top-btn:hover { background: #7c3aed; }
+.scroll-top-btn:hover {
+  background: var(--violet-dark);
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 6px 22px rgba(139,92,246,0.55);
+}
+.scroll-top-btn:active { transform: scale(0.93); }
 .scroll-top-btn svg { width: 18px; height: 18px; }
 
 /* ─── Tab Fade Transitions ─── */
 .page {
   display: none;
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(10px);
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 .page.active {
@@ -1006,7 +1325,10 @@ input[type="range"]::-webkit-slider-thumb {
 .page.fade-entering {
   display: block;
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(10px);
+}
+.page.page-visible {
+  display: block;
 }
 
 /* ─── Audio Volume Control ─── */
@@ -1043,7 +1365,7 @@ input[type="range"]::-webkit-slider-thumb {
 /* ─── Enhanced Empty States ─── */
 .empty-state-enhanced {
   text-align: center;
-  padding: 48px 24px;
+  padding: 52px 24px;
   color: var(--text3);
 }
 .empty-state-enhanced .empty-icon {
@@ -1055,7 +1377,8 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 16px;
+  margin: 0 auto 18px;
+  animation: float 3.5s ease-in-out infinite;
 }
 .empty-state-enhanced .empty-icon svg {
   width: 32px;
@@ -1071,7 +1394,9 @@ input[type="range"]::-webkit-slider-thumb {
 .empty-state-enhanced .empty-desc {
   font-size: 12px;
   color: var(--text3);
-  line-height: 1.5;
+  line-height: 1.6;
+  max-width: 280px;
+  margin: 0 auto;
 }
 
 /* ─── Sub-Tab Bar ─── */
@@ -1079,13 +1404,14 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
   gap: 2px;
   background: var(--bg2);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 3px;
   margin-bottom: 20px;
   width: fit-content;
 }
 .sub-tab {
-  padding: 8px 20px;
+  padding: 8px 22px;
   border: none;
   border-radius: 10px;
   background: transparent;
@@ -1093,13 +1419,15 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition), transform var(--transition-fast);
   font-family: inherit;
 }
-.sub-tab:hover { color: var(--text); }
+.sub-tab:hover { color: var(--text2); background: rgba(255,255,255,0.04); }
+.sub-tab:active { transform: scale(0.97); }
 .sub-tab.active {
   background: var(--violet);
   color: white;
+  box-shadow: 0 2px 10px rgba(139,92,246,0.4);
 }
 
 /* ─── Pagination ─── */
@@ -1114,20 +1442,31 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .pagination:empty { display: none; }
 .page-btn {
-  padding: 6px 12px;
+  padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: transparent;
   color: var(--text2);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--transition), border-color var(--transition), color var(--transition), transform var(--transition-fast);
   font-family: inherit;
 }
-.page-btn:hover { border-color: var(--violet); color: var(--text); }
+.page-btn:not(:disabled):hover {
+  border-color: var(--violet);
+  color: var(--text);
+  background: rgba(139,92,246,0.08);
+  transform: translateY(-1px);
+}
+.page-btn:not(:disabled):active { transform: scale(0.95); }
 .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.page-btn.active { background: var(--violet); color: white; border-color: var(--violet); }
-.page-info { font-size: 11px; color: var(--text3); }
+.page-btn.active {
+  background: var(--violet);
+  color: white;
+  border-color: var(--violet);
+  box-shadow: 0 2px 8px rgba(139,92,246,0.35);
+}
+.page-info { font-size: 11px; color: var(--text3); padding: 0 4px; }
 
 /* ─── Keyboard Shortcut Badge ─── */
 .kbd-hint {
@@ -1158,57 +1497,135 @@ input[type="range"]::-webkit-slider-thumb {
     animation: progressPulse 2s ease-in-out infinite;
 }
 
+/* ─── Pause / Resume Styles ─── */
+.badge-paused { background: rgba(245,158,11,0.12); color: var(--amber); border: 1px solid rgba(245,158,11,0.25); }
+.btn-pause {
+  background: rgba(245,158,11,0.1);
+  color: var(--amber);
+  border: 1px solid rgba(245,158,11,0.25);
+}
+.btn-pause:not(:disabled):hover {
+  background: rgba(245,158,11,0.2);
+  border-color: rgba(245,158,11,0.4);
+  transform: translateY(-1px);
+}
+.btn-resume {
+  background: rgba(16,185,129,0.1);
+  color: var(--emerald);
+  border: 1px solid rgba(16,185,129,0.25);
+}
+.btn-resume:not(:disabled):hover {
+  background: rgba(16,185,129,0.2);
+  border-color: rgba(16,185,129,0.4);
+  transform: translateY(-1px);
+}
+/* 일시정지됨 상태 링 색상 (진행 원형) */
+.paused-ring { stroke: var(--amber) !important; }
+@keyframes pausedPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.paused-ring { animation: pausedPulse 1.5s ease-in-out infinite; }
+/* 일시정지/재개 컨트롤 영역 */
+.job-paused-area {
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.2);
+  margin-top: 16px;
+  text-align: center;
+}
+.job-paused-icon {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: rgba(245,158,11,0.12);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 10px;
+  color: var(--amber);
+}
+.job-paused-title {
+  font-size: 14px; font-weight: 600; color: var(--amber);
+  margin-bottom: 4px;
+}
+.job-paused-desc {
+  font-size: 12px; color: var(--text3); margin-bottom: 16px;
+}
+/* 네트워크 에러 배너 */
+.net-error-banner {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(239,68,68,0.07);
+  border: 1px solid rgba(239,68,68,0.18);
+  font-size: 12px;
+  color: #f87171;
+  margin-top: 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+
 /* ─── Custom Confirm Dialog ─── */
+@keyframes dialogIn {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
 .confirm-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0,0,0,0.72);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 10000;
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px);
+    animation: fadeIn 0.15s ease;
 }
 .confirm-dialog {
     background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 28px;
-    max-width: 400px;
-    width: 90%;
+    border: 1px solid rgba(139,92,246,0.2);
+    border-radius: 20px;
+    padding: 32px 28px 24px;
+    max-width: 420px;
+    width: 92%;
     text-align: center;
-    animation: fadeIn 0.2s ease;
+    animation: dialogIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
 }
 .confirm-dialog h3 {
-    margin: 0 0 12px;
+    margin: 0 0 10px;
     color: var(--text);
+    font-size: 17px;
 }
 .confirm-dialog p {
-    color: var(--text-dim, var(--text2));
+    color: var(--text2);
     margin: 0 0 24px;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 .confirm-actions {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     justify-content: center;
 }
 .btn-danger-solid {
-    background: #ef4444;
+    background: var(--red);
     color: white;
     border: none;
     padding: 10px 24px;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
     font-family: inherit;
     font-size: 13px;
     font-weight: 500;
-    transition: background 0.2s;
+    transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
 }
 .btn-danger-solid:hover {
     background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(239,68,68,0.4);
 }
+.btn-danger-solid:active { transform: scale(0.96); }
 
 /* ─── Responsive ─── */
 @media (max-width: 1024px) {
@@ -1452,7 +1869,25 @@ input[type="range"]::-webkit-slider-thumb {
               </div>
             </div>
             <div class="progress-label" id="preprocess-msg">전처리 준비 중...</div>
-            <button class="skip-link" onclick="cancelPreprocess()" style="margin-top:10px">취소하고 건너뛰기</button>
+            <div class="flex gap-8" style="margin-top:12px;justify-content:center">
+              <button class="btn-pause" id="btn-pause-preprocess" onclick="pausePreprocess()">일시정지</button>
+              <button class="skip-link" onclick="cancelPreprocess()">취소하고 건너뛰기</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preprocess: paused -->
+        <div id="preprocess-paused" style="display:none">
+          <div class="job-paused-area">
+            <div class="job-paused-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </div>
+            <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">전처리 일시정지됨</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod 사용이 중단되어 과금이 멈췄습니다. 재개하면 중단된 부분부터 이어서 전처리합니다.</div>
+            <div class="flex gap-8" style="justify-content:center">
+              <button class="btn-resume" onclick="resumePreprocess()">재개</button>
+              <button class="skip-link" onclick="cancelPreprocess()">취소하고 건너뛰기</button>
+            </div>
           </div>
         </div>
 
@@ -1545,7 +1980,7 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
     </div>
 
-    <button class="btn btn-gradient btn-full mt-16" id="btn-start-train" onclick="startTraining()" disabled>
+    <button class="btn btn-gradient btn-full mt-16" id="btn-start-train" onclick="startTraining()" disabled data-loading-label="학습 제출 중...">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
       학습 시작
     </button>
@@ -1576,10 +2011,26 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
     </div>
 
-    <!-- 실행 중: 취소 버튼 (항상 표시) -->
-    <div id="train-cancel-area" class="flex" style="justify-content:center;margin-top:16px">
+    <!-- 실행 중: 일시정지/취소 버튼 -->
+    <div id="train-cancel-area" class="flex" style="justify-content:center;margin-top:16px;gap:8px">
+      <button class="btn-pause" id="btn-pause-train" onclick="pauseTraining()">일시정지</button>
       <button class="btn btn-secondary" onclick="cancelTraining()">학습 취소</button>
-      <button class="btn btn-secondary" onclick="resetTraining()" style="margin-left:8px;opacity:0.6;font-size:12px">처음으로</button>
+      <button class="btn btn-secondary" onclick="resetTraining()" style="opacity:0.6;font-size:12px">처음으로</button>
+    </div>
+
+    <!-- 일시정지됨 -->
+    <div id="train-paused-area" style="display:none;margin-top:16px">
+      <div class="job-paused-area">
+        <div class="job-paused-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        </div>
+        <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">학습 일시정지됨</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod GPU 사용이 중단되었습니다. 재개하면 처음부터 다시 학습합니다.</div>
+        <div class="flex gap-8" style="justify-content:center">
+          <button class="btn-resume" onclick="resumeTraining()">학습 재개</button>
+          <button class="btn btn-secondary" onclick="cancelTraining()">취소</button>
+        </div>
+      </div>
     </div>
 
     <!-- 실패 시: 에러 + 복구 버튼 -->
@@ -1692,11 +2143,11 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
       <!-- Advanced settings (collapsible) -->
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
-        <div style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:10px" onclick="var el=document.getElementById('advanced-convert-settings');el.style.display=el.style.display==='none'?'block':'none';this.querySelector('.arrow').textContent=el.style.display==='none'?'▸':'▾'">
-          <span class="arrow" style="font-size:11px;color:var(--text3)">▾</span>
-          <span style="font-size:12px;color:var(--text3)">고급 변환 설정</span>
+        <div class="adv-toggle-header" onclick="toggleAdvSettings(this)">
+          <span class="adv-toggle-arrow open">▶</span>
+          <span class="adv-toggle-label">고급 변환 설정</span>
         </div>
-        <div id="advanced-convert-settings">
+        <div id="advanced-convert-settings" class="adv-panel open">
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">F0 Method (피치 추출)</span>
@@ -1764,7 +2215,7 @@ input[type="range"]::-webkit-slider-thumb {
       </div>
     </div>
 
-    <button class="btn btn-gradient btn-full" id="btn-convert" onclick="startConversion()" disabled>
+    <button class="btn btn-gradient btn-full" id="btn-convert" onclick="startConversion()" disabled data-loading-label="변환 제출 중...">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
       AI 변환 시작
     </button>
@@ -1786,9 +2237,25 @@ input[type="range"]::-webkit-slider-thumb {
       <div class="progress-label" id="convert-status-msg">GPU 변환 중...</div>
     </div>
 
-    <!-- 실행 중: 취소 버튼 -->
-    <div id="convert-cancel-area" class="flex" style="justify-content:center;margin-top:16px">
+    <!-- 실행 중: 일시정지/취소 버튼 -->
+    <div id="convert-cancel-area" class="flex" style="justify-content:center;margin-top:16px;gap:8px">
+      <button class="btn-pause" id="btn-pause-convert" onclick="pauseConversion()">일시정지</button>
       <button class="btn btn-secondary" onclick="cancelConversion()">변환 취소</button>
+    </div>
+
+    <!-- 일시정지됨 -->
+    <div id="convert-paused-area" style="display:none;margin-top:16px">
+      <div class="job-paused-area">
+        <div class="job-paused-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        </div>
+        <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">변환 일시정지됨</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod GPU 사용이 중단되었습니다. 재개하면 동일 설정으로 다시 변환합니다.</div>
+        <div class="flex gap-8" style="justify-content:center">
+          <button class="btn-resume" onclick="resumeConversion()">변환 재개</button>
+          <button class="btn btn-secondary" onclick="cancelConversion()">취소</button>
+        </div>
+      </div>
     </div>
 
     <!-- 실패 시: 에러 + 복구 버튼 -->
@@ -2014,6 +2481,10 @@ var currentTrainJobId = null;
 var currentConvertJobId = null;
 var preprocessJobId = null;
 var preprocessDone = false;
+var _preprocessPollErrors = 0;
+var _preprocessPaused = false;
+var _trainPaused = false;
+var _convertPaused = false;
 
 // Batch conversion state
 var batchFiles = [];
@@ -2286,21 +2757,35 @@ function showPage(page) {
 
   var currentPage = document.querySelector('.page.active');
   var nextPage = document.getElementById('page-' + page);
+  if (!nextPage) return;
+  if (currentPage === nextPage) return;
 
   document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
-  document.querySelector('[data-page="' + page + '"]').classList.add('active');
+  var navBtn = document.querySelector('[data-page="' + page + '"]');
+  if (navBtn) navBtn.classList.add('active');
 
-  // Fade transition
-  if (currentPage && currentPage !== nextPage) {
+  // Fade out current page
+  if (currentPage) {
     currentPage.classList.remove('active');
-    currentPage.style.display = 'none';
-    currentPage.style.opacity = '0';
+    // Keep visible briefly during fade-out via CSS transition, then hide
+    setTimeout(function() {
+      if (!currentPage.classList.contains('active')) {
+        currentPage.style.display = 'none';
+        currentPage.style.opacity = '';
+        currentPage.style.transform = '';
+      }
+    }, 320);
   }
+
+  // Fade in new page
   nextPage.style.display = 'block';
-  // Force reflow then fade in
+  nextPage.style.opacity = '0';
+  nextPage.style.transform = 'translateY(10px)';
+  // Force reflow
   void nextPage.offsetWidth;
   nextPage.classList.add('active');
-  nextPage.style.opacity = '1';
+  nextPage.style.opacity = '';
+  nextPage.style.transform = '';
 
   // Scroll to top on page switch
   var mainEl = document.querySelector('.main');
@@ -2313,7 +2798,7 @@ function showPage(page) {
   }
 
   if (page === 'home') loadDashboard();
-  if (page === 'convert') { loadModels(); }
+  if (page === 'convert') { loadModels(); initAllSliders(); }
   if (page === 'settings') loadSettings();
 }
 
@@ -2453,6 +2938,23 @@ function formatDuration(seconds) {
   return m + '분 ' + s + '초';
 }
 
+// ─── Button loading state helpers ───────────────────
+function setButtonLoading(btnId, loading, originalHtml) {
+  var btn = document.getElementById(btnId);
+  if (!btn) return;
+  if (loading) {
+    btn._originalHtml = btn.innerHTML;
+    var label = btn.getAttribute('data-loading-label') || '처리 중...';
+    btn.innerHTML = '<div class="btn-spinner" style="display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0"></div><span>' + label + '</span>';
+    btn.classList.add('loading');
+    btn.disabled = true;
+  } else {
+    if (btn._originalHtml !== undefined) btn.innerHTML = btn._originalHtml;
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Dashboard
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2538,6 +3040,8 @@ function renderJobsPage() {
   var statusBadge = function(s) {
     if (s === 'completed') return '<span class="badge badge-green">완료</span>';
     if (s === 'failed') return '<span class="badge badge-red">실패</span>';
+    if (s === 'paused') return '<span class="badge badge-paused">일시정지</span>';
+    if (s === 'cancelled') return '<span class="badge badge-red">취소됨</span>';
     return '<span class="badge badge-amber">진행중</span>';
   };
   var formatDate = function(d) {
@@ -2830,9 +3334,10 @@ async function startPreprocess() {
 }
 
 async function pollPreprocessStatus() {
-  if (!preprocessJobId) return;
+  if (!preprocessJobId || _preprocessPaused) return;
   try {
     var job = await api('/jobs/' + preprocessJobId);
+    _preprocessPollErrors = 0; // reset on success
     var pct = job.progress || 0;
     var circ = 2 * Math.PI * 42;
     var offset = circ - (pct / 100) * circ;
@@ -2878,6 +3383,13 @@ async function pollPreprocessStatus() {
       }
       return;
     }
+    if (job.status === 'paused' || job.status === 'cancelled') {
+      _preprocessPaused = true;
+      document.getElementById('preprocess-running').style.display = 'none';
+      document.getElementById('preprocess-paused').style.display = 'block';
+      if (job.status === 'paused') toast('전처리가 일시정지되었습니다', 'info');
+      return;
+    }
     if (job.status === 'failed') {
       document.getElementById('preprocess-msg').textContent = job.message || '전처리 실패';
       toast('전처리 실패: ' + (job.message || ''), 'error');
@@ -2890,6 +3402,15 @@ async function pollPreprocessStatus() {
 
     setTimeout(pollPreprocessStatus, 3000);
   } catch(e) {
+    _preprocessPollErrors++;
+    if (_preprocessPollErrors >= 20) {
+      document.getElementById('preprocess-msg').textContent = '서버 연결 실패';
+      toast('서버 연결 실패 - 전처리가 일시정지됩니다', 'error');
+      _preprocessPaused = true;
+      document.getElementById('preprocess-running').style.display = 'none';
+      document.getElementById('preprocess-paused').style.display = 'block';
+      return;
+    }
     setTimeout(pollPreprocessStatus, 5000);
   }
 }
@@ -2910,13 +3431,52 @@ function cancelPreprocess() {
   var jobId = preprocessJobId;
   preprocessJobId = null;
   preprocessDone = false;
+  _preprocessPaused = false;
+  _preprocessPollErrors = 0;
   document.getElementById('preprocess-running').style.display = 'none';
+  document.getElementById('preprocess-paused').style.display = 'none';
   document.getElementById('preprocess-idle').style.display = 'block';
   document.getElementById('btn-start-train').disabled = true;
   if (jobId) {
     api('/jobs/' + jobId + '/cancel', { method: 'POST' }).catch(function() {});
   }
   toast('전처리를 취소했습니다. 다시 시작하거나 건너뛸 수 있습니다.', 'info');
+}
+
+async function pausePreprocess() {
+  if (!preprocessJobId) return;
+  var btn = document.getElementById('btn-pause-preprocess');
+  if (btn) { btn.disabled = true; btn.textContent = '정지 중...'; }
+  try {
+    await api('/jobs/' + preprocessJobId + '/pause', { method: 'POST' });
+    _preprocessPaused = true;
+    document.getElementById('preprocess-running').style.display = 'none';
+    document.getElementById('preprocess-paused').style.display = 'block';
+    toast('전처리를 일시정지했습니다. RunPod 과금이 중단됩니다.', 'info');
+  } catch(e) {
+    toast('일시정지 실패: ' + (e.message || ''), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '일시정지'; }
+  }
+}
+
+async function resumePreprocess() {
+  if (!preprocessJobId) return;
+  try {
+    var res = await api('/jobs/' + preprocessJobId + '/resume', { method: 'POST' });
+    if (res.job_id) {
+      preprocessJobId = res.job_id;
+    }
+    _preprocessPaused = false;
+    _preprocessPollErrors = 0;
+    document.getElementById('preprocess-paused').style.display = 'none';
+    document.getElementById('preprocess-running').style.display = 'block';
+    var btn = document.getElementById('btn-pause-preprocess');
+    if (btn) { btn.disabled = false; btn.textContent = '일시정지'; }
+    toast('전처리를 재개합니다', 'info');
+    pollPreprocessStatus();
+  } catch(e) {
+    toast('재개 실패: ' + (e.message || ''), 'error');
+  }
 }
 
 async function resetPreprocess() {
@@ -3040,24 +3600,30 @@ async function checkPreprocessStatus() {
 async function cleanupStuckJobs() {
   try {
     var res = await api('/jobs/cleanup', { method: 'POST' });
-    var msg = document.getElementById('cleanup-msg');
     if (res.cleaned > 0) {
-      msg.textContent = res.cleaned + '개 작업 정리됨';
-      msg.style.color = 'var(--emerald)';
+      showSettingsMsg('cleanup-msg', res.cleaned + '개 작업이 정리되었습니다', true);
       toast(res.cleaned + '개 멈춘 작업을 정리했습니다', 'success');
     } else {
-      msg.textContent = '정리할 작업 없음';
-      msg.style.color = 'var(--text2)';
+      showSettingsMsg('cleanup-msg', '정리할 작업이 없습니다', true);
       toast('멈춘 작업이 없습니다', 'info');
     }
     // UI 상태도 초기화
     preprocessJobId = null;
     preprocessDone = false;
+    _preprocessPaused = false;
+    _preprocessPollErrors = 0;
     currentTrainJobId = null;
+    _trainPaused = false;
+    _trainPollErrors = 0;
     currentConvertJobId = null;
+    _convertPaused = false;
+    _convertPollErrors = 0;
     document.getElementById('preprocess-running').style.display = 'none';
+    document.getElementById('preprocess-paused').style.display = 'none';
     document.getElementById('preprocess-idle').style.display = 'block';
     document.getElementById('preprocess-done').style.display = 'none';
+    document.getElementById('train-paused-area').style.display = 'none';
+    document.getElementById('convert-paused-area').style.display = 'none';
   } catch(e) {
     toast('정리 실패: ' + e.message, 'error');
   }
@@ -3104,9 +3670,10 @@ async function _doStartTraining() {
 
   try {
     document.body.classList.add('busy');
-    document.getElementById('btn-start-train').disabled = true;
+    setButtonLoading('btn-start-train', true);
     var res = await api('/train', { method: 'POST', body: form });
     document.body.classList.remove('busy');
+    setButtonLoading('btn-start-train', false);
     currentTrainJobId = res.job_id;
 
     document.getElementById('train-upload').style.display = 'none';
@@ -3121,15 +3688,15 @@ async function _doStartTraining() {
     pollTrainingStatus();
   } catch(e) {
     document.body.classList.remove('busy');
+    setButtonLoading('btn-start-train', false);
     toast('학습 시작 실패: ' + e.message, 'error');
-    document.getElementById('btn-start-train').disabled = false;
   }
 }
 
 var _trainPollErrors = 0;
 
 async function pollTrainingStatus() {
-  if (!currentTrainJobId) return;
+  if (!currentTrainJobId || _trainPaused) return;
   try {
     var job = await api('/jobs/' + currentTrainJobId);
     _trainPollErrors = 0; // reset on success
@@ -3153,6 +3720,14 @@ async function pollTrainingStatus() {
       toast('학습 완료!', 'success');
       return;
     }
+    if (job.status === 'paused' || job.status === 'cancelled') {
+      _trainPaused = true;
+      document.getElementById('train-info-status').textContent = '일시정지';
+      document.getElementById('train-cancel-area').style.display = 'none';
+      document.getElementById('train-paused-area').style.display = 'block';
+      if (job.status === 'paused') toast('학습이 일시정지되었습니다', 'info');
+      return;
+    }
     if (job.status === 'failed') {
       document.getElementById('train-status-msg').textContent = '학습 실패';
       document.getElementById('train-info-status').textContent = '실패';
@@ -3169,14 +3744,13 @@ async function pollTrainingStatus() {
   } catch(e) {
     _trainPollErrors++;
     if (_trainPollErrors > 20) {
-      // 20 consecutive failures (~3 min) — show error UI
+      // 20 consecutive failures (~3 min) — auto-pause to stop billing
+      _trainPaused = true;
       document.getElementById('train-status-msg').textContent = '서버 연결 실패';
       document.getElementById('train-info-status').textContent = '연결 오류';
       document.getElementById('train-cancel-area').style.display = 'none';
-      document.getElementById('train-error-area').style.display = 'block';
-      document.getElementById('train-error-msg').textContent =
-        '서버와 연결이 끊어졌습니다. 서버가 실행 중인지 확인하세요.';
-      toast('서버 연결 실패', 'error');
+      document.getElementById('train-paused-area').style.display = 'block';
+      toast('서버 연결 실패 - 학습이 일시정지됩니다', 'error');
       return;
     }
     setTimeout(pollTrainingStatus, 10000);
@@ -3190,6 +3764,7 @@ function resetTraining() {
   }
   currentTrainJobId = null;
   _trainPollErrors = 0;
+  _trainPaused = false;
 
   // 버튼 비활성화 + 로딩 표시
   var backBtn = document.getElementById('btn-train-back');
@@ -3201,6 +3776,7 @@ function resetTraining() {
   document.getElementById('train-progress').style.display = 'none';
   document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
+  document.getElementById('train-paused-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
   document.getElementById('btn-start-train').disabled = false;
 
@@ -3229,10 +3805,12 @@ async function cancelTraining() {
   try { await api('/jobs/cleanup', { method: 'POST' }); } catch(e) {}
   currentTrainJobId = null;
   _trainPollErrors = 0;
+  _trainPaused = false;
   document.getElementById('train-upload').style.display = 'block';
   document.getElementById('train-progress').style.display = 'none';
   document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
+  document.getElementById('train-paused-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
   toast('학습을 취소했습니다', 'info');
   // 파일 목록 & 전처리 상태 복원
@@ -3241,6 +3819,44 @@ async function cancelTraining() {
     renderFileList();
     checkPreprocessStatus();
   }).catch(function() {});
+}
+
+async function pauseTraining() {
+  if (!currentTrainJobId) return;
+  var btn = document.getElementById('btn-pause-train');
+  if (btn) { btn.disabled = true; btn.textContent = '정지 중...'; }
+  try {
+    await api('/jobs/' + currentTrainJobId + '/pause', { method: 'POST' });
+    _trainPaused = true;
+    document.getElementById('train-cancel-area').style.display = 'none';
+    document.getElementById('train-paused-area').style.display = 'block';
+    document.getElementById('train-info-status').textContent = '일시정지';
+    toast('학습을 일시정지했습니다. RunPod GPU 과금이 중단됩니다.', 'info');
+  } catch(e) {
+    toast('일시정지 실패: ' + (e.message || ''), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '일시정지'; }
+  }
+}
+
+async function resumeTraining() {
+  if (!currentTrainJobId) return;
+  try {
+    var res = await api('/jobs/' + currentTrainJobId + '/resume', { method: 'POST' });
+    if (res.job_id) {
+      currentTrainJobId = res.job_id;
+    }
+    _trainPaused = false;
+    _trainPollErrors = 0;
+    document.getElementById('train-paused-area').style.display = 'none';
+    document.getElementById('train-cancel-area').style.display = 'block';
+    document.getElementById('train-info-status').textContent = '실행 중';
+    var btn = document.getElementById('btn-pause-train');
+    if (btn) { btn.disabled = false; btn.textContent = '일시정지'; }
+    toast('학습을 재개합니다', 'info');
+    pollTrainingStatus();
+  } catch(e) {
+    toast('재개 실패: ' + (e.message || ''), 'error');
+  }
 }
 
 function retryTraining() {
@@ -3490,9 +4106,10 @@ async function startConversion() {
 
   try {
     document.body.classList.add('busy');
-    document.getElementById('btn-convert').disabled = true;
+    setButtonLoading('btn-convert', true);
     var res = await api('/convert', { method: 'POST', body: form });
     document.body.classList.remove('busy');
+    setButtonLoading('btn-convert', false);
     currentConvertJobId = res.job_id;
 
     document.getElementById('convert-main').style.display = 'none';
@@ -3502,8 +4119,8 @@ async function startConversion() {
     pollConvertStatus();
   } catch(e) {
     document.body.classList.remove('busy');
+    setButtonLoading('btn-convert', false);
     toast('변환 시작 실패: ' + e.message, 'error');
-    document.getElementById('btn-convert').disabled = false;
   } finally {
     _submitting = false;
   }
@@ -3512,7 +4129,7 @@ async function startConversion() {
 var _convertPollErrors = 0;
 
 async function pollConvertStatus() {
-  if (!currentConvertJobId) return;
+  if (!currentConvertJobId || _convertPaused) return;
   try {
     var job = await api('/jobs/' + currentConvertJobId);
     _convertPollErrors = 0;
@@ -3611,6 +4228,14 @@ async function pollConvertStatus() {
       loadConversionHistory();
       return;
     }
+    if (job.status === 'paused' || job.status === 'cancelled') {
+      _convertPaused = true;
+      document.getElementById('convert-status-msg').textContent = '일시정지됨';
+      document.getElementById('convert-cancel-area').style.display = 'none';
+      document.getElementById('convert-paused-area').style.display = 'block';
+      if (job.status === 'paused') toast('변환이 일시정지되었습니다', 'info');
+      return;
+    }
     if (job.status === 'failed') {
       document.getElementById('convert-status-msg').textContent = '변환 실패';
       document.getElementById('convert-cancel-area').style.display = 'none';
@@ -3624,11 +4249,12 @@ async function pollConvertStatus() {
   } catch(e) {
     _convertPollErrors++;
     if (_convertPollErrors >= 20) {
+      // auto-pause to stop billing
+      _convertPaused = true;
       document.getElementById('convert-status-msg').textContent = '서버 연결 실패';
       document.getElementById('convert-cancel-area').style.display = 'none';
-      document.getElementById('convert-error-area').style.display = 'block';
-      document.getElementById('convert-error-msg').textContent = '서버와의 연결이 끊어졌습니다. 네트워크를 확인해 주세요.';
-      toast('서버 연결 끊김', 'error');
+      document.getElementById('convert-paused-area').style.display = 'block';
+      toast('서버 연결 끊김 - 변환이 일시정지됩니다', 'error');
       return;
     }
     setTimeout(pollConvertStatus, 5000);
@@ -3859,11 +4485,14 @@ function resetConversion() {
   batchFiles = [];
   batchResults = [];
   batchProcessing = false;
+  _convertPaused = false;
+  _convertPollErrors = 0;
   document.body.classList.remove('busy');
   document.getElementById('convert-main').style.display = 'block';
   document.getElementById('convert-progress').style.display = 'none';
   document.getElementById('convert-done').style.display = 'none';
   document.getElementById('convert-error-area').style.display = 'none';
+  document.getElementById('convert-paused-area').style.display = 'none';
   document.getElementById('convert-cancel-area').style.display = 'block';
   document.getElementById('batch-progress').style.display = 'none';
   document.getElementById('batch-done').style.display = 'none';
@@ -3876,6 +4505,7 @@ function resetConversion() {
   _resultUrls = { vocal: null, mix: null };
   var mixedBtn = document.getElementById('convert-mixed-btn');
   if (mixedBtn) mixedBtn.style.display = 'none';
+  setButtonLoading('btn-convert', false);
   document.getElementById('btn-convert').disabled = false;
   // file input 초기화 (같은 파일 재선택 시 change 이벤트 발생하도록)
   document.getElementById('convert-file-input').value = '';
@@ -3894,8 +4524,49 @@ async function cancelConversion() {
   if (currentConvertJobId) {
     try { await api('/jobs/' + currentConvertJobId + '/cancel', { method: 'POST' }); } catch(e) {}
   }
+  _convertPaused = false;
+  _convertPollErrors = 0;
+  document.getElementById('convert-paused-area').style.display = 'none';
   resetConversion();
   toast('변환을 취소했습니다', 'info');
+}
+
+async function pauseConversion() {
+  if (!currentConvertJobId) return;
+  var btn = document.getElementById('btn-pause-convert');
+  if (btn) { btn.disabled = true; btn.textContent = '정지 중...'; }
+  try {
+    await api('/jobs/' + currentConvertJobId + '/pause', { method: 'POST' });
+    _convertPaused = true;
+    document.getElementById('convert-cancel-area').style.display = 'none';
+    document.getElementById('convert-paused-area').style.display = 'block';
+    document.getElementById('convert-status-msg').textContent = '일시정지됨';
+    toast('변환을 일시정지했습니다. RunPod GPU 과금이 중단됩니다.', 'info');
+  } catch(e) {
+    toast('일시정지 실패: ' + (e.message || ''), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '일시정지'; }
+  }
+}
+
+async function resumeConversion() {
+  if (!currentConvertJobId) return;
+  try {
+    var res = await api('/jobs/' + currentConvertJobId + '/resume', { method: 'POST' });
+    if (res.job_id) {
+      currentConvertJobId = res.job_id;
+    }
+    _convertPaused = false;
+    _convertPollErrors = 0;
+    document.getElementById('convert-paused-area').style.display = 'none';
+    document.getElementById('convert-cancel-area').style.display = 'block';
+    document.getElementById('convert-status-msg').textContent = 'GPU 변환 중...';
+    var btn = document.getElementById('btn-pause-convert');
+    if (btn) { btn.disabled = false; btn.textContent = '일시정지'; }
+    toast('변환을 재개합니다', 'info');
+    pollConvertStatus();
+  } catch(e) {
+    toast('재개 실패: ' + (e.message || ''), 'error');
+  }
 }
 
 async function loadConversionHistory() {
@@ -3946,6 +4617,10 @@ function renderConvHistoryPage() {
       statusBadgeHtml = '<span class="badge badge-green">완료</span>';
     } else if (c.status === 'failed') {
       statusBadgeHtml = '<span class="badge badge-red">실패</span>';
+    } else if (c.status === 'cancelled') {
+      statusBadgeHtml = '<span class="badge badge-red">취소됨</span>';
+    } else if (c.status === 'paused') {
+      statusBadgeHtml = '<span class="badge badge-paused">일시정지</span>';
     } else if (c.status === 'running' || c.status === 'submitting') {
       statusBadgeHtml = '<span class="badge badge-amber">진행중</span>';
     } else {
@@ -4046,6 +4721,17 @@ async function testRunPodConnection() {
   }
 }
 
+function showSettingsMsg(id, msg, isSuccess) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var icon = isSuccess
+    ? '<svg style="display:inline;vertical-align:-2px;margin-right:5px" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+    : '<svg style="display:inline;vertical-align:-2px;margin-right:5px" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  el.style.color = isSuccess ? 'var(--emerald)' : 'var(--red)';
+  el.innerHTML = icon + msg;
+  setTimeout(function() { if (el) el.innerHTML = ''; }, 5000);
+}
+
 async function saveSettings() {
   var form = new FormData();
   form.append('api_key', document.getElementById('cfg-api-key').value);
@@ -4053,9 +4739,11 @@ async function saveSettings() {
 
   try {
     await api('/config', { method: 'POST', body: form });
+    showSettingsMsg('settings-msg', '설정이 저장되었습니다', true);
     toast('설정이 저장되었습니다', 'success');
     checkConnection(false);
   } catch(e) {
+    showSettingsMsg('settings-msg', '저장 실패: ' + e.message, false);
     toast('설정 저장 실패', 'error');
   }
 }
@@ -4069,8 +4757,10 @@ async function saveR2Settings() {
 
   try {
     await api('/config/r2', { method: 'POST', body: form });
+    showSettingsMsg('r2-settings-msg', 'R2 설정이 저장되었습니다', true);
     toast('R2 설정이 저장되었습니다', 'success');
   } catch(e) {
+    showSettingsMsg('r2-settings-msg', '저장 실패: ' + e.message, false);
     toast('R2 설정 저장 실패: ' + e.message, 'error');
   }
 }
@@ -4082,10 +4772,10 @@ async function saveDownloadFolder() {
   form.append('folder', folder);
   try {
     var res = await api('/config/download-folder', { method: 'POST', body: form });
-    document.getElementById('download-folder-msg').innerHTML =
-      '<span style="color:var(--emerald)">저장 폴더: ' + res.folder + '</span>';
+    showSettingsMsg('download-folder-msg', '저장 폴더: ' + res.folder, true);
     toast('다운로드 폴더가 설정되었습니다', 'success');
   } catch(e) {
+    showSettingsMsg('download-folder-msg', '설정 실패: ' + e.message, false);
     toast('폴더 설정 실패: ' + e.message, 'error');
   }
 }
@@ -4108,6 +4798,26 @@ function renderPagination(containerId, currentPage, totalItems, onPageChange) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Advanced Settings Toggle
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function toggleAdvSettings(header) {
+  var arrow = header.querySelector('.adv-toggle-arrow');
+  var panel = header.nextElementSibling;
+  var isOpen = panel.classList.contains('open');
+  if (isOpen) {
+    panel.classList.remove('open');
+    arrow.classList.remove('open');
+  } else {
+    panel.classList.add('open');
+    arrow.classList.add('open');
+    // re-init sliders that just became visible
+    setTimeout(function() {
+      panel.querySelectorAll('input[type="range"]').forEach(function(el) { updateSliderFill(el); });
+    }, 50);
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Convert Sub-Tab Switching
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function switchConvertSubTab(tab) {
@@ -4116,15 +4826,31 @@ function switchConvertSubTab(tab) {
   var tabConvert = document.getElementById('sub-tab-convert');
   var tabHistory = document.getElementById('sub-tab-history');
 
+  function showEl(el) {
+    el.style.display = 'block';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(6px)';
+    void el.offsetWidth;
+    el.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+    el.style.opacity = '1';
+    el.style.transform = 'translateY(0)';
+    setTimeout(function() { el.style.transition = ''; }, 260);
+  }
+  function hideEl(el) {
+    el.style.display = 'none';
+    el.style.opacity = '';
+    el.style.transform = '';
+  }
+
   if (tab === 'history') {
-    convertDiv.style.display = 'none';
-    historyDiv.style.display = 'block';
+    hideEl(convertDiv);
+    showEl(historyDiv);
     tabConvert.classList.remove('active');
     tabHistory.classList.add('active');
     loadConversionHistory();
   } else {
-    convertDiv.style.display = 'block';
-    historyDiv.style.display = 'none';
+    hideEl(historyDiv);
+    showEl(convertDiv);
     tabConvert.classList.add('active');
     tabHistory.classList.remove('active');
   }
@@ -4256,10 +4982,31 @@ function setupDragDrop(dropzoneId, inputId) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Slider Fill Track
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function updateSliderFill(el) {
+  if (!el || el.type !== 'range') return;
+  var min = parseFloat(el.min) || 0;
+  var max = parseFloat(el.max) || 100;
+  var val = parseFloat(el.value) || 0;
+  var pct = ((val - min) / (max - min)) * 100;
+  el.classList.add('has-fill');
+  el.style.setProperty('--fill', pct.toFixed(1) + '%');
+}
+
+function initAllSliders() {
+  document.querySelectorAll('input[type="range"]').forEach(function(el) {
+    updateSliderFill(el);
+    el.addEventListener('input', function() { updateSliderFill(this); });
+  });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Init
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 loadDashboard();
 startConnectionPolling();
+initAllSliders();
 
 // Setup drag-and-drop on both dropzones
 setupDragDrop('train-dropzone', 'train-file-input');
