@@ -224,27 +224,33 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         runpod.serverless.progress_update(job, "Segmenting audio clips... (6/6)")
         segments, skipped_files = _segment_audio(cleaned_paths, segment_dir)
 
-        # Convert segments to MP3 for transfer
+        # Convert segments to FLAC (lossless) for transfer.
+        # CRITICAL QUALITY DECISION: FLAC (lossless) vs MP3 (lossy)
+        # MP3 192kbps introduces ~0.1-0.5% THD + frequency rolloff above 16kHz.
+        # This gets baked into training data → model learns artifacts as voice features.
+        # FLAC is lossless, ~50% smaller than WAV, and preserves ALL voice harmonics.
+        # Result: better F0 extraction, more accurate ContentVec embeddings → natural output.
         segment_data = []
         total_duration = 0.0
-        mp3_dir = ensure_dir(work / "mp3_transfer")
+        transfer_dir = ensure_dir(work / "flac_transfer")
 
         for seg_path in sorted(segment_dir.glob("*.wav")):
             dur = get_audio_duration(seg_path)
             total_duration += dur
 
-            # Convert WAV → MP3 192kbps mono for smaller transfer
-            mp3_path = mp3_dir / (seg_path.stem + ".mp3")
+            # Convert WAV → FLAC (lossless, ~50% size reduction vs WAV, no quality loss)
+            flac_path = transfer_dir / (seg_path.stem + ".flac")
             try:
                 run_ffmpeg([
                     "-i", str(seg_path),
-                    "-codec:a", "libmp3lame", "-b:a", "192k",
+                    "-acodec", "flac",
+                    "-compression_level", "8",   # max FLAC compression (CPU intensive but smaller)
                     "-ar", "44100", "-ac", "1",
-                    str(mp3_path),
+                    str(flac_path),
                 ])
-                encode_path = mp3_path
+                encode_path = flac_path
             except Exception as e:
-                log.warning(f"MP3 encode failed for {seg_path.name}: {e}, using WAV")
+                log.warning(f"FLAC encode failed for {seg_path.name}: {e}, using WAV")
                 encode_path = seg_path
 
             segment_data.append({
@@ -253,19 +259,21 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 "duration_seconds": round(dur, 2),
             })
 
-        # Compress accompaniment files to MP3 for download (stereo, high quality)
+        # Export accompaniment (MR) files as FLAC for lossless mixing quality.
+        # Accompaniment is used directly in _mix_audio() — lossless = better final mix.
         accomp_data = []
         for accomp_path in accomp_paths:
             dur = get_audio_duration(accomp_path)
-            mp3_path = mp3_dir / f"mr_{accomp_path.stem}.mp3"
+            flac_path = transfer_dir / f"mr_{accomp_path.stem}.flac"
             try:
                 run_ffmpeg([
                     "-i", str(accomp_path),
-                    "-codec:a", "libmp3lame", "-b:a", "320k",
+                    "-acodec", "flac",
+                    "-compression_level", "8",
                     "-ar", "44100", "-ac", "2",
-                    str(mp3_path),
+                    str(flac_path),
                 ])
-                encode_path = mp3_path
+                encode_path = flac_path
             except Exception:
                 encode_path = accomp_path
             accomp_data.append({
@@ -274,19 +282,20 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 "duration_seconds": round(dur, 2),
             })
 
-        # Compress full vocal files (pre-diarization) for download
+        # Export full vocal tracks as FLAC (lossless, for download and reference)
         vocal_data = []
         for vp in vocal_paths:
             dur = get_audio_duration(vp)
-            mp3_path = mp3_dir / f"vocal_{vp.stem}.mp3"
+            flac_path = transfer_dir / f"vocal_{vp.stem}.flac"
             try:
                 run_ffmpeg([
                     "-i", str(vp),
-                    "-codec:a", "libmp3lame", "-b:a", "192k",
+                    "-acodec", "flac",
+                    "-compression_level", "8",
                     "-ar", "44100", "-ac", "1",
-                    str(mp3_path),
+                    str(flac_path),
                 ])
-                encode_path = mp3_path
+                encode_path = flac_path
             except Exception:
                 encode_path = vp
             vocal_data.append({
@@ -453,12 +462,12 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     # --- Try demucs.api first (GitHub v4.1.0a2+) ---
     try:
         import demucs.api
-        log.info("Using demucs.api (v4.1+) for vocal separation (shifts=5, overlap=0.5)")
+        log.info("Using demucs.api (v4.1+) for vocal separation (shifts=5, overlap=0.6)")
         separator = demucs.api.Separator(
             model="htdemucs_ft",
             device=device,
             shifts=5,       # 5 random time shifts → average = dramatically better SDR
-            overlap=0.5,    # 50% overlap between segments = smoother transitions
+            overlap=0.6,    # 60% overlap between segments = smoother transitions, fewer artifacts
         )
 
         vocal_paths: list[Path] = []
@@ -523,7 +532,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
             if ref_std < 1e-8:  # 무음 오디오 — 정규화 생략
                 ref_std = torch.tensor(1.0, dtype=ref.dtype, device=ref.device)
             wav = (wav - ref_mean) / ref_std
-            sources = apply_model(model, wav[None], device=device, shifts=5, overlap=0.5)[0]
+            sources = apply_model(model, wav[None], device=device, shifts=5, overlap=0.6)[0]
             sources = sources * ref_std + ref_mean
 
             if vocals_idx >= 0:
@@ -642,13 +651,16 @@ def _speaker_diarize(vocal_paths: list[Path], output_dir: Path) -> list[Path]:
 
 def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
     """
-    Light noise reduction using noisereduce library.
+    Gentle noise reduction using noisereduce library.
     Optimized for singing vocals after Demucs separation:
-    - ALWAYS applies light NR (prop_decrease=0.5) for consistent quality
-    - Demucs already removes most background noise, so we use gentle
-      settings to catch residual stationary noise (hum, hiss)
-    - prop_decrease=0.5 is the sweet spot: enough to clean without
-      degrading high-frequency detail (consonants, sibilants, breath)
+
+    - prop_decrease=0.4: less aggressive than 0.5 — preserves more vocal
+      texture (consonants, sibilants, breath) that RVC uses for voice identity
+    - stationary=True: only targets constant-spectrum noise (hum, hiss)
+      after Demucs, which is the primary residual noise type
+    - hop_length=256: finer spectral analysis (was 512) — better frequency
+      resolution preserves voice harmonics during NR
+    - n_fft=2048: sufficient FFT size for accurate noise profile
     """
     ensure_dir(output_dir)
 
@@ -669,20 +681,20 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
             noise_floor_db = 20 * np.log10(max(rms, 1e-10))
             log.info(f"Noise floor: {noise_floor_db:.1f}dB for {ap.name}")
 
-            # Always apply light noise reduction for consistent quality
+            # Gentle NR: preserve vocal texture while removing residual hum/hiss
             reduced = nr.reduce_noise(
                 y=audio_data,
                 sr=sr,
-                prop_decrease=0.5,     # light NR — consistent quality without over-processing
-                stationary=True,
+                prop_decrease=0.4,     # 0.4 (was 0.5): less aggressive → more vocal texture preserved
+                stationary=True,       # target only constant-spectrum noise (hum/hiss after Demucs)
                 n_fft=2048,
-                hop_length=512,
+                hop_length=256,        # 256 (was 512): finer spectral analysis → better harmonic preservation
             )
 
             out_path = output_dir / f"{ap.stem}_clean.wav"
             sf.write(str(out_path), reduced, samplerate=sr, subtype="PCM_16")
             cleaned.append(out_path)
-            log.info(f"Noise reduction done (light): {ap.name}")
+            log.info(f"Noise reduction done (gentle): {ap.name}")
 
         return cleaned
 
@@ -1193,21 +1205,35 @@ def _rvc_preprocess(
                 # → CUDA assert when segment count > spk_embed_dim (109)
                 padded = f"0_{idx:07d}"
 
-                # Save at target sample rate (mono, 16-bit PCM, soxr HQ resampler)
+                # Save at target sample rate — apply audio quality chain:
+                # 1. highpass@50Hz: remove ultra-low rumble/DC offset before training
+                # 2. soxr resample with precision=28: highest quality resampling
+                # 3. loudnorm: normalize each segment to -20 LUFS (-1 TP) for
+                #    consistent volume across training data → better feature extraction
+                #    (ContentVec embeddings are slightly volume-sensitive; consistent
+                #    levels help the model focus on voice timbre rather than dynamics)
                 gt_path = gt_dir / f"{padded}.wav"
                 run_ffmpeg([
                     "-i", str(sp),
-                    "-af", f"aresample=resampler=soxr:precision=28:osr={sample_rate}",
+                    "-af", (
+                        "highpass=f=50:poles=2,"
+                        f"aresample=resampler=soxr:precision=28:osr={sample_rate},"
+                        "loudnorm=I=-20:TP=-1:LRA=7"
+                    ),
                     "-ac", "1",
                     "-acodec", "pcm_s16le",
                     str(gt_path),
                 ])
 
-                # Save at 16kHz for F0 & feature extraction (matching naming)
+                # Save at 16kHz for F0 & feature extraction — same quality chain
                 sr16k_path = sr16k_dir / f"{padded}.wav"
                 run_ffmpeg([
                     "-i", str(sp),
-                    "-af", "aresample=resampler=soxr:precision=28:osr=16000",
+                    "-af", (
+                        "highpass=f=50:poles=2,"
+                        "aresample=resampler=soxr:precision=28:osr=16000,"
+                        "loudnorm=I=-20:TP=-1:LRA=7"
+                    ),
                     "-ac", "1",
                     "-acodec", "pcm_s16le",
                     str(sr16k_path),

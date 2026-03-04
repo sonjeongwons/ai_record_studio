@@ -1609,9 +1609,9 @@ async def upload_chunk(
 @app.post("/api/train")
 async def start_training(
     model_name: str = Form(...),
-    epochs: int = Form(500),
-    sample_rate: int = Form(40000),  # 40k recommended for SVC quality
-    batch_size: int = Form(0),  # 0 = GPU auto-detect (RTX 4090 → 24)
+    epochs: int = Form(800),           # 800: optimal for 5-15 min of training data
+    sample_rate: int = Form(48000),    # 48k: better for studio/high-quality recordings
+    batch_size: int = Form(0),         # 0 = GPU auto-detect (RTX 4090 → 24)
     f0_method: str = Form("rmvpe"),
     file_ids: str = Form("")  # comma-separated
 ):
@@ -2456,8 +2456,8 @@ async def resume_job(job_id: str):
         elif job_type == "train":
             # ─── 학습 재개 (처음부터 재시작) ───
             model_name = pause_state.get("model_name", "")
-            epochs = pause_state.get("epochs", 500)
-            sample_rate = pause_state.get("sample_rate", 40000)
+            epochs = pause_state.get("epochs", 800)
+            sample_rate = pause_state.get("sample_rate", 48000)
             batch_size = pause_state.get("batch_size", 0)
             f0_method = pause_state.get("f0_method", "rmvpe")
             file_ids_str = pause_state.get("file_ids", "")

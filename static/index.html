@@ -2755,6 +2755,21 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
       </div>
       <h2 style="margin-bottom:6px">학습 설정</h2>
       <p class="section-desc">AI가 목소리를 배울 때 사용하는 세부 옵션입니다. <strong>잘 모르시면 아무것도 건드리지 않고 '학습 시작'을 누르셔도 됩니다!</strong> 기본값으로도 좋은 결과를 얻을 수 있습니다. 각 옵션 옆 ⓘ 아이콘을 누르면 자세한 설명을 볼 수 있습니다.</p>
+
+      <!-- 권장 설정 가이드 -->
+      <div style="margin-bottom:16px;padding:12px 14px;border-radius:8px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2)">
+        <div style="font-size:12px;font-weight:600;color:#10b981;margin-bottom:8px">✅ 자연스러운 목소리를 위한 권장 설정</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:var(--text2)">
+          <div>• <b>데이터 5분 이하</b>: 에폭 500, 40kHz</div>
+          <div>• <b>데이터 5~15분</b>: 에폭 800, 48kHz</div>
+          <div>• <b>데이터 15분 이상</b>: 에폭 1000, 48kHz</div>
+          <div>• <b>스튜디오 녹음 30분+</b>: 에폭 1500, 48kHz</div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text3)">
+          💡 <b>데이터 품질 최우선</b>: 깨끗한 보컬 10분 > 잡음 있는 보컬 30분. 스튜디오 녹음일수록 자연스러운 결과가 나옵니다.<br>
+          ⚠️ <b>과학습 방지</b>: 과학습 감지가 내장되어 있어, 설정한 에폭에 도달하기 전에 자동으로 최적 시점에 멈출 수 있습니다.
+        </div>
+      </div>
       <div class="grid-3">
         <div>
           <label class="label">모델 이름 <i class="tip" data-tip="완성된 AI 목소리에 붙일 이름입니다. 나중에 변환 탭에서 이 이름으로 모델을 찾게 됩니다.\n\n💡 구분하기 쉬운 이름을 추천합니다:\n• 예시: '내목소리_고음버전', '내목소리_원키', '내목소리_500에폭'\n• 같은 목소리라도 설정을 바꿔서 여러 번 학습할 수 있으니, 설정 정보를 이름에 넣어두면 편합니다.">ⓘ</i></label>
@@ -2763,17 +2778,19 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
         <div>
           <label class="label">에폭 수 <i class="tip" data-tip="쉽게 말해, AI가 여러분의 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n📖 비유: 노래를 배울 때 한 번만 들으면 어색하지만, 여러 번 반복하면 자연스러워지는 것과 같습니다.\n\n🔢 추천값:\n• 300 = 빠르게 결과 확인용\n• 500 = 대부분의 경우 충분 (추천)\n• 800~1000 = 최고 품질 시도\n\n📊 예상 소요 시간·비용 (RMVPE·자동배치·40kHz 기준):\n\n[데이터 5분]\n• 300에폭 → 약 40분, $1.70\n• 500에폭 → 약 1시간, $2.50\n\n[데이터 10분]\n• 300에폭 → 약 1.2시간, $3.20\n• 500에폭 → 약 1.8시간, $4.90\n• 1000에폭 → 약 3.4시간, $8.90\n\n[데이터 30분]\n• 300에폭 → 약 3.6시간, $9.50\n• 500에폭 → 약 5.4시간, $14\n• 1000에폭 → 약 10시간, $27\n\n⚠️ 실측 참고: 30분 데이터 + Crepe + 500에폭 = 약 6시간, $15 (2026.03 RTX 4090 실측).\nCrepe 사용 시 RMVPE보다 약 20% 추가됩니다.\n\n⚠️ 에폭을 너무 높이면 오히려 목소리가 어색해질 수 있습니다 (과학습).\n\n💰 비용 핵심: 에폭 2배 → 시간·비용 약 2배. 데이터 2배 → 역시 약 2배.\n처음엔 500으로 결과를 들어보고, 아쉬우면 800으로 재학습하세요.">ⓘ</i></label>
           <select id="train-epochs" onchange="estimateTrainingCost()">
-            <option value="300">300 (빠른 결과 확인용)</option>
-            <option value="500" selected>500 (권장 · 균형 잡힌 품질)</option>
-            <option value="800">800 (고품질 · 데이터 많을수록 효과적)</option>
-            <option value="1000">1000 (최고 품질 · 데이터 충분할 때)</option>
+            <option value="300">300 (테스트용 · 빠른 결과 확인)</option>
+            <option value="500">500 (소량 데이터 5분 이하)</option>
+            <option value="800" selected>800 (권장 · 5~15분 데이터 최적)</option>
+            <option value="1000">1000 (고품질 · 15분 이상 데이터)</option>
+            <option value="1500">1500 (최고품질 · 30분 이상 스튜디오 녹음)</option>
           </select>
         </div>
         <div>
           <label class="label">샘플레이트 <i class="tip" data-tip="쉽게 말해, 소리의 '화질'입니다. 사진에 해상도가 있듯 소리에도 해상도가 있습니다.\n\n📖 비유: 40kHz = Full HD 화질, 48kHz = 4K 화질이라고 생각하세요.\n\n🔢 추천:\n• 40kHz = 유튜브·스트리밍·일반 MP3 음원 → 거의 모든 경우 이것으로 충분\n• 48kHz = 스튜디오 녹음, FLAC/WAV 고음질 원본일 때만\n\n⚠️ 원본 파일이 40kHz인데 48kHz로 설정해도 품질이 올라가지 않습니다. 원본보다 높게 설정하는 것은 의미 없습니다.\n\n💰 비용 영향: 48kHz는 40kHz보다 학습 시간이 약 10~20% 늘어납니다.">ⓘ</i></label>
           <select id="train-sr" onchange="estimateTrainingCost()">
-            <option value="40000" selected>40 kHz (권장 · 일반 음악)</option>
-            <option value="48000">48 kHz (스튜디오 고음질 소스)</option>
+            <option value="48000" selected>48 kHz (권장 · 스튜디오/고음질 소스)</option>
+            <option value="40000">40 kHz (일반 음악 · 유튜브/MP3 원본)</option>
+            <option value="32000">32 kHz (저화질 원본 · 비용 절약)</option>
           </select>
         </div>
       </div>
@@ -4356,7 +4373,7 @@ function estimateTrainingCost() {
   // 배치 팩터 (클수록 빠름) — RTX 4090 기준 실측
   var batchFactor = { 0: 1.00, 8: 1.00, 16: 0.70, 24: 0.50 }[batch] || 1.00;
   // SR 팩터
-  var srFactor = sr === 48000 ? 1.20 : 1.00;
+  var srFactor = sr === 48000 ? 1.20 : (sr === 32000 ? 0.80 : 1.00);
   // F0 특징 추출 팩터 (학습 전 1회)
   var f0FeatureFactor = (f0 === 'crepe') ? 2.5 : (f0 === 'crepe-tiny' ? 1.5 : 1.0);
 
@@ -4384,7 +4401,7 @@ function estimateTrainingCost() {
 
   // ── 배치·SR 행 업데이트 ──
   var batchLabels = { 0:'자동 (기본 속도 1.0×)', 8:'8 (기본 속도 1.0×)', 16:'16 (1.5× 빠름)', 24:'24 (2.2× 빠름)' };
-  var srLabel = sr === 48000 ? '48 kHz (+20% 더 느림)' : '40 kHz (기본)';
+  var srLabel = sr === 48000 ? '48 kHz (권장 · 스튜디오/고음질)' : (sr === 40000 ? '40 kHz (일반 음악)' : '32 kHz (저화질)');
   var bEl = document.getElementById('cost-train-batch');
   var srEl = document.getElementById('cost-train-sr');
   if (bEl) bEl.textContent = batchLabels[batch] || ('배치 ' + batch);
@@ -4395,7 +4412,7 @@ function estimateTrainingCost() {
   var timeStr = _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec);
   var hints = [];
   if (f0 === 'crepe')           hints.push('Crepe → RMVPE로 바꾸면 특징 추출 시간을 60~70% 줄일 수 있습니다');
-  if (sr === 48000)             hints.push('48kHz → 40kHz로 낮추면 약 20% 단축됩니다');
+  if (sr === 40000 && totalMins >= 5) hints.push('원본이 스튜디오 녹음/FLAC/WAV라면 48kHz로 설정하면 더 자연스러운 결과를 얻을 수 있습니다');
   if (batch === 0 || batch === 8) hints.push('배치 16 이상 설정 시 학습 속도가 약 30% 빨라집니다');
   var hintStr = hints.length ? '<br>💡 <b>단축 팁:</b> ' + hints.join(' / ') : '';
   var warnMsg, warnLevel;
