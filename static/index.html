@@ -1964,7 +1964,7 @@ input[type="range"].has-fill {
   z-index: 9999;
   box-shadow: 0 8px 32px rgba(0,0,0,0.75);
   transition: opacity 0.15s;
-  white-space: normal;
+  white-space: pre-line;
 }
 .tip::after {
   content: '';
@@ -2757,7 +2757,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
       <p class="section-desc">AI가 목소리를 배울 때 사용하는 세부 옵션입니다. <strong>잘 모르시면 아무것도 건드리지 않고 '학습 시작'을 누르셔도 됩니다!</strong> 기본값으로도 좋은 결과를 얻을 수 있습니다. 각 옵션 옆 ⓘ 아이콘을 누르면 자세한 설명을 볼 수 있습니다.</p>
       <div class="grid-3">
         <div>
-          <label class="label">모델 이름 <i class="tip" data-tip="완성된 AI 목소리에 붙일 이름입니다. 나중에 변환 탭에서 이 이름으로 모델을 찾게 됩니다.\n\n💡 구분하기 쉬운 이름을 추천합니다:\n• 예시: '홍권_고음버전', '홍권_원키', '홍권_500에폭'\n• 같은 목소리라도 설정을 바꿔서 여러 번 학습할 수 있으니, 설정 정보를 이름에 넣어두면 편합니다.">ⓘ</i></label>
+          <label class="label">모델 이름 <i class="tip" data-tip="완성된 AI 목소리에 붙일 이름입니다. 나중에 변환 탭에서 이 이름으로 모델을 찾게 됩니다.\n\n💡 구분하기 쉬운 이름을 추천합니다:\n• 예시: '내목소리_고음버전', '내목소리_원키', '내목소리_500에폭'\n• 같은 목소리라도 설정을 바꿔서 여러 번 학습할 수 있으니, 설정 정보를 이름에 넣어두면 편합니다.">ⓘ</i></label>
           <input type="text" id="model-name" value="My Voice v1" placeholder="모델 이름" onfocus="this.select()" autocomplete="off">
         </div>
         <div>
@@ -7242,6 +7242,10 @@ function _markPreprocessSuccess(done) {
 
 // ─── Initialize all enhancements ───
 document.addEventListener('DOMContentLoaded', function() {
+  // data-tip 속성의 \n 리터럴을 실제 줄바꿈으로 변환 (CSS content:attr()은 \n 해석 불가)
+  document.querySelectorAll('.tip[data-tip]').forEach(function(el) {
+    el.setAttribute('data-tip', el.getAttribute('data-tip').replace(/\\n/g, '\n'));
+  });
   _enhanceToasts();
   _initModelCardKeys();
   updatePitchColor();
