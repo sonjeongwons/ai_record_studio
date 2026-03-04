@@ -2630,6 +2630,10 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
             </div>
             <div class="cost-panel-rows">
               <div class="cost-panel-row">
+                <span>선택 파일</span>
+                <span class="cost-panel-val" id="cost-pre-files">—</span>
+              </div>
+              <div class="cost-panel-row">
                 <span>선택 파일 총 길이</span>
                 <span class="cost-panel-val" id="cost-pre-duration">—</span>
               </div>
@@ -4221,10 +4225,12 @@ function estimatePreprocessCost() {
   var minSec  = gpuSecs * 0.75;
   var maxSec  = gpuSecs * 1.50;
 
+  var preFilesEl = document.getElementById('cost-pre-files');
+  if (preFilesEl) preFilesEl.textContent = fileCount + '개' + (videoCount > 0 ? ' (영상 ' + videoCount + '개 포함)' : '');
   document.getElementById('cost-pre-duration').textContent =
-    formatDuration(totalSecs) + (durationEstimated ? ' (파일 크기 기반 추정)' : '') + (videoCount > 0 ? ' (영상 ' + videoCount + '개 포함)' : '');
+    formatDuration(totalSecs) + (durationEstimated ? ' (파일 크기 기반 추정)' : '');
   document.getElementById('cost-pre-gpu').textContent =
-    _formatGpuTime(gpuSecs) + ' (' + _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec) + ')';
+    _formatGpuTimeShort(minSec) + ' ~ ' + _formatGpuTimeShort(maxSec);
   document.getElementById('cost-pre-cost').textContent = _formatCostRange(minSec, maxSec);
   showCostPanel('preprocess-cost-panel');
 
@@ -4321,7 +4327,7 @@ function estimateTrainingCost() {
   document.getElementById('cost-train-epochs').textContent = epochs + ' 에폭';
   document.getElementById('cost-train-f0').textContent = f0Label;
   document.getElementById('cost-train-gpu').textContent =
-    _formatGpuTime(totalGpu) + ' (' + _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec) + ')';
+    _formatGpuTimeShort(minSec) + ' ~ ' + _formatGpuTimeShort(maxSec);
   document.getElementById('cost-train-cost').textContent = _formatCostRange(minSec, maxSec);
 
   // ── 배치·SR 행 업데이트 ──
@@ -4395,7 +4401,7 @@ function estimateConversionCost() {
   var cleanEl = document.getElementById('cost-conv-clean');
   if (cleanEl) cleanEl.textContent = cleanLabel;
   document.getElementById('cost-conv-gpu').textContent =
-    _formatGpuTime(totalGpu) + ' (' + _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec) + ')';
+    _formatGpuTimeShort(minSec) + ' ~ ' + _formatGpuTimeShort(maxSec);
   document.getElementById('cost-conv-cost').textContent = _formatCostRange(minSec, maxSec);
   showCostPanel('convert-cost-panel');
 
@@ -4834,6 +4840,9 @@ function renderFileList() {
       if (uid && !apWaveData[uid]) apDrawWaveform(uid);
     });
   }, 50);
+
+  // 파일 목록 렌더 후 비용 추정 패널 자동 업데이트
+  updateTrainSelection();
 }
 
 function getSelectedFileIds() {
