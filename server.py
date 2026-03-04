@@ -556,11 +556,13 @@ class RunPodClient:
 
     def cancel_runpod_job(self, runpod_job_id: str) -> bool:
         """RunPod 서버리스 작업 실제 취소 — 과금 즉시 중지.
+        재시도 로직 적용 (과금 중지가 중요하므로).
         실패해도 예외를 던지지 않고 False 반환."""
         if not runpod_job_id or not self.is_configured():
             return False
         try:
-            resp = requests.post(
+            resp = self._request_with_retry(
+                "POST",
                 f"{self.base_url}/cancel/{runpod_job_id}",
                 headers=self.headers,
                 timeout=30
@@ -1270,7 +1272,10 @@ async def startup():
 
 @app.get("/")
 async def root():
-    return FileResponse(str(APP_DIR / "static" / "index.html"))
+    return FileResponse(
+        str(APP_DIR / "static" / "index.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"},
+    )
 
 @app.get("/favicon.ico")
 async def favicon():
@@ -2083,6 +2088,12 @@ async def start_conversion(
         hop_length = 128  # 잘못된 값은 기본값으로
     if f0_method not in ("rmvpe", "crepe", "crepe-tiny", "harvest", "pm"):
         raise HTTPException(400, f"유효하지 않은 F0 방법입니다: {f0_method}")
+    if not (0.0 <= vocal_volume <= 2.0):
+        raise HTTPException(400, f"보컬 볼륨은 0.0~2.0 사이여야 합니다. (입력: {vocal_volume})")
+    if not (0.0 <= mr_volume <= 2.0):
+        raise HTTPException(400, f"MR 볼륨은 0.0~2.0 사이여야 합니다. (입력: {mr_volume})")
+    if not (0.0 <= clean_strength <= 1.0):
+        raise HTTPException(400, f"Clean Strength는 0.0~1.0 사이여야 합니다. (입력: {clean_strength})")
 
     # 모델 조회
     with get_db() as db:
