@@ -4775,9 +4775,9 @@ function pollBatchItem(index) {
         if (job.status === 'completed') {
           r.status = 'completed';
           var outFile = job.result ? job.result.output_file : null;
-          if (outFile) r.resultUrl = '/api/download/' + outFile;
+          if (outFile) r.resultUrl = '/api/download/' + encodeURIComponent(outFile);
           var mixFile = job.result ? job.result.mixed_file : null;
-          if (mixFile) r.mixedUrl = '/api/download/' + mixFile;
+          if (mixFile) r.mixedUrl = '/api/download/' + encodeURIComponent(mixFile);
           renderBatchProgress();
           resolve();
           return;

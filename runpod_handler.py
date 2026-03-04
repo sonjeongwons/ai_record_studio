@@ -516,9 +516,13 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                 streams=0, samplerate=model.samplerate, channels=model.audio_channels
             )
             ref = wav.mean(0)
-            wav = (wav - ref.mean()) / ref.std()
+            ref_mean = ref.mean()
+            ref_std = ref.std()
+            if ref_std < 1e-8:  # 무음 오디오 — 정규화 생략
+                ref_std = torch.tensor(1.0, dtype=ref.dtype, device=ref.device)
+            wav = (wav - ref_mean) / ref_std
             sources = apply_model(model, wav[None], device=device, shifts=5, overlap=0.5)[0]
-            sources = sources * ref.std() + ref.mean()
+            sources = sources * ref_std + ref_mean
 
             if vocals_idx >= 0:
                 # Save vocals as MONO (RVC requires mono input)
@@ -874,7 +878,7 @@ def task_train(job_input: dict, job: dict) -> dict:
     # Auto-detect optimal batch_size from GPU VRAM if not specified
     if batch_size <= 0:
         try:
-            vram_gb = torch.cuda.get_device_properties(0).total_mem / (1024 ** 3)
+            vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
             # Optimized formula: better GPU utilization, especially for RTX 4090 (24GB)
             # RTX 4090 (24GB) → 32, RTX 3090 (24GB) → 28, RTX 3060 (12GB) → 16
             batch_size = min(48, max(4, (int(vram_gb) // 3) * 4))
@@ -2244,8 +2248,8 @@ def _rvc_infer(
             f"Last stdout:\n{tail}"
             + (f"\nStderr:\n{stderr_tail}" if stderr_tail else "")
         )
-
-    log.info("Inference completed via CLI fallback")
+    else:
+        log.info("Inference completed via CLI fallback")
 
     # --- 출력 파일 탐색: CLI가 다른 경로에 저장했을 수 있음 ---
     if not output_path.exists():

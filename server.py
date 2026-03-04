@@ -58,7 +58,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 for d in [UPLOAD_DIR, MODEL_DIR, OUTPUT_DIR, CHUNK_DIR, PREPROCESSED_DIR]:
     d.mkdir(exist_ok=True)
 
-# 청크 업로드 상태 추적 (메모리 내)
+# 청크 업로드 상태 추적 (메모리 내, upload_id → {total, received, filename, category, started_at})
 chunk_uploads: dict = {}
 
 # 전처리 작업별 원본 파일 ID 추적 (완료 시 preprocessed=1 마킹용)
@@ -66,6 +66,19 @@ preprocess_file_map: dict[str, list[int]] = {}
 
 # RunPod 폴링 에러 카운터 (job_id별 추적)
 _poll_error_counts: dict[str, int] = {}
+
+
+def _cleanup_stale_chunk_uploads():
+    """24시간 이상 완료되지 않은 청크 업로드 정리 (메모리 + 임시 파일)"""
+    now = time.time()
+    stale_ids = [uid for uid, sess in list(chunk_uploads.items())
+                 if now - sess.get("started_at", now) > 86400]
+    for uid in stale_ids:
+        chunk_dir = CHUNK_DIR / uid
+        shutil.rmtree(chunk_dir, ignore_errors=True)
+        chunk_uploads.pop(uid, None)
+    if stale_ids:
+        print(f"[ChunkCleanup] {len(stale_ids)}개 미완료 업로드 정리")
 
 def _list_preprocessed_files() -> list[Path]:
     """전처리된 오디오 파일 목록 (WAV + MP3)."""
@@ -234,8 +247,8 @@ def load_config():
     return {"runpod_api_key": "", "runpod_endpoint_id": ""}
 
 def save_config(config):
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SQLite 데이터베이스
@@ -345,6 +358,17 @@ def cleanup_stale_jobs_on_startup():
     """서버 시작 시 1회만 호출. 모든 running/submitting 작업을 실패 처리.
     서버 재시작 시 폴링 스레드가 사라지므로 진행 중 작업을 정리."""
     with get_db() as db:
+        # RunPod 작업 ID 먼저 수집 → 실제 취소
+        stale_rows = db.execute("""
+            SELECT id, runpod_job_id FROM jobs
+            WHERE status IN ('running', 'submitting') AND runpod_job_id IS NOT NULL
+        """).fetchall()
+        if stale_rows and runpod_client.is_configured():
+            for row in stale_rows:
+                try:
+                    runpod_client.cancel_runpod_job(row["runpod_job_id"])
+                except Exception:
+                    pass
         active = db.execute("""
             UPDATE jobs
             SET status='failed',
@@ -360,6 +384,19 @@ def cleanup_stale_jobs():
     """주기적 호출용. 1시간 이상 방치된 작업만 실패 처리.
     진행 중인 정상 작업은 건드리지 않음."""
     with get_db() as db:
+        # RunPod 작업 ID 먼저 수집 → 실제 취소 (과금 중지)
+        stale_rows = db.execute("""
+            SELECT id, runpod_job_id FROM jobs
+            WHERE status IN ('running', 'submitting')
+              AND runpod_job_id IS NOT NULL
+              AND updated_at < datetime('now', 'localtime', '-1 hour')
+        """).fetchall()
+        if stale_rows and runpod_client.is_configured():
+            for row in stale_rows:
+                try:
+                    runpod_client.cancel_runpod_job(row["runpod_job_id"])
+                except Exception:
+                    pass
         stale = db.execute("""
             UPDATE jobs
             SET status='failed',
@@ -600,13 +637,22 @@ def upload_to_r2(file_path: Path, key: str) -> str:
 # 백그라운드 작업 관리
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+_JOB_UPDATE_COLS = frozenset({"status", "progress", "message", "result_json",
+                               "runpod_job_id", "pause_state_json"})
+
 def update_job(job_id: str, **kwargs):
-    with get_db() as db:
-        sets = ", ".join(f"{k}=?" for k in kwargs)
-        vals = list(kwargs.values())
-        vals.append(datetime.now().isoformat())
-        vals.append(job_id)
-        db.execute(f"UPDATE jobs SET {sets}, updated_at=? WHERE id=?", vals)
+    invalid = set(kwargs) - _JOB_UPDATE_COLS
+    if invalid:
+        raise ValueError(f"update_job: 허용되지 않은 컬럼 {invalid}")
+    try:
+        with get_db() as db:
+            sets = ", ".join(f"{k}=?" for k in kwargs)
+            vals = list(kwargs.values())
+            vals.append(datetime.now().isoformat())
+            vals.append(job_id)
+            db.execute(f"UPDATE jobs SET {sets}, updated_at=? WHERE id=?", vals)
+    except Exception as e:
+        print(f"[update_job] DB 업데이트 실패 (job_id={job_id}): {e}")
 
 
 def _is_job_cancelled(job_id: str) -> bool:
@@ -875,7 +921,7 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     meta = {}
     if meta_path.exists():
         try:
-            meta = json.loads(meta_path.read_text())
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception as e:
             print(f"[Warning] Failed to parse metadata: {e}")
     prev_dur = meta.get("total_duration", 0.0)
@@ -889,7 +935,7 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
         for fid in file_ids:
             seg_map[str(fid)] = seg_map.get(str(fid), []) + seg_names
     meta["file_segments"] = seg_map
-    meta_path.write_text(json.dumps(meta))
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
 
     return {
         "segment_count": len(training_files),
@@ -942,6 +988,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             # Check for upload failure (model too large for base64 + no R2)
             if output.get("upload_method") == "failed":
                 error_msg = output.get("error", "모델 업로드 실패")
+                shutil.rmtree(model_dir, ignore_errors=True)  # 빈 디렉토리 정리
                 update_job(job_id, status="failed", message=error_msg)
                 return
 
@@ -972,16 +1019,22 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 with open(index_path, "wb") as f:
                     f.write(raw)
 
-            with get_db() as db:
-                db.execute("""
-                    INSERT INTO voice_models (name, pth_path, index_path, pth_url, index_url,
-                                            epochs, training_time_seconds, training_files_json, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready')
-                """, (model_name, pth_path, index_path,
-                      output.get("pth_url"), output.get("index_url"),
-                      output.get("epochs_trained", 0),
-                      output.get("training_time_seconds", 0),
-                      json.dumps(_training_file_map.pop(job_id, []), ensure_ascii=False)))
+            try:
+                with get_db() as db:
+                    db.execute("""
+                        INSERT INTO voice_models (name, pth_path, index_path, pth_url, index_url,
+                                                epochs, training_time_seconds, training_files_json, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready')
+                    """, (model_name, pth_path, index_path,
+                          output.get("pth_url"), output.get("index_url"),
+                          output.get("epochs_trained", 0),
+                          output.get("training_time_seconds", 0),
+                          json.dumps(_training_file_map.pop(job_id, []), ensure_ascii=False)))
+            except Exception as db_err:
+                # DB 삽입 실패 시 다운로드된 모델 파일 정리 (고아 파일 방지)
+                print(f"[Train] DB insert failed, cleaning up model files: {db_err}")
+                shutil.rmtree(model_dir, ignore_errors=True)
+                raise
 
             update_job(job_id, status="completed", progress=100,
                       message="학습 완료!",
@@ -1092,12 +1145,14 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
 
         # 이 배치의 RunPod 작업 완료까지 폴링
         start_time = time.time()
+        batch_poll_errors = 0
         while True:
             time.sleep(5)
             if _is_job_cancelled(job_id):
                 return
             try:
                 result = runpod_client.check_status(runpod_job_id)
+                batch_poll_errors = 0  # 성공 시 에러 카운터 리셋
                 status = result.get("status", "UNKNOWN")
                 elapsed = int(time.time() - start_time)
 
@@ -1109,7 +1164,7 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
                                message=f"{batch_label} 완료! (다음 배치 준비 중...)")
                     break
 
-                elif status == "FAILED":
+                elif status in ("FAILED", "TIMED_OUT", "CANCELLED"):
                     error = result.get("error", "알 수 없는 오류")
                     update_job(job_id, status="failed",
                                message=f"{batch_label} 실패: {error}")
@@ -1126,9 +1181,14 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
                                message=f"{batch_label} 시간 초과 (1시간)")
                     return
 
-            except Exception:
+            except Exception as e:
+                batch_poll_errors += 1
+                if batch_poll_errors > 30:  # 30회 연속 오류 (~5분) → 작업 실패
+                    update_job(job_id, status="failed",
+                               message=f"{batch_label} 상태 확인 반복 실패: {e}")
+                    return
                 update_job(job_id, status="running",
-                           message=f"{batch_label} 상태 확인 중... (재시도)")
+                           message=f"{batch_label} 상태 확인 중... (재시도 {batch_poll_errors})")
                 time.sleep(10)
 
     # 모든 배치 완료 — 결과 집계 + 세그먼트 디스크 저장
@@ -1416,6 +1476,7 @@ async def upload_chunk(
             "received": set(),
             "filename": filename,
             "category": category,
+            "started_at": time.time(),
         }
 
     session = chunk_uploads[upload_id]
@@ -1449,14 +1510,20 @@ async def upload_chunk(
         total_size = 0
         hash_obj = hashlib.sha256()
 
-        with open(save_path, "wb") as out_f:
-            for i in range(total_chunks):
-                cp = chunk_dir / f"chunk_{i:06d}"
-                with open(cp, "rb") as in_f:
-                    data = in_f.read()
-                    total_size += len(data)
-                    hash_obj.update(data)
-                    out_f.write(data)
+        try:
+            with open(save_path, "wb") as out_f:
+                for i in range(total_chunks):
+                    cp = chunk_dir / f"chunk_{i:06d}"
+                    with open(cp, "rb") as in_f:
+                        data = in_f.read()
+                        total_size += len(data)
+                        hash_obj.update(data)
+                        out_f.write(data)
+        except Exception as merge_err:
+            save_path.unlink(missing_ok=True)
+            shutil.rmtree(chunk_dir, ignore_errors=True)
+            chunk_uploads.pop(upload_id, None)
+            raise HTTPException(500, f"청크 병합 실패: {merge_err}")
 
         if total_size > MAX_CHUNK_FILE_SIZE:
             save_path.unlink(missing_ok=True)
@@ -1568,7 +1635,7 @@ async def start_training(
         seg_map = {}
         if meta_path.exists():
             try:
-                seg_map = json.loads(meta_path.read_text()).get("file_segments", {})
+                seg_map = json.loads(meta_path.read_text(encoding="utf-8")).get("file_segments", {})
             except Exception as e:
                 print(f"[Warning] Failed to parse metadata: {e}")
 
@@ -1715,7 +1782,7 @@ async def start_preprocess(
     with get_db() as db:
         placeholders = ",".join("?" * len(ids))
         rows = db.execute(
-            f"SELECT * FROM training_files WHERE id IN ({placeholders})", ids
+            f"SELECT * FROM training_files WHERE id IN ({placeholders}) AND deleted=0", ids
         ).fetchall()
 
     if not rows:
@@ -1827,7 +1894,7 @@ async def preprocess_status():
     meta_path = PREPROCESSED_DIR / "_metadata.json"
     if meta_path.exists():
         try:
-            total_dur = json.loads(meta_path.read_text()).get("total_duration", 0.0)
+            total_dur = json.loads(meta_path.read_text(encoding="utf-8")).get("total_duration", 0.0)
         except Exception as e:
             print(f"[Warning] Failed to parse metadata: {e}")
 
@@ -2131,6 +2198,28 @@ async def start_conversion(
 
 # ─── 작업 상태 API ───
 
+@app.get("/api/jobs/active")
+async def get_active_jobs():
+    """페이지 로드 시 프론트엔드 상태 복원용.
+    running/submitting/paused 상태의 최신 작업을 job_type별 1개씩 반환."""
+    with get_db() as db:
+        rows = db.execute("""
+            SELECT id, job_type, status, progress, message, created_at
+            FROM jobs
+            WHERE status IN ('running', 'submitting', 'paused')
+            ORDER BY created_at DESC
+        """).fetchall()
+    # job_type별 최신 1개만 반환 (중복 제거)
+    seen: set = set()
+    result = []
+    for r in rows:
+        jt = r["job_type"]
+        if jt not in seen:
+            seen.add(jt)
+            result.append(dict(r))
+    return {"active_jobs": result}
+
+
 @app.get("/api/jobs/{job_id}")
 async def get_job(job_id: str):
     with get_db() as db:
@@ -2139,7 +2228,10 @@ async def get_job(job_id: str):
         raise HTTPException(404, "작업을 찾을 수 없습니다.")
     result = dict(row)
     if result.get("result_json"):
-        result["result"] = json.loads(result["result_json"])
+        try:
+            result["result"] = json.loads(result["result_json"])
+        except Exception:
+            pass
     return result
 
 
@@ -2464,8 +2556,19 @@ async def resume_job(job_id: str):
 
 @app.post("/api/jobs/cleanup")
 async def cleanup_all_stuck_jobs():
-    """멈춘 작업 일괄 정리 — running/submitting 상태의 모든 작업을 실패 처리"""
+    """멈춘 작업 일괄 정리 — running/submitting 상태의 모든 작업 취소 + RunPod 과금 중지"""
     with get_db() as db:
+        # RunPod 작업 ID 수집 → 실제 취소 (과금 즉시 중지)
+        active_rows = db.execute("""
+            SELECT id, runpod_job_id FROM jobs
+            WHERE status IN ('running', 'submitting') AND runpod_job_id IS NOT NULL
+        """).fetchall()
+        if active_rows and runpod_client.is_configured():
+            for row in active_rows:
+                try:
+                    runpod_client.cancel_runpod_job(row["runpod_job_id"])
+                except Exception:
+                    pass
         result = db.execute("""
             UPDATE jobs
             SET status='cancelled',
@@ -2476,6 +2579,7 @@ async def cleanup_all_stuck_jobs():
     # 메모리 상태도 정리
     _active_job_states.clear()
     _poll_error_counts.clear()
+    preprocess_file_map.clear()
     return {"cleaned": result.rowcount}
 
 
@@ -2487,7 +2591,10 @@ async def list_jobs():
     for r in rows:
         d = dict(r)
         if d.get("result_json"):
-            d["result"] = json.loads(d["result_json"])
+            try:
+                d["result"] = json.loads(d["result_json"])
+            except Exception:
+                pass
         results.append(d)
     return {"jobs": results}
 
@@ -2516,6 +2623,19 @@ async def delete_model(model_id: int):
         for d in dirs_to_check:
             if d.exists() and not any(d.iterdir()):
                 d.rmdir()
+        # 연결된 변환 출력 파일 삭제 (고아 파일 방지)
+        conv_rows = db.execute(
+            "SELECT output_file, output_name FROM conversions WHERE model_id=?", (model_id,)
+        ).fetchall()
+        for conv in conv_rows:
+            for col in ("output_file", "output_name"):
+                fname = conv[col]
+                if fname:
+                    fpath = OUTPUT_DIR / fname
+                    try:
+                        fpath.unlink(missing_ok=True)
+                    except Exception:
+                        pass
         # 연결된 변환 기록도 삭제 (cascade)
         db.execute("DELETE FROM conversions WHERE model_id = ?", (model_id,))
         db.execute("DELETE FROM voice_models WHERE id=?", (model_id,))
@@ -2582,6 +2702,16 @@ async def delete_conversion(conv_id: int):
     return {"status": "ok"}
 
 
+_AUDIO_MIME = {
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".webm": "audio/webm",
+}
+
 @app.get("/api/download/{filename:path}")
 async def download_file(filename: str):
     # Path traversal 방지
@@ -2589,8 +2719,10 @@ async def download_file(filename: str):
     filepath = OUTPUT_DIR / safe_name
     if not filepath.exists():
         raise HTTPException(404, "파일을 찾을 수 없습니다.")
-    # application/octet-stream forces browser download (prevents in-browser audio playback)
-    return FileResponse(str(filepath), filename=safe_name, media_type="application/octet-stream")
+    # 오디오 파일은 적절한 MIME 타입으로 서빙 (audio 태그 인라인 재생 + 다운로드 모두 지원)
+    ext = Path(safe_name).suffix.lower()
+    media_type = _AUDIO_MIME.get(ext, "application/octet-stream")
+    return FileResponse(str(filepath), filename=safe_name, media_type=media_type)
 
 
 # ─── 대시보드 통계 API ───
@@ -2615,8 +2747,9 @@ async def get_stats():
 @app.get("/api/health")
 async def health_check():
     """서버 상태, RunPod 연결, 디스크 용량 확인"""
-    # 주기적 stale job 정리 (30분 간격)
+    # 주기적 stale job 정리 + 청크 업로드 정리 (30분 간격)
     maybe_cleanup_stale_jobs()
+    _cleanup_stale_chunk_uploads()
 
     health = {
         "status": "ok",
