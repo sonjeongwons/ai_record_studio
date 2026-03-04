@@ -2829,7 +2829,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
           </div>
         </div>
         <div class="cost-panel-note">
-          RTX 4090 ($0.00074/sec) 기준 <b>추정값</b>. 실제 값은 GPU 종류·서버 부하·RunPod 큐 대기 시간에 따라 크게 달라집니다.<br>          <b>소규모 예시:</b> 10분 데이터 + 500에폭(RMVPE) → 약 1~2시간 → 약 $2~6<br>          <b>대용량 예시:</b> 60분 데이터 + 500에폭 → 약 7~16시간 → 약 $19~43 &nbsp;|&nbsp; 30분 + 1000에폭 → 약 8~18시간<br>          <b>절약 팁:</b> 데이터가 많을수록 에폭 수를 낮춰도 품질이 유지됩니다. Crepe는 RMVPE보다 2배 오래 걸립니다.
+          RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>실측 보정 추정값</b>.<br>          <b>실측 기준:</b> 30분 데이터 + Crepe + 500에폭 = 약 6시간 · $15 (2026.03 실측)<br>          <b>소규모:</b> 10분 데이터 + 500에폭(RMVPE) → 약 1.5~2.5시간 → 약 $4~7<br>          <b>대용량:</b> 30분 + 500에폭(RMVPE) → 약 4~7시간 → 약 $11~19 &nbsp;|&nbsp; Crepe 사용 시 +20~40%<br>          <b>절약 팁:</b> RMVPE가 Crepe보다 2~3배 빠르며 품질 차이는 미미합니다. 데이터 10분이면 500에폭으로 충분합니다.
         </div>
         <!-- 동적 긴 학습 경고 -->
         <div id="train-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);font-size:12px;color:#fbbf24;line-height:1.55"></div>
@@ -3433,23 +3433,28 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
       </p>
       <table class="billing-table">
         <thead>
-          <tr><th>데이터</th><th>에폭</th><th>배치</th><th>예상 시간</th><th>RTX 4090 비용</th></tr>
+          <tr><th colspan="6" style="text-align:left;color:var(--text2);font-weight:400;font-size:11px;padding-bottom:4px">⚠️ 2026.03 RTX 4090 실측 데이터 기반 (30분/Crepe/500에폭 = 약 6시간/$15 실측 보정)</th></tr>
         </thead>
         <tbody>
-          <tr><td>3분</td><td>300</td><td>자동</td><td>약 20~30분</td><td><em>~$0.88~$1.32</em></td></tr>
-          <tr><td>5분</td><td>500</td><td>자동</td><td>약 35~50분</td><td><em>~$1.54~$2.20</em></td></tr>
-          <tr><td>10분</td><td>500</td><td>자동</td><td>약 65~90분</td><td><em>~$2.86~$3.96</em></td></tr>
-          <tr><td>10분</td><td>1000</td><td>자동</td><td>약 120~160분</td><td><em>~$5.28~$7.04</em></td></tr>
-          <tr><td>20분</td><td>1000</td><td>16</td><td>약 120~150분</td><td><em>~$5.28~$6.60</em></td></tr>
+          <tr><th>데이터</th><th>에폭</th><th>F0</th><th>배치</th><th>예상 시간</th><th>RTX 4090 비용</th></tr>
+          <tr><td>3분</td><td>300</td><td>RMVPE</td><td>자동</td><td>약 15~25분</td><td><em>~$0.66~$1.10</em></td></tr>
+          <tr><td>5분</td><td>500</td><td>RMVPE</td><td>자동</td><td>약 45~70분</td><td><em>~$2.00~$3.08</em></td></tr>
+          <tr><td>10분</td><td>500</td><td>RMVPE</td><td>자동</td><td>약 1.5~2.5시간</td><td><em>~$4.00~$6.65</em></td></tr>
+          <tr><td>10분</td><td>500</td><td>Crepe</td><td>자동</td><td>약 1.8~3시간</td><td><em>~$4.80~$7.98</em></td></tr>
+          <tr style="background:rgba(139,92,246,0.08)"><td><b>30분</b></td><td><b>500</b></td><td><b>RMVPE</b></td><td>자동</td><td><b>약 4~7시간</b></td><td><em><b>~$10.64~$18.62</b></em></td></tr>
+          <tr style="background:rgba(245,158,11,0.08)"><td><b>30분</b></td><td><b>500</b></td><td><b>Crepe</b></td><td>자동</td><td><b>약 5~8.5시간</b></td><td><em><b>~$13.30~$22.61</b></em></td></tr>
+          <tr><td>10분</td><td>1000</td><td>RMVPE</td><td>자동</td><td>약 3~4.5시간</td><td><em>~$7.98~$11.97</em></td></tr>
+          <tr><td>20분</td><td>1000</td><td>RMVPE</td><td>16</td><td>약 3.5~5시간</td><td><em>~$9.31~$13.30</em></td></tr>
         </tbody>
       </table>
       <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">
         💡 <b>옵션별 영향:</b><br>
-        · <b>에폭:</b> 500→1000으로 늘리면 시간·비용 약 2배. 처음엔 500을 권장합니다.<br>
-        · <b>피치 추출 (Crepe):</b> RMVPE 대비 특징 추출 시간 1.5~2배. 학습 품질 차이는 미미합니다.<br>
-        · <b>배치 크기 16/24:</b> 자동(8)보다 30~50% 빠름. 메모리 오류 시 낮춰야 합니다.<br>
+        · <b>에폭:</b> 500→1000으로 늘리면 시간·비용 약 2배. 처음엔 500으로 결과를 확인하세요.<br>
+        · <b>피치 추출 (Crepe vs RMVPE):</b> Crepe는 특징 추출 시간이 RMVPE의 2~3배이며, 학습 품질 차이는 미미합니다. <b>RMVPE 권장.</b><br>
+        · <b>배치 크기 16/24:</b> 자동(8)보다 약 30~50% 빠름. 메모리 오류 시 낮춰야 합니다.<br>
         · <b>48kHz:</b> 40kHz보다 약 20% 느림. 원본이 48kHz 스튜디오 녹음일 때만 사용하세요.<br>
-        · <b>학습 데이터 양:</b> 10분이면 충분. 30분 이상은 품질 향상이 미미하고 과금이 늘어납니다.
+        · <b>학습 데이터 양:</b> 10분이면 충분. 30분 이상은 과금이 크게 늘어나므로 에폭을 300~500으로 낮추세요.<br>
+        · <b>실측 기준:</b> 30분 데이터 + Crepe + 500에폭 ≈ 약 6시간, 약 $15 (RTX 4090).
       </div>
     </div>
 
@@ -4237,25 +4242,27 @@ function estimateTrainingCost() {
   var sr     = parseInt(document.getElementById('train-sr').value)     || 40000;
   var f0     = (document.getElementById('train-f0').value || 'rmvpe').toLowerCase();
 
-  // 배치 팩터 (클수록 빠름)
-  var batchFactor = { 0: 1.00, 8: 1.00, 16: 0.65, 24: 0.45 }[batch] || 1.00;
+  // 배치 팩터 (클수록 빠름) — RTX 4090 기준 실측
+  var batchFactor = { 0: 1.00, 8: 1.00, 16: 0.70, 24: 0.50 }[batch] || 1.00;
   // SR 팩터
   var srFactor = sr === 48000 ? 1.20 : 1.00;
   // F0 특징 추출 팩터 (학습 전 1회)
-  var f0FeatureFactor = (f0 === 'crepe') ? 2.0 : (f0 === 'crepe-tiny' ? 1.3 : 1.0);
+  var f0FeatureFactor = (f0 === 'crepe') ? 2.5 : (f0 === 'crepe-tiny' ? 1.5 : 1.0);
 
-  // 특징 추출 (1회): ~1.5x realtime (RMVPE), ~2.5x (Crepe)
+  // ── 실측 기반 공식 (2026-03 RTX 4090 실측 보정) ──
+  // 실측 데이터: 30분 데이터 + Crepe + 500에폭 = 약 6시간, $15
+  // 특징 추출 (1회): RMVPE ~1.5x realtime, Crepe ~3.5x realtime
   var featureSecs  = totalSecs * 1.5 * f0FeatureFactor;
-  // 학습 epochs: RTX 4090 기준 ~0.94 sec/epoch/min-of-data at batch=8, 40kHz
-  var trainingSecs = epochs * totalMins * 0.94 * batchFactor * srFactor;
-  // 오버헤드: 모델 다운로드·설정
-  var overheadSecs = 120;
+  // 학습 epochs: RTX 4090 기준 ~1.10 sec/epoch/min-of-data at batch=auto, 40kHz
+  var trainingSecs = epochs * totalMins * 1.10 * batchFactor * srFactor;
+  // 오버헤드: 모델 다운로드·Docker 시작·인덱스 생성
+  var overheadSecs = 180;
   var totalGpu  = featureSecs + trainingSecs + overheadSecs;
-  // 학습 시간 불확실성: 서버 부하·GPU 종류·데이터 특성에 따라 실제 편차 큼
-  var minSec    = totalGpu * 0.55;
-  var maxSec    = totalGpu * 2.00;
+  // 실측 기반 ±30% 범위 (이전 ±50~100% 대비 현실적)
+  var minSec    = totalGpu * 0.75;
+  var maxSec    = totalGpu * 1.40;
 
-  var f0Label = { rmvpe: 'RMVPE (권장)', crepe: 'Crepe (+시간 2배)', 'crepe-tiny': 'Crepe-tiny' }[f0] || f0;
+  var f0Label = { rmvpe: 'RMVPE (권장)', crepe: 'Crepe (+시간 2~3배)', 'crepe-tiny': 'Crepe-tiny (+시간 1.5배)' }[f0] || f0;
 
   document.getElementById('cost-train-data').textContent = formatDuration(totalSecs) + ' (' + selectedIds.length + '개 파일)';
   document.getElementById('cost-train-epochs').textContent = epochs + ' 에폭';
@@ -4276,9 +4283,9 @@ function estimateTrainingCost() {
   var costStr = _formatCostRange(minSec, maxSec);
   var timeStr = _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec);
   var hints = [];
-  if (f0 === 'crepe')           hints.push('Crepe → RMVPE로 바꾸면 학습 시간을 절반으로 줄일 수 있습니다');
+  if (f0 === 'crepe')           hints.push('Crepe → RMVPE로 바꾸면 특징 추출 시간을 60~70% 줄일 수 있습니다');
   if (sr === 48000)             hints.push('48kHz → 40kHz로 낮추면 약 20% 단축됩니다');
-  if (batch === 0 || batch === 8) hints.push('배치 16 이상 설정 시 학습 속도가 빨라집니다');
+  if (batch === 0 || batch === 8) hints.push('배치 16 이상 설정 시 학습 속도가 약 30% 빨라집니다');
   var hintStr = hints.length ? '<br>💡 <b>단축 팁:</b> ' + hints.join(' / ') : '';
   var warnMsg, warnLevel;
   if (totalGpu < 1800) {
