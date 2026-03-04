@@ -2062,6 +2062,7 @@ async def start_conversion(
     protect: float = Form(0.35),
     rms_mix_rate: float = Form(0.1),
     filter_radius: int = Form(4),
+    hop_length: int = Form(128),
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2078,6 +2079,8 @@ async def start_conversion(
         raise HTTPException(400, f"RMS Mix는 0.0~1.0 사이여야 합니다. (입력: {rms_mix_rate})")
     if not (0 <= filter_radius <= 7):
         raise HTTPException(400, f"Filter Radius는 0~7 사이여야 합니다. (입력: {filter_radius})")
+    if hop_length not in (64, 128, 256, 512):
+        hop_length = 128  # 잘못된 값은 기본값으로
     if f0_method not in ("rmvpe", "crepe", "crepe-tiny", "harvest", "pm"):
         raise HTTPException(400, f"유효하지 않은 F0 방법입니다: {f0_method}")
 
@@ -2116,6 +2119,7 @@ async def start_conversion(
         "protect": protect,
         "rms_mix_rate": rms_mix_rate,
         "filter_radius": filter_radius,
+        "hop_length": hop_length,
     }
     with get_db() as db:
         db.execute("""
@@ -2142,7 +2146,7 @@ async def start_conversion(
             "protect": protect,
             "rms_mix_rate": rms_mix_rate,
             "filter_radius": filter_radius,
-            "hop_length": 128,
+            "hop_length": hop_length,
             "separate_vocals": True,
             "vocal_volume": vocal_volume,
             "mr_volume": mr_volume,
@@ -2554,7 +2558,8 @@ async def resume_job(job_id: str):
                 "protect": pause_state.get("protect", 0.35),
                 "rms_mix_rate": pause_state.get("rms_mix_rate", 0.1),
                 "filter_radius": pause_state.get("filter_radius", 4),
-                "hop_length": 128, "separate_vocals": True,
+                "hop_length": pause_state.get("hop_length", 128),
+                "separate_vocals": True,
                 "vocal_volume": pause_state.get("vocal_volume", 1.0),
                 "mr_volume": pause_state.get("mr_volume", 1.0),
                 "bucket_name": r2_bucket,

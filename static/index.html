@@ -2643,7 +2643,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
               </div>
             </div>
             <div class="cost-panel-note" id="cost-pre-note">
-              RTX 4090 ($0.00074/sec) 기준 <b>추정값</b>이며, 실제 시간은 파일 포맷·음질·서버 상황에 따라 달라집니다.<br>              <b>예시:</b> 5분 MP3 1곡 → GPU 약 5~10분 → 약 $0.22~$0.44 &nbsp;|&nbsp; 3곡(합계 15분) → 약 15~30분 → 약 $0.67~$1.33<br>              <b>참고:</b> MP4·MKV 영상 파일은 오디오 추출 시간이 추가됩니다. RunPod GPU 대기 시간(0~5분)은 별도입니다.
+              RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>추정값</b>. Demucs 보컬 분리가 전처리의 대부분을 차지합니다.<br>              <b>예시:</b> 5분 MP3 1곡 → GPU 약 7~12분 → 약 $0.31~$0.53 &nbsp;|&nbsp; 3곡(합계 15분) → 약 20~35분 → 약 $0.88~$1.54<br>              <b>참고:</b> MP4·MKV 영상 파일은 오디오 추출 시간이 추가됩니다. RunPod GPU 대기(콜드 스타트, 0~5분)는 별도입니다.
             </div>
           </div>
           <div id="preprocess-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.55"></div>
@@ -2775,10 +2775,10 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
       </div>
       <div class="grid-2 mt-16">
         <div>
-          <label class="label">피치 추출 방식 <i class="tip" data-tip="목소리의 음 높낮이를 분석하는 알고리즘입니다. RMVPE는 빠르고 안정적이어서 대부분의 경우에 적합합니다. Crepe는 더 정확하지만 학습 시간이 2~3배 길어집니다. 변환 시 사용할 방식과 맞추는 것이 좋습니다.">ⓘ</i></label>
+          <label class="label">피치 추출 방식 <i class="tip" data-tip="목소리의 음 높낮이를 분석하는 알고리즘입니다. RMVPE는 빠르고 안정적이어서 대부분의 경우에 적합합니다. Crepe는 특징 추출 시간이 RMVPE의 2~3배이며, 학습 품질 차이는 미미합니다. 비용 절약을 위해 RMVPE를 권장합니다. 실측: 30분 데이터 + Crepe + 500에폭 = 약 6시간/$15.">ⓘ</i></label>
           <select id="train-f0" onchange="estimateTrainingCost()">
-            <option value="rmvpe" selected>RMVPE (권장 · 빠르고 안정적)</option>
-            <option value="crepe">Crepe (더 정확 · 학습 2~3배 느림)</option>
+            <option value="rmvpe" selected>RMVPE (권장 · 빠르고 비용 절약)</option>
+            <option value="crepe">Crepe (특징 추출 2~3배 느림 · 비용 증가)</option>
             <option value="crepe-tiny">Crepe-tiny (Crepe보다 빠른 경량 버전)</option>
           </select>
         </div>
@@ -3029,6 +3029,18 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
           <span class="adv-toggle-label">고급 변환 설정 <i class="tip" data-tip="처음 사용 시 기본값을 유지하는 것을 권장합니다. 결과물이 마음에 들지 않을 때 하나씩 조정해보세요.">ⓘ</i></span>
         </div>
         <div id="advanced-convert-settings" class="adv-panel open">
+          <!-- 프리셋 버튼 -->
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('default')" style="font-size:11px;padding:5px 12px;border-radius:8px" title="기본 설정으로 되돌리기">
+              🔄 기본값
+            </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('falsetto')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(245,158,11,0.4);color:#fbbf24" title="가성·고음이 많은 노래에 최적화된 설정. 자연스러운 고음을 위해 protect↑, filter↓, hop_length↓ 조절">
+              🎤 가성/고음 최적화
+            </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('natural')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(16,185,129,0.4);color:#10b981" title="자연스럽고 원본에 가까운 변환. 원본 질감을 최대한 보존">
+              🎵 자연스러운 변환
+            </button>
+          </div>
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">피치 추출 방식 <i class="tip" data-tip="목소리의 음 높낮이를 감지하는 알고리즘입니다. 학습 시 사용한 방식과 동일하게 맞추는 것이 좋습니다. Crepe는 고음이 많은 노래에 더 정확하지만 처리가 느립니다. RMVPE는 빠르고 대부분의 경우 충분한 품질을 냅니다.">ⓘ</i></span>
@@ -3052,11 +3064,11 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">자음 보호 <i class="tip" data-tip="'ㄱ', 'ㄷ', 'ㅂ' 같은 자음의 발음 질감을 원본대로 보존합니다. 값이 높을수록 원본 발음에 가깝게 유지되어 부자연스러운 발음을 방지합니다. 0.30~0.45 사이가 자연스럽습니다. 너무 높으면 AI 목소리 특성이 약해집니다.">ⓘ</i></span>
+              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음과 가성·고음의 원본 질감을 보존합니다. 값이 높을수록 원본 발음과 음색에 가깝게 유지되어 기계적인 소리를 방지합니다.\n\n• 0.30~0.35: 기본값 (일반 곡)\n• 0.40~0.50: 가성/고음 최적화 (기계음 방지)\n\n가성이 로봇처럼 들리면 0.45~0.50으로 높여보세요.">ⓘ</i></span>
               <span class="slider-value" id="protect-val">0.35</span>
             </div>
             <input type="range" id="protect-slider" min="0" max="50" value="35" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 원본 발음 질감 보존 (0.30~0.45 권장)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 원본 질감 보존 (일반: 0.30~0.35, 가성: 0.45~0.50)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -3072,7 +3084,15 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
               <span class="slider-value" id="filter-val">4</span>
             </div>
             <input type="range" id="filter-slider" min="0" max="7" value="4" oninput="document.getElementById('filter-val').textContent=this.value">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (3~5 권장)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (3~5 권장, 가성은 1~2)</div>
+          </div>
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">피치 해상도 (Hop Length) <i class="tip" data-tip="F0 피치 추출의 정밀도를 결정합니다. 값이 작을수록 피치 변화를 더 세밀하게 감지하여 가성·비브라토·고음 전환이 자연스러워집니다. 단, 너무 낮으면 노이즈에 민감해질 수 있습니다.\n\n• 64: 가성/고음 최적화 (정밀한 피치 추적)\n• 128: 기본값 (균형 잡힌 설정)\n• 256: 안정적 (노이즈 많은 소스에 적합)">ⓘ</i></span>
+              <span class="slider-value" id="hop-val">128</span>
+            </div>
+            <input type="range" id="hop-slider" min="0" max="2" value="1" oninput="var hops=[64,128,256];document.getElementById('hop-val').textContent=hops[this.value]">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">작을수록 정밀한 피치 감지 (가성/고음: 64, 기본: 128)</div>
           </div>
         </div>
       </div>
@@ -3131,7 +3151,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
         </div>
       </div>
       <div class="cost-panel-note">
-        RTX 4090 ($0.00074/sec) 기준 <b>추정값</b>. 실제 시간은 파일 길이·품질·F0 방식에 따라 달라집니다.<br>        <b>예시:</b> 3분 노래 1곡 → GPU 약 1~2분 → 약 $0.04~0.09 &nbsp;|&nbsp; 5곡 일괄 → 약 5~10분 → 약 $0.22~0.44<br>        <b>참고:</b> 변환은 학습에 비해 매우 저렴합니다 (1곡당 수 센트 수준). Crepe는 RMVPE보다 약간 느립니다. 노이즈 제거(ON) 시 처리 시간이 10~20% 추가됩니다.
+        RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>추정값</b>. 변환은 Demucs 보컬 분리 + RVC 추론으로 구성됩니다.<br>        <b>예시:</b> 3분 노래 1곡 → GPU 약 1~3분 → 약 $0.04~$0.13 &nbsp;|&nbsp; 5곡 일괄 → 약 5~12분 → 약 $0.22~$0.53<br>        <b>참고:</b> 변환은 학습에 비해 매우 저렴합니다. Demucs 보컬 분리 단계가 처리 시간의 대부분을 차지합니다. 노이즈 제거(ON) 시 +15%.
       </div>
     </div>
     <div id="convert-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.55"></div>
@@ -3412,11 +3432,11 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
           <tr><th>오디오 길이</th><th>예상 GPU 시간</th><th>RTX 4090 비용</th><th>비고</th></tr>
         </thead>
         <tbody>
-          <tr><td>1분 (짧은 노래)</td><td>약 2분</td><td><em>~$0.09</em></td><td>단일 파일</td></tr>
-          <tr><td>5분 (보통 노래)</td><td>약 7분</td><td><em>~$0.31</em></td><td>단일 파일</td></tr>
-          <tr><td>10분 (2~3곡)</td><td>약 13분</td><td><em>~$0.57</em></td><td>합산</td></tr>
-          <tr><td>30분 (앨범)</td><td>약 35분</td><td><em>~$1.54</em></td><td>합산</td></tr>
-          <tr><td>60분 (대용량)</td><td>약 68분</td><td><em>~$3.00</em></td><td>합산</td></tr>
+          <tr><td>1분 (짧은 노래)</td><td>약 4~5분</td><td><em>~$0.18~$0.22</em></td><td>Docker 시작 포함</td></tr>
+          <tr><td>5분 (보통 노래)</td><td>약 8~13분</td><td><em>~$0.35~$0.57</em></td><td>단일 파일</td></tr>
+          <tr><td>10분 (2~3곡)</td><td>약 14~22분</td><td><em>~$0.62~$0.97</em></td><td>합산</td></tr>
+          <tr><td>30분 (앨범)</td><td>약 35~55분</td><td><em>~$1.54~$2.42</em></td><td>합산</td></tr>
+          <tr><td>60분 (대용량)</td><td>약 68~108분</td><td><em>~$3.00~$4.75</em></td><td>합산</td></tr>
         </tbody>
       </table>
       <div style="font-size:11px;color:var(--text3);margin-top:6px">
@@ -3462,17 +3482,17 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
     <div style="margin-top:20px">
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">④ 음원 변환 (Conversion) 예상 비용</div>
       <p style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.6">
-        변환은 3단계 중 <b>가장 저렴합니다</b>. 1곡당 몇 센트(¢) 수준이며, GPU가 오디오를 <b>실시간보다 10~20배 빠르게</b> 처리합니다.
+        변환은 3단계 중 <b>가장 저렴합니다</b>. Demucs 보컬 분리(~실시간 1배) + RVC 추론(~실시간 0.3배)으로 구성됩니다.
       </p>
       <table class="billing-table">
         <thead>
           <tr><th>오디오</th><th>파일 수</th><th>F0 방식</th><th>예상 시간</th><th>RTX 4090 비용</th></tr>
         </thead>
         <tbody>
-          <tr><td>3분 노래</td><td>1곡</td><td>Crepe/RMVPE</td><td>약 60~90초</td><td><em>~$0.04~0.07</em></td></tr>
-          <tr><td>5분 노래</td><td>1곡</td><td>Crepe/RMVPE</td><td>약 90~120초</td><td><em>~$0.07~0.09</em></td></tr>
-          <tr><td>3분 노래</td><td>5곡 일괄</td><td>Crepe/RMVPE</td><td>약 4~6분</td><td><em>~$0.18~0.27</em></td></tr>
-          <tr><td>3분 노래</td><td>10곡 일괄</td><td>Crepe/RMVPE</td><td>약 8~12분</td><td><em>~$0.35~0.53</em></td></tr>
+          <tr><td>3분 노래</td><td>1곡</td><td>Crepe/RMVPE</td><td>약 3~6분</td><td><em>~$0.13~$0.27</em></td></tr>
+          <tr><td>5분 노래</td><td>1곡</td><td>Crepe/RMVPE</td><td>약 5~10분</td><td><em>~$0.22~$0.44</em></td></tr>
+          <tr><td>3분 노래</td><td>5곡 일괄</td><td>Crepe/RMVPE</td><td>약 12~20분</td><td><em>~$0.53~$0.88</em></td></tr>
+          <tr><td>3분 노래</td><td>10곡 일괄</td><td>Crepe/RMVPE</td><td>약 22~38분</td><td><em>~$0.97~$1.67</em></td></tr>
         </tbody>
       </table>
       <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">
@@ -4176,13 +4196,13 @@ function estimatePreprocessCost() {
   });
   if (totalSecs <= 0) { panel.style.display = 'none'; return; }
 
-  // 전처리 = Demucs 줄기 분리 (~1.0x realtime) + 슬라이싱/정규화 + 오버헤드
+  // 전처리 = Demucs 줄기 분리 (~1.2x realtime) + 노이즈 제거 + 세그먼트 분할 + 오버헤드
   // 영상 파일은 오디오 추출 오버헤드 추가
   var videoFactor = videoCount > 0 ? (1.0 + 0.30 * videoCount / fileCount) : 1.0;
-  var gpuSecs = totalSecs * 1.0 * videoFactor + 120;
-  // 실제 Demucs 처리는 파일 품질·서버 부하에 따라 0.5배~2배 편차 발생
-  var minSec  = gpuSecs * 0.55;
-  var maxSec  = gpuSecs * 1.80;
+  var gpuSecs = totalSecs * 1.2 * videoFactor + 180; // Demucs ~1.2x + 후처리 + Docker 시작
+  // 실측 기반 ±30% 범위
+  var minSec  = gpuSecs * 0.75;
+  var maxSec  = gpuSecs * 1.50;
 
   document.getElementById('cost-pre-duration').textContent =
     formatDuration(totalSecs) + (videoCount > 0 ? ' (영상 ' + videoCount + '개 포함)' : '');
@@ -4322,14 +4342,15 @@ function estimateConversionCost() {
   var f0   = f0El ? f0El.value.toLowerCase() : 'crepe';
   var f0Factor = (f0 === 'crepe-tiny') ? 0.85 : 1.10; // crepe/rmvpe 유사
 
-  // GPU 시간: 모델 로딩 오버헤드 + 파일당 처리
-  var overheadSecs  = 30 + (files.length - 1) * 5; // 첫 파일 30s, 이후 파일 5s 추가
+  // GPU 시간: Demucs 보컬 분리(~1x realtime) + RVC 추론(~0.3x) + 모델 로딩
+  var overheadSecs  = 60 + (files.length - 1) * 10; // 첫 파일 60s(모델+Demucs 로딩), 이후 10s
   var cleanCb = document.getElementById('clean-audio-cb');
   var cleanFactor = (cleanCb && cleanCb.checked) ? 1.15 : 1.0; // 노이즈 제거 시 +15%
-  var processSecs   = totalDuration * 0.30 * f0Factor * cleanFactor;
-  var totalGpu  = overheadSecs + processSecs;
-  var minSec    = totalGpu * 0.50;
-  var maxSec    = totalGpu * 2.00;
+  var demucsSecs    = totalDuration * 1.0; // Demucs 보컬 분리 ≈ 실시간의 1배
+  var rvcSecs       = totalDuration * 0.30 * f0Factor * cleanFactor; // RVC 추론
+  var totalGpu  = overheadSecs + demucsSecs + rvcSecs;
+  var minSec    = totalGpu * 0.65;
+  var maxSec    = totalGpu * 1.50;
 
   var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)' }[f0] || f0;
   var cleanLabel = (cleanCb && cleanCb.checked) ? 'ON (+15% 시간 추가)' : 'OFF (기본)';
@@ -4364,6 +4385,48 @@ function estimateConversionCost() {
     warnMsg   = '⚠️ <b>시간 소요</b> — 약 ' + timeStr + ' 예상 (비용 ' + costStr + ').' + cleanNote + ' 일괄 변환이 많은 경우 페이지를 닫지 마세요.';
   }
   _showCostWarn('convert-cost-warn', warnLevel, warnMsg);
+}
+
+// ─── 변환 프리셋 ───
+function applyConvertPreset(preset) {
+  var presets = {
+    default: {
+      f0: 'crepe', protect: 35, rms: 10, filter: 4, hop: 1, // hop slider idx: 0=64, 1=128, 2=256
+      clean: false, index: 55, desc: '기본 설정으로 되돌렸습니다'
+    },
+    falsetto: {
+      f0: 'crepe', protect: 48, rms: 25, filter: 1, hop: 0, // hop=64
+      clean: false, index: 65, desc: '🎤 가성/고음 최적화 프리셋 적용 — protect↑0.48, filter↓1, hop↓64, rms↑0.25'
+    },
+    natural: {
+      f0: 'rmvpe', protect: 42, rms: 15, filter: 3, hop: 1, // hop=128
+      clean: false, index: 70, desc: '🎵 자연스러운 변환 프리셋 적용 — protect 0.42, filter 3, index↑0.70'
+    }
+  };
+  var p = presets[preset];
+  if (!p) return;
+
+  document.getElementById('convert-f0').value = p.f0;
+  var protectSlider = document.getElementById('protect-slider');
+  protectSlider.value = p.protect;
+  document.getElementById('protect-val').textContent = (p.protect / 100).toFixed(2);
+  var rmsSlider = document.getElementById('rms-slider');
+  rmsSlider.value = p.rms;
+  document.getElementById('rms-val').textContent = (p.rms / 100).toFixed(2);
+  var filterSlider = document.getElementById('filter-slider');
+  filterSlider.value = p.filter;
+  document.getElementById('filter-val').textContent = p.filter;
+  var hopSlider = document.getElementById('hop-slider');
+  hopSlider.value = p.hop;
+  var hopVals = [64, 128, 256];
+  document.getElementById('hop-val').textContent = hopVals[p.hop];
+  document.getElementById('clean-audio-cb').checked = p.clean;
+  document.getElementById('clean-audio-val').textContent = p.clean ? 'ON' : 'OFF';
+  var indexSlider = document.getElementById('index-slider');
+  indexSlider.value = p.index;
+  document.getElementById('index-val').textContent = (p.index / 100).toFixed(2);
+  estimateConversionCost();
+  toast(p.desc, 'info');
 }
 
 // 피치 반음 → 음계 이름 변환
@@ -5734,6 +5797,8 @@ async function startConversion() {
   form.append('protect', (document.getElementById('protect-slider').value / 100).toFixed(2));
   form.append('rms_mix_rate', (document.getElementById('rms-slider').value / 100).toFixed(2));
   form.append('filter_radius', document.getElementById('filter-slider').value);
+  var hopSteps = [64, 128, 256];
+  form.append('hop_length', hopSteps[document.getElementById('hop-slider').value] || 128);
   form.append('audio', convertFile);
 
   try {
@@ -6057,6 +6122,8 @@ async function startBatchConversion() {
       form.append('protect', (document.getElementById('protect-slider').value / 100).toFixed(2));
       form.append('rms_mix_rate', (document.getElementById('rms-slider').value / 100).toFixed(2));
       form.append('filter_radius', document.getElementById('filter-slider').value);
+      var hopSteps2 = [64, 128, 256];
+      form.append('hop_length', hopSteps2[document.getElementById('hop-slider').value] || 128);
       form.append('audio', batchResults[i].file);
 
       var res = await api('/convert', { method: 'POST', body: form });
