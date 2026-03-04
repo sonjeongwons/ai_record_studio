@@ -1109,13 +1109,19 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
     # 모든 배치 완료 — 결과 집계 + 세그먼트 디스크 저장
     merged_segments = []
     merged_duration = 0.0
+    merged_accomp = []
+    merged_vocals = []
     for r in all_results:
         merged_segments.extend(r.get("segments", []))
         merged_duration += r.get("total_duration", 0.0)
+        merged_accomp.extend(r.get("accompaniment_files", []))
+        merged_vocals.extend(r.get("vocal_files", []))
 
     saved = _save_preprocessed_segments({
         "segments": merged_segments,
         "total_duration": merged_duration,
+        "accompaniment_files": merged_accomp,
+        "vocal_files": merged_vocals,
     }, job_id)
     seg_count = saved["segment_count"]
     total_dur = saved["total_duration"]
@@ -1485,10 +1491,15 @@ async def start_training(
     if not runpod_client.is_configured():
         raise HTTPException(400, "RunPod API 설정이 필요합니다. 설정 페이지에서 API Key와 Endpoint ID를 입력하세요.")
 
-    # 모델 이름 중복 검사
+    # 모델 이름 유효성 검사
     model_name = model_name.strip()
     if not model_name:
         raise HTTPException(400, "모델 이름을 입력해 주세요.")
+    if len(model_name) > 100:
+        raise HTTPException(400, "모델 이름은 100자 이하여야 합니다.")
+    import re as _re
+    if _re.search(r'[/\\:*?"<>|]', model_name):
+        raise HTTPException(400, "모델 이름에 사용할 수 없는 문자가 포함되어 있습니다: / \\ : * ? \" < > |")
     with get_db() as db:
         existing = db.execute(
             "SELECT id FROM voice_models WHERE name = ?", (model_name,)
@@ -1903,6 +1914,20 @@ async def start_conversion(
     if not runpod_client.is_configured():
         raise HTTPException(400, "RunPod API 설정이 필요합니다.")
 
+    # 파라미터 범위 검증
+    if not (-24 <= pitch_shift <= 24):
+        raise HTTPException(400, f"피치는 -24~24 사이여야 합니다. (입력: {pitch_shift})")
+    if not (0.0 <= index_rate <= 1.0):
+        raise HTTPException(400, f"인덱스 비율은 0.0~1.0 사이여야 합니다. (입력: {index_rate})")
+    if not (0.0 <= protect <= 0.5):
+        raise HTTPException(400, f"Protect는 0.0~0.5 사이여야 합니다. (입력: {protect})")
+    if not (0.0 <= rms_mix_rate <= 1.0):
+        raise HTTPException(400, f"RMS Mix는 0.0~1.0 사이여야 합니다. (입력: {rms_mix_rate})")
+    if not (0 <= filter_radius <= 7):
+        raise HTTPException(400, f"Filter Radius는 0~7 사이여야 합니다. (입력: {filter_radius})")
+    if f0_method not in ("rmvpe", "crepe", "crepe-tiny", "harvest", "pm"):
+        raise HTTPException(400, f"유효하지 않은 F0 방법입니다: {f0_method}")
+
     # 모델 조회
     with get_db() as db:
         model = db.execute("SELECT * FROM voice_models WHERE id=?", (model_id,)).fetchone()
@@ -1920,13 +1945,17 @@ async def start_conversion(
     pth_url = model["pth_url"] if model["pth_url"] else None
     index_url = model["index_url"] if model["index_url"] else None
 
-    # Job 생성
+    # Job + 변환 기록 동시 생성 (원자성: RunPod 제출 전에 모든 DB 레코드 삽입)
     job_id = uuid.uuid4().hex[:12]
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
             VALUES (?, 'convert', 'submitting', 0, '작업 제출 중...')
         """, (job_id,))
+        db.execute("""
+            INSERT INTO conversions (model_id, input_file, status, job_id)
+            VALUES (?, ?, 'pending', ?)
+        """, (model_id, audio.filename, job_id))
 
     try:
         config = load_config()
@@ -2022,12 +2051,9 @@ async def start_conversion(
         update_job(job_id, status="running", progress=10,
                   message="GPU 변환 시작", runpod_job_id=runpod_job_id)
 
-        # DB에 변환 기록 (job_id로 정확한 매핑)
+        # 변환 기록 상태 업데이트 (이미 'pending'으로 삽입됨 → 'processing'으로 전환)
         with get_db() as db:
-            db.execute("""
-                INSERT INTO conversions (model_id, input_file, status, job_id)
-                VALUES (?, ?, 'processing', ?)
-            """, (model_id, audio.filename, job_id))
+            db.execute("UPDATE conversions SET status='processing' WHERE job_id=?", (job_id,))
 
         thread = threading.Thread(
             target=poll_runpod_job,

@@ -2006,15 +2006,15 @@ def _rvc_infer(
     input_audio: Path,
     output_path: Path,
     pitch_shift: int = 0,
-    f0_method: str = "rmvpe",
-    index_rate: float = 0.88,
-    protect: float = 0.33,
+    f0_method: str = "crepe",
+    index_rate: float = 0.55,
+    protect: float = 0.35,
     hop_length: int = 128,
-    clean_audio: bool = True,
+    clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 3,
-    rms_mix_rate: float = 0.25,
+    filter_radius: int = 4,
+    rms_mix_rate: float = 0.10,
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.

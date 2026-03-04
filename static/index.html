@@ -2907,11 +2907,15 @@ function skipPreprocess() {
 }
 
 function cancelPreprocess() {
+  var jobId = preprocessJobId;
   preprocessJobId = null;
   preprocessDone = false;
   document.getElementById('preprocess-running').style.display = 'none';
   document.getElementById('preprocess-idle').style.display = 'block';
   document.getElementById('btn-start-train').disabled = true;
+  if (jobId) {
+    api('/jobs/' + jobId + '/cancel', { method: 'POST' }).catch(function() {});
+  }
   toast('전처리를 취소했습니다. 다시 시작하거나 건너뛸 수 있습니다.', 'info');
 }
 
@@ -3069,7 +3073,15 @@ async function startTraining() {
   try { await _doStartTraining(); } finally { _submitting = false; }
 }
 async function _doStartTraining() {
-  var modelName = document.getElementById('model-name').value || 'My Voice';
+  var modelName = document.getElementById('model-name').value.trim() || 'My Voice';
+  if (modelName.length > 100) {
+    toast('모델 이름은 100자 이하여야 합니다.', 'error');
+    return;
+  }
+  if (/[\/\\:*?"<>|]/.test(modelName)) {
+    toast('모델 이름에 사용할 수 없는 문자가 포함되어 있습니다: / \\ : * ? " < > |', 'error');
+    return;
+  }
   var epochs = document.getElementById('train-epochs').value;
   var sr = document.getElementById('train-sr').value;
   var selectedIds = getSelectedFileIds();
@@ -3448,7 +3460,8 @@ async function startConversion() {
   if (!selectedModelId) return;
 
   if (batchFiles.length > 1) {
-    startBatchConversion();
+    _submitting = true;
+    startBatchConversion().finally(function() { _submitting = false; });
     return;
   }
   _submitting = true;
