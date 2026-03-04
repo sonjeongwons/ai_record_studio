@@ -2298,17 +2298,17 @@ input[type="range"].has-fill {
           <input type="text" id="model-name" value="My Voice v1" placeholder="모델 이름">
         </div>
         <div>
-          <label class="label">에폭 수 <i class="tip" data-tip="AI가 여러분의 음성 데이터를 몇 번 반복해서 공부할지 정합니다. 숫자가 클수록 목소리가 더 정교하게 학습되지만, 필요 이상으로 높이면 오히려 어색해지거나 노이즈가 생길 수 있습니다. 처음엔 500이 적당합니다.">ⓘ</i></label>
-          <select id="train-epochs">
-            <option value="300">300 (빠른 학습 · 약 3~5분)</option>
-            <option value="500" selected>500 (권장 · 약 5~10분)</option>
-            <option value="800">800 (고품질 · 약 10~15분)</option>
-            <option value="1000">1000 (최고 품질 · 약 15~20분)</option>
+          <label class="label">에폭 수 <i class="tip" data-tip="AI가 여러분의 음성 데이터를 몇 번 반복해서 공부할지 정합니다. 숫자가 클수록 목소리가 더 정교하게 학습되지만, 필요 이상으로 높이면 오히려 어색해지거나 노이즈가 생길 수 있습니다. 학습 시간은 전처리 데이터 양에 따라 크게 달라집니다 — 데이터가 많거나 에폭이 크면 수 시간이 걸릴 수도 있습니다. 처음엔 500으로 결과를 먼저 확인해보세요.">ⓘ</i></label>
+          <select id="train-epochs" onchange="estimateTrainingCost()">
+            <option value="300">300 (빠른 결과 확인용)</option>
+            <option value="500" selected>500 (권장 · 균형 잡힌 품질)</option>
+            <option value="800">800 (고품질 · 데이터 많을수록 효과적)</option>
+            <option value="1000">1000 (최고 품질 · 데이터 충분할 때)</option>
           </select>
         </div>
         <div>
           <label class="label">샘플레이트 <i class="tip" data-tip="오디오의 해상도(품질 수준)입니다. 40kHz는 일반 음악·방송 품질로 대부분의 경우에 적합합니다. 48kHz는 스튜디오 녹음처럼 원본이 매우 고음질일 때 선택하세요. 원본 파일이 40kHz라면 48kHz로 설정해도 품질이 더 좋아지지 않습니다.">ⓘ</i></label>
-          <select id="train-sr">
+          <select id="train-sr" onchange="estimateTrainingCost()">
             <option value="40000" selected>40 kHz (권장 · 일반 음악)</option>
             <option value="48000">48 kHz (스튜디오 고음질 소스)</option>
           </select>
@@ -2317,7 +2317,7 @@ input[type="range"].has-fill {
       <div class="grid-2 mt-16">
         <div>
           <label class="label">피치 추출 방식 <i class="tip" data-tip="목소리의 음 높낮이를 분석하는 알고리즘입니다. RMVPE는 빠르고 안정적이어서 대부분의 경우에 적합합니다. Crepe는 더 정확하지만 학습 시간이 2~3배 길어집니다. 변환 시 사용할 방식과 맞추는 것이 좋습니다.">ⓘ</i></label>
-          <select id="train-f0">
+          <select id="train-f0" onchange="estimateTrainingCost()">
             <option value="rmvpe" selected>RMVPE (권장 · 빠르고 안정적)</option>
             <option value="crepe">Crepe (더 정확 · 학습 2~3배 느림)</option>
             <option value="crepe-tiny">Crepe-tiny (Crepe보다 빠른 경량 버전)</option>
@@ -2325,11 +2325,11 @@ input[type="range"].has-fill {
         </div>
         <div>
           <label class="label">배치 사이즈 <i class="tip" data-tip="AI가 한 번에 처리하는 데이터 묶음의 크기입니다. 숫자가 클수록 학습이 빠르지만 GPU 메모리를 더 많이 사용합니다. '자동'으로 두면 GPU가 알아서 가장 적합한 크기를 선택합니다. 오류가 나면 낮은 값으로 바꿔보세요.">ⓘ</i></label>
-          <select id="train-batch">
+          <select id="train-batch" onchange="estimateTrainingCost()">
             <option value="0" selected>자동 (GPU가 알아서 최적화)</option>
             <option value="8">8 (메모리 부족 오류 시)</option>
-            <option value="16">16 (중간)</option>
-            <option value="24">24 (고사양 GPU 전용)</option>
+            <option value="16">16 (중간 · 30% 빠름)</option>
+            <option value="24">24 (고사양 GPU 전용 · 50% 빠름)</option>
           </select>
         </div>
       </div>
@@ -2550,10 +2550,10 @@ input[type="range"].has-fill {
             <div class="slider-header">
               <span class="slider-label">피치 추출 방식 <i class="tip" data-tip="목소리의 음 높낮이를 감지하는 알고리즘입니다. 학습 시 사용한 방식과 동일하게 맞추는 것이 좋습니다. Crepe는 고음이 많은 노래에 더 정확하지만 처리가 느립니다. RMVPE는 빠르고 대부분의 경우 충분한 품질을 냅니다.">ⓘ</i></span>
             </div>
-            <select id="convert-f0" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px">
+            <select id="convert-f0" onchange="estimateConversionCost()" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px">
               <option value="crepe" selected>Crepe (고음 정확 · 속도 느림)</option>
               <option value="rmvpe">RMVPE (빠름 · 안정적)</option>
-              <option value="crepe-tiny">Crepe-tiny (Crepe 경량 버전)</option>
+              <option value="crepe-tiny">Crepe-tiny (Crepe 경량 버전 · 가장 빠름)</option>
             </select>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">학습 시 사용한 방식과 동일하게 맞추면 더 자연스럽습니다</div>
           </div>
@@ -2872,6 +2872,150 @@ input[type="range"].has-fill {
     </div>
     <button class="btn btn-primary mt-16" id="btn-save-r2" data-loading-label="저장 중..." onclick="saveR2Settings()">R2 설정 저장</button>
     <div id="r2-settings-msg" style="font-size:12px;margin-top:8px"></div>
+  </div>
+
+  <!-- 과금 안내 카드 -->
+  <div class="card">
+    <h2 style="margin-bottom:4px">💰 과금 안내 — 단계별 비용 &amp; 소요 시간</h2>
+    <p class="section-desc">RunPod GPU 사용 비용과 Cloudflare R2 스토리지 비용에 대한 상세 안내입니다. 각 단계를 시작하기 전에 참고하세요.</p>
+
+    <!-- RunPod GPU 비용 -->
+    <div style="margin-top:16px">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">① RunPod GPU 과금 구조</div>
+      <div class="alert alert-info" style="margin-bottom:12px;line-height:1.7">
+        RunPod Serverless는 <b>GPU를 실제로 사용한 초(秒) 단위</b>로만 과금됩니다. 대기 시간·슬립 상태는 과금되지 않습니다.<br>
+        일시정지(Pause) 버튼을 누르면 즉시 GPU 사용이 중단되고 과금이 멈춥니다.
+      </div>
+      <table class="billing-table">
+        <thead>
+          <tr><th>GPU 종류</th><th>초당 가격</th><th>분당 가격</th><th>시간당 가격</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>RTX 3090 24GB</td><td>$0.00044/sec</td><td>~$0.026/min</td><td>~$1.58/hr</td></tr>
+          <tr><td>RTX 4090 24GB</td><td>$0.00074/sec</td><td>~$0.044/min</td><td>~$2.66/hr</td></tr>
+          <tr><td>A100 SXM 80GB</td><td>$0.00140/sec</td><td>~$0.084/min</td><td>~$5.04/hr</td></tr>
+          <tr><td>H100 SXM 80GB</td><td>$0.00190/sec</td><td>~$0.114/min</td><td>~$6.84/hr</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">* 가격은 RunPod 마켓 기준 변동될 수 있습니다. RunPod 대시보드에서 실제 GPU 가격을 확인하세요.</div>
+    </div>
+
+    <!-- 전처리 비용 -->
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">② 전처리 (Preprocessing) 예상 비용</div>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.6">
+        전처리는 <b>Demucs 모델로 보컬/반주를 분리</b>하는 작업이 핵심입니다. 오디오 길이에 비례해 시간이 걸립니다.
+        GPU에서 약 <b>실시간의 1배 속도</b>(1분 오디오 = 1분 GPU 시간)로 처리됩니다.
+      </p>
+      <table class="billing-table">
+        <thead>
+          <tr><th>오디오 길이</th><th>예상 GPU 시간</th><th>RTX 4090 비용</th><th>비고</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1분 (짧은 노래)</td><td>약 2분</td><td><em>~$0.09</em></td><td>단일 파일</td></tr>
+          <tr><td>5분 (보통 노래)</td><td>약 7분</td><td><em>~$0.31</em></td><td>단일 파일</td></tr>
+          <tr><td>10분 (2~3곡)</td><td>약 13분</td><td><em>~$0.57</em></td><td>합산</td></tr>
+          <tr><td>30분 (앨범)</td><td>약 35분</td><td><em>~$1.54</em></td><td>합산</td></tr>
+          <tr><td>60분 (대용량)</td><td>약 68분</td><td><em>~$3.00</em></td><td>합산</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">
+        💡 <b>절약 팁:</b> 이미 보컬이 분리된 파일(AR 파일, 스튜디오 녹음)을 사용하면 전처리를 <b>건너뛰기</b>할 수 있어 비용이 들지 않습니다.
+      </div>
+    </div>
+
+    <!-- 학습 비용 -->
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">③ 모델 학습 (Training) 예상 비용</div>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.6">
+        학습 비용은 <b>에폭 수 × 학습 데이터 길이</b>에 비례합니다.
+        에폭이 2배면 시간·비용도 약 2배. 데이터가 2배여도 마찬가지입니다.
+      </p>
+      <table class="billing-table">
+        <thead>
+          <tr><th>데이터</th><th>에폭</th><th>배치</th><th>예상 시간</th><th>RTX 4090 비용</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>3분</td><td>300</td><td>자동</td><td>약 20~30분</td><td><em>~$0.88~$1.32</em></td></tr>
+          <tr><td>5분</td><td>500</td><td>자동</td><td>약 35~50분</td><td><em>~$1.54~$2.20</em></td></tr>
+          <tr><td>10분</td><td>500</td><td>자동</td><td>약 65~90분</td><td><em>~$2.86~$3.96</em></td></tr>
+          <tr><td>10분</td><td>1000</td><td>자동</td><td>약 120~160분</td><td><em>~$5.28~$7.04</em></td></tr>
+          <tr><td>20분</td><td>1000</td><td>16</td><td>약 120~150분</td><td><em>~$5.28~$6.60</em></td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">
+        💡 <b>옵션별 영향:</b><br>
+        · <b>에폭:</b> 500→1000으로 늘리면 시간·비용 약 2배. 처음엔 500을 권장합니다.<br>
+        · <b>피치 추출 (Crepe):</b> RMVPE 대비 특징 추출 시간 1.5~2배. 학습 품질 차이는 미미합니다.<br>
+        · <b>배치 크기 16/24:</b> 자동(8)보다 30~50% 빠름. 메모리 오류 시 낮춰야 합니다.<br>
+        · <b>48kHz:</b> 40kHz보다 약 20% 느림. 원본이 48kHz 스튜디오 녹음일 때만 사용하세요.<br>
+        · <b>학습 데이터 양:</b> 10분이면 충분. 30분 이상은 품질 향상이 미미하고 과금이 늘어납니다.
+      </div>
+    </div>
+
+    <!-- 변환 비용 -->
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">④ 음원 변환 (Conversion) 예상 비용</div>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.6">
+        변환은 3단계 중 <b>가장 저렴합니다</b>. 1곡당 몇 센트(¢) 수준이며, GPU가 오디오를 <b>실시간보다 10~20배 빠르게</b> 처리합니다.
+      </p>
+      <table class="billing-table">
+        <thead>
+          <tr><th>오디오</th><th>파일 수</th><th>F0 방식</th><th>예상 시간</th><th>RTX 4090 비용</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>3분 노래</td><td>1곡</td><td>Crepe/RMVPE</td><td>약 60~90초</td><td><em>~$0.04~0.07</em></td></tr>
+          <tr><td>5분 노래</td><td>1곡</td><td>Crepe/RMVPE</td><td>약 90~120초</td><td><em>~$0.07~0.09</em></td></tr>
+          <tr><td>3분 노래</td><td>5곡 일괄</td><td>Crepe/RMVPE</td><td>약 4~6분</td><td><em>~$0.18~0.27</em></td></tr>
+          <tr><td>3분 노래</td><td>10곡 일괄</td><td>Crepe/RMVPE</td><td>약 8~12분</td><td><em>~$0.35~0.53</em></td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">
+        💡 <b>옵션별 영향:</b><br>
+        · <b>Crepe-tiny:</b> Crepe보다 약 15% 빠르고 비용 감소. 음질 차이는 미미합니다.<br>
+        · <b>인덱스 비율 (Index Rate):</b> 비용 영향 없음 (후처리 파라미터).<br>
+        · <b>일괄 변환:</b> 두 번째 파일부터 모델 로딩 오버헤드가 없어 효율적입니다.
+      </div>
+    </div>
+
+    <!-- R2 스토리지 비용 -->
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">⑤ Cloudflare R2 스토리지 비용</div>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.6">
+        R2는 학습 모델과 오디오 파일을 RunPod과 주고받는 <b>임시 저장소</b>로 사용됩니다.
+        일반 S3와 달리 <b>무료 에그레스(데이터 전송 무료)</b>가 최대 장점입니다.
+      </p>
+      <table class="billing-table">
+        <thead>
+          <tr><th>항목</th><th>단가</th><th>예시</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>스토리지</td><td>$0.015/GB/월</td><td>100MB = 월 $0.0015 (거의 무료)</td></tr>
+          <tr><td>쓰기 (PUT)</td><td>$4.50/백만 건</td><td>1,000번 업로드 = $0.0045 (무시 가능)</td></tr>
+          <tr><td>읽기 (GET)</td><td>$0.36/백만 건</td><td>1,000번 다운로드 = $0.00036 (무시 가능)</td></tr>
+          <tr><td>데이터 전송 (에그레스)</td><td><em>무료 ✓</em></td><td>S3 대비 최대 90% 절감</td></tr>
+          <tr><td>무료 플랜 한도</td><td><em>10GB/월 무료</em></td><td>일반적인 사용량은 무료 한도 내</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">
+        💡 R2 비용은 무시할 수 있는 수준입니다. 주요 비용은 전적으로 RunPod GPU 사용료입니다.
+      </div>
+    </div>
+
+    <!-- 총 비용 시나리오 -->
+    <div style="margin-top:20px;padding:14px;background:rgba(139,92,246,0.06);border-radius:10px;border:1px solid rgba(139,92,246,0.15)">
+      <div style="font-size:13px;font-weight:600;color:var(--violet);margin-bottom:10px">📊 실제 사용 시나리오별 총 예상 비용 (RTX 4090)</div>
+      <table class="billing-table">
+        <thead>
+          <tr><th>시나리오</th><th>전처리</th><th>학습</th><th>변환×10곡</th><th>합계</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>빠른 테스트<br><small style="color:var(--text3)">5분 데이터, 300에폭</small></td><td>~$0.31</td><td>~$1.10</td><td>~$0.35</td><td><em>~$1.76</em></td></tr>
+          <tr><td>일반 사용<br><small style="color:var(--text3)">10분 데이터, 500에폭</small></td><td>~$0.57</td><td>~$3.50</td><td>~$0.45</td><td><em>~$4.52</em></td></tr>
+          <tr><td>고품질<br><small style="color:var(--text3)">15분 데이터, 1000에폭</small></td><td>~$0.84</td><td>~$9.90</td><td>~$0.45</td><td><em>~$11.19</em></td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <div class="card">
@@ -3396,6 +3540,155 @@ function formatEta(seconds) {
   return Math.floor(seconds / 3600) + '시간 ' + Math.round((seconds % 3600) / 60) + '분';
 }
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 💰 비용 · 소요 시간 추정 (RunPod RTX 4090 기준)
+// 단가: $0.00074/sec (RTX 4090 Serverless 기준 추정)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+var COST_PER_SEC = 0.00074; // RTX 4090 ~$0.00074/GPU-sec
+
+function _formatGpuTime(secs) {
+  if (secs < 60) return '약 ' + Math.round(secs) + '초';
+  if (secs < 3600) return '약 ' + Math.round(secs / 60) + '분';
+  return '약 ' + Math.floor(secs / 3600) + '시간 ' + Math.round((secs % 3600) / 60) + '분';
+}
+function _formatCostRange(minSec, maxSec) {
+  var lo = (minSec * COST_PER_SEC).toFixed(2);
+  var hi = (maxSec * COST_PER_SEC).toFixed(2);
+  return '$' + lo + ' ~ $' + hi;
+}
+
+// 브라우저 File 객체에서 오디오 길이(초) 추정 (크기·확장자 기반 rough 추정)
+function _estimateFileDuration(file) {
+  if (!file || !file.size) return 0;
+  var name = (file.name || '').toLowerCase();
+  var bytes = file.size;
+  if (name.endsWith('.wav'))  return bytes / 176400;        // 44.1kHz 16bit stereo
+  if (name.endsWith('.mp3'))  return bytes / 16000;         // ~128kbps
+  if (name.endsWith('.flac')) return bytes / 88200;         // 44.1kHz ~700kbps
+  if (name.endsWith('.m4a') || name.endsWith('.aac')) return bytes / 16000;
+  return bytes / 32000; // 기타 포맷 보수적 추정
+}
+
+// ─── 전처리 비용 추정 ───
+function estimatePreprocessCost() {
+  var panel = document.getElementById('preprocess-cost-panel');
+  if (!panel) return;
+  var selectedIds = getSelectedFileIds();
+  if (selectedIds.length === 0) { panel.style.display = 'none'; return; }
+
+  var totalSecs = 0;
+  selectedIds.forEach(function(id) {
+    var f = uploadedFiles.find(function(u) { return String(u.id) === String(id); });
+    if (f) totalSecs += (f.duration_seconds || f.duration || 0);
+  });
+  if (totalSecs <= 0) { panel.style.display = 'none'; return; }
+
+  // 전처리 = Demucs 줄기 분리 (~1.0x realtime) + 슬라이싱/정규화 + 오버헤드
+  var gpuSecs = totalSecs * 1.0 + 120;
+  var minSec  = gpuSecs * 0.75;
+  var maxSec  = gpuSecs * 1.40;
+
+  document.getElementById('cost-pre-duration').textContent = formatDuration(totalSecs);
+  document.getElementById('cost-pre-gpu').textContent =
+    _formatGpuTime(gpuSecs) + ' (' + _formatGpuTime(minSec) + '~' + _formatGpuTime(maxSec) + ')';
+  document.getElementById('cost-pre-cost').textContent = _formatCostRange(minSec, maxSec);
+  panel.style.display = 'block';
+}
+
+// ─── 학습 비용 추정 ───
+function estimateTrainingCost() {
+  var panel   = document.getElementById('train-cost-panel');
+  var staticEl = document.getElementById('train-cost-static');
+  if (!panel) return;
+
+  var selectedIds = getSelectedFileIds();
+  if (selectedIds.length === 0) {
+    panel.style.display = 'none';
+    if (staticEl) staticEl.style.display = 'flex';
+    return;
+  }
+
+  var totalSecs = 0;
+  selectedIds.forEach(function(id) {
+    var f = uploadedFiles.find(function(u) { return String(u.id) === String(id); });
+    if (f) totalSecs += (f.duration_seconds || f.duration || 0);
+  });
+  if (totalSecs <= 0) {
+    panel.style.display = 'none';
+    if (staticEl) staticEl.style.display = 'flex';
+    return;
+  }
+
+  var totalMins = totalSecs / 60;
+  var epochs = parseInt(document.getElementById('train-epochs').value) || 500;
+  var batch  = parseInt(document.getElementById('train-batch').value)  || 0;
+  var sr     = parseInt(document.getElementById('train-sr').value)     || 40000;
+  var f0     = (document.getElementById('train-f0').value || 'rmvpe').toLowerCase();
+
+  // 배치 팩터 (클수록 빠름)
+  var batchFactor = { 0: 1.00, 8: 1.00, 16: 0.65, 24: 0.45 }[batch] || 1.00;
+  // SR 팩터
+  var srFactor = sr === 48000 ? 1.20 : 1.00;
+  // F0 특징 추출 팩터 (학습 전 1회)
+  var f0FeatureFactor = (f0 === 'crepe') ? 2.0 : 1.0;
+
+  // 특징 추출 (1회): ~1.5x realtime (RMVPE), ~2.5x (Crepe)
+  var featureSecs  = totalSecs * 1.5 * f0FeatureFactor;
+  // 학습 epochs: RTX 4090 기준 ~0.94 sec/epoch/min-of-data at batch=8, 40kHz
+  var trainingSecs = epochs * totalMins * 0.94 * batchFactor * srFactor;
+  // 오버헤드: 모델 다운로드·설정
+  var overheadSecs = 120;
+  var totalGpu  = featureSecs + trainingSecs + overheadSecs;
+  var minSec    = totalGpu * 0.75;
+  var maxSec    = totalGpu * 1.45;
+
+  var f0Label = { rmvpe: 'RMVPE (권장)', crepe: 'Crepe (+시간 2배)', 'crepe-tiny': 'Crepe-tiny' }[f0] || f0;
+
+  document.getElementById('cost-train-data').textContent = formatDuration(totalSecs) + ' (' + selectedIds.length + '개 파일)';
+  document.getElementById('cost-train-epochs').textContent = epochs + ' 에폭';
+  document.getElementById('cost-train-f0').textContent = f0Label;
+  document.getElementById('cost-train-gpu').textContent =
+    _formatGpuTime(totalGpu) + ' (' + _formatGpuTime(minSec) + '~' + _formatGpuTime(maxSec) + ')';
+  document.getElementById('cost-train-cost').textContent = _formatCostRange(minSec, maxSec);
+
+  panel.style.display = 'block';
+  if (staticEl) staticEl.style.display = 'none';
+}
+
+// ─── 변환 비용 추정 ───
+function estimateConversionCost() {
+  var panel = document.getElementById('convert-cost-panel');
+  if (!panel) return;
+
+  var files = batchFiles.length > 0 ? batchFiles : (convertFile ? [convertFile] : []);
+  if (files.length === 0) { panel.style.display = 'none'; return; }
+
+  var totalDuration = 0;
+  files.forEach(function(f) { totalDuration += _estimateFileDuration(f); });
+
+  var f0El = document.getElementById('convert-f0');
+  var f0   = f0El ? f0El.value.toLowerCase() : 'crepe';
+  var f0Factor = (f0 === 'crepe-tiny') ? 0.85 : 1.10; // crepe/rmvpe 유사
+
+  // GPU 시간: 모델 로딩 오버헤드 + 파일당 처리
+  var overheadSecs  = 30 + (files.length - 1) * 5; // 첫 파일 30s, 이후 파일 5s 추가
+  var processSecs   = totalDuration * 0.30 * f0Factor;
+  var totalGpu  = overheadSecs + processSecs;
+  var minSec    = totalGpu * 0.60;
+  var maxSec    = totalGpu * 1.80;
+
+  var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)' }[f0] || f0;
+
+  document.getElementById('cost-conv-files').textContent = files.length + '개';
+  document.getElementById('cost-conv-duration').textContent =
+    totalDuration > 5 ? formatDuration(totalDuration) + ' (파일 크기 기반 추정)' : '측정 불가';
+  document.getElementById('cost-conv-f0').textContent = f0Label;
+  document.getElementById('cost-conv-gpu').textContent =
+    _formatGpuTime(totalGpu) + ' (' + _formatGpuTime(minSec) + '~' + _formatGpuTime(maxSec) + ')';
+  document.getElementById('cost-conv-cost').textContent = _formatCostRange(minSec, maxSec);
+  panel.style.display = 'block';
+}
+
 // 피치 반음 → 음계 이름 변환
 function pitchToNote(semitones) {
   if (semitones === 0) return '원음';
@@ -3793,6 +4086,9 @@ function updateTrainSelection() {
   // 전체 선택 체크박스 동기화
   var selectAllCb = document.getElementById('select-all-cb');
   if (selectAllCb) selectAllCb.checked = (selected.length === total);
+  // 비용 예상 패널 업데이트
+  estimateTrainingCost();
+  estimatePreprocessCost();
 }
 
 function toggleSelectAll(checked) {
@@ -4556,6 +4852,7 @@ function setConvertFile(file) {
   document.getElementById('convert-filesize').textContent = formatSize(file.size);
   document.getElementById('batch-queue').style.display = 'none';
   updateConvertBtn();
+  estimateConversionCost();
 }
 
 function clearConvertFile() {
@@ -4565,6 +4862,8 @@ function clearConvertFile() {
   document.getElementById('convert-file-info').style.display = 'none';
   document.getElementById('batch-queue').style.display = 'none';
   updateConvertBtn();
+  var cp = document.getElementById('convert-cost-panel');
+  if (cp) cp.style.display = 'none';
 }
 
 function renderBatchQueue() {
@@ -4601,6 +4900,7 @@ function renderBatchQueue() {
     '</div>';
   }).join('');
   applyListEnter(listEl, '.batch-item', 30);
+  estimateConversionCost();
 }
 
 function removeBatchItem(index) {
