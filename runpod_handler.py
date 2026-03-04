@@ -133,7 +133,14 @@ def run_ffmpeg(args: list[str], timeout: int = 600) -> subprocess.CompletedProce
     """Run an FFmpeg command with timeout."""
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"] + args
     log.info(f"FFmpeg: {' '.join(cmd)}")
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=True)
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=True)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"FFmpeg 타임아웃 (>{timeout}초): {' '.join(args[:4])}...")
+    except subprocess.CalledProcessError as e:
+        if e.stderr:
+            log.error(f"FFmpeg stderr: {e.stderr[-500:]}")
+        raise
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -728,6 +735,10 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
             if source_stem.endswith(suffix):
                 source_stem = source_stem[:-len(suffix)]
 
+        if not ap.exists():
+            log.error(f"오디오 파일이 없습니다 (건너뜀): {ap}")
+            skipped_files.append(ap.name)
+            continue
         audio_data, sr = sf.read(str(ap))
         if np.any(np.isnan(audio_data)) or np.any(np.isinf(audio_data)):
             log.warning(f"Skipping corrupted audio file: {ap.name}")
@@ -873,7 +884,7 @@ def task_train(job_input: dict, job: dict) -> dict:
     model_name: str = job_input.get("model_name", "my_voice_model")
     audio_files: list[dict] = job_input.get("audio_files", [])
     audio_urls: list[dict] = job_input.get("audio_urls", [])
-    sample_rate: int = job_input.get("sample_rate", 40000)  # 40k recommended for SVC
+    sample_rate: int = int(job_input.get("sample_rate", 40000))  # 40k recommended for SVC
     epochs: int = job_input.get("epochs", 500)
     batch_size: int = job_input.get("batch_size", 0)  # 0 = auto-detect
     f0_method: str = job_input.get("f0_method", "rmvpe")
@@ -906,7 +917,7 @@ def task_train(job_input: dict, job: dict) -> dict:
             batch_size = min(48, max(4, (int(vram_gb) // 3) * 4))
             log.info(f"Auto-detected batch_size={batch_size} for {vram_gb:.1f}GB VRAM")
         except Exception:
-            batch_size = 8
+            batch_size = 4  # GPU VRAM 감지 실패 시 보수적 기본값
     batch_size = max(4, min(48, batch_size))
 
     job_id = job.get("id", uuid.uuid4().hex[:12])
@@ -930,19 +941,33 @@ def task_train(job_input: dict, job: dict) -> dict:
         total_files = len(audio_files) + len(audio_urls)
         runpod.serverless.progress_update(job, f"Downloading {total_files} audio files... (1/5)")
 
-        # R2 URL에서 다운로드
+        # R2 URL에서 다운로드 (네트워크 오류 시 3회 재시도)
+        import requests as _req
         for i, uobj in enumerate(audio_urls):
             fname = uobj.get("filename", f"audio_{i}.wav")
             dest = dataset_dir / fname
-            import requests as _req
-            try:
-                resp = _req.get(uobj["url"], timeout=120)
-                resp.raise_for_status()
-            except Exception as dl_err:
-                raise RuntimeError(f"학습 파일 다운로드 실패 ({fname}): {dl_err}") from dl_err
-            with open(dest, "wb") as f:
-                f.write(resp.content)
-            log.info(f"Downloaded training file: {fname} ({len(resp.content) / 1024:.1f} KB)")
+            last_err = None
+            for attempt in range(3):
+                try:
+                    resp = _req.get(uobj["url"], timeout=120)
+                    resp.raise_for_status()
+                    with open(dest, "wb") as f:
+                        f.write(resp.content)
+                    log.info(f"Downloaded training file: {fname} ({len(resp.content) / 1024:.1f} KB)")
+                    last_err = None
+                    break
+                except (_req.exceptions.Timeout, _req.exceptions.ConnectionError) as dl_err:
+                    last_err = dl_err
+                    if attempt < 2:
+                        wait = 2 ** attempt  # 1s, 2s
+                        log.warning(f"다운로드 재시도 {attempt + 1}/3 ({fname}), {wait}초 후 재시도: {dl_err}")
+                        time.sleep(wait)
+                    else:
+                        raise RuntimeError(f"학습 파일 다운로드 3회 실패 ({fname}): {dl_err}") from dl_err
+                except Exception as dl_err:
+                    raise RuntimeError(f"학습 파일 다운로드 실패 ({fname}): {dl_err}") from dl_err
+            if last_err:
+                raise RuntimeError(f"학습 파일 다운로드 실패 ({fname}): {last_err}")
 
         # base64 인라인 디코딩 (하위 호환)
         for i, fobj in enumerate(audio_files):
@@ -1826,6 +1851,9 @@ def _post_process_vocal(
         # output=0.94 → slight gain reduction to compensate for saturation
         filters.append("asoftclip=type=tanh:threshold=0.82:output=0.94")
 
+    # 범위 클램프: aecho decay 계수가 0~1을 벗어나지 않도록 보장
+    reverb_amount = max(0.0, min(0.5, float(reverb_amount)))
+
     if reverb_amount > 0.005:
         # 4 early reflections simulate a small recording space.
         # Very subtle at default (0.10): all reflections below -20dB.
@@ -1877,7 +1905,14 @@ def _mix_audio(
         "-ar", "44100",
         str(output_path),
     ])
-    log.info(f"Mixed audio: {output_path.name} (vocal={vocal_volume}, mr={mr_volume})")
+    # 출력 파일 검증
+    if not output_path.exists():
+        raise RuntimeError(f"믹싱 출력 파일이 생성되지 않았습니다: {output_path}")
+    out_size = output_path.stat().st_size
+    if out_size < 10_000:
+        raise RuntimeError(f"믹싱 출력 파일 크기 이상 ({out_size}바이트): {output_path}")
+    log.info(f"Mixed audio: {output_path.name} (vocal={vocal_volume}, mr={mr_volume}, "
+             f"size={out_size / 1024 / 1024:.1f}MB)")
 
 
 def task_convert(job_input: dict, job: dict) -> dict:
@@ -1897,28 +1932,44 @@ def task_convert(job_input: dict, job: dict) -> dict:
     audio_b64: str = job_input.get("audio_data", "")
     audio_url: str = job_input.get("audio_url", "")
     audio_filename: str = job_input.get("audio_filename", "input.wav")
-    pitch_shift: int = job_input.get("pitch_shift", 0)
-    index_rate: float = job_input.get("index_rate", 0.55)
+    # 명시적 타입 변환: RunPod job_input에서 문자열로 전달될 수 있음
+    pitch_shift: int = int(job_input.get("pitch_shift", 0))
+    index_rate: float = float(job_input.get("index_rate", 0.55))
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     f0_method: str = job_input.get("f0_method", "rmvpe")
     # filter_radius 3: less over-smoothing → more natural pitch movement
-    filter_radius: int = job_input.get("filter_radius", 3)
+    filter_radius: int = int(job_input.get("filter_radius", 3))
     # rms_mix_rate 0.25: moderate volume envelope blending → natural dynamics
-    rms_mix_rate: float = job_input.get("rms_mix_rate", 0.25)
+    rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.25))
     # protect 0.45: better consonant/breathiness preservation
-    protect: float = job_input.get("protect", 0.45)
+    protect: float = float(job_input.get("protect", 0.45))
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
-    hop_length: int = job_input.get("hop_length", 64)
-    clean_audio: bool = job_input.get("clean_audio", False)
-    clean_strength: float = job_input.get("clean_strength", 0.7)
+    hop_length: int = int(job_input.get("hop_length", 64))
+    clean_audio_raw = job_input.get("clean_audio", False)
+    clean_audio: bool = clean_audio_raw in (True, "true", "1", 1)
+    clean_strength: float = float(job_input.get("clean_strength", 0.7))
     export_format: str = job_input.get("export_format", "wav").lower().strip()
     # SVC pipeline options
-    separate_vocals: bool = job_input.get("separate_vocals", True)
-    vocal_volume: float = job_input.get("vocal_volume", 1.0)
-    mr_volume: float = job_input.get("mr_volume", 1.0)
+    separate_vocals_raw = job_input.get("separate_vocals", True)
+    separate_vocals: bool = separate_vocals_raw not in (False, "false", "0", 0)
+    vocal_volume: float = float(job_input.get("vocal_volume", 1.0))
+    mr_volume: float = float(job_input.get("mr_volume", 1.0))
     # Post-processing for naturalness (applied after RVC conversion)
-    post_reverb: float = job_input.get("post_reverb", 0.10)   # 0=off, 0.01-0.30 subtle→strong
-    harmonic_enhance: bool = job_input.get("harmonic_enhance", True)  # tanh saturation
+    post_reverb: float = float(job_input.get("post_reverb", 0.10))
+    harmonic_enhance_raw = job_input.get("harmonic_enhance", True)
+    harmonic_enhance: bool = harmonic_enhance_raw not in (False, "false", "0", 0)
+
+    # 파라미터 범위 클램프
+    pitch_shift = max(-24, min(24, pitch_shift))
+    index_rate = max(0.0, min(1.0, index_rate))
+    filter_radius = max(0, min(32, filter_radius))
+    rms_mix_rate = max(0.0, min(1.0, rms_mix_rate))
+    protect = max(0.0, min(1.0, protect))
+    clean_strength = max(0.0, min(1.0, clean_strength))
+    post_reverb = max(0.0, min(0.5, post_reverb))
+    hop_length = max(1, min(512, hop_length))
+    vocal_volume = max(0.0, min(2.0, vocal_volume))
+    mr_volume = max(0.0, min(2.0, mr_volume))
 
     if not pth_b64 and not pth_url:
         raise ValueError("No model provided (pth_data or pth_url required)")

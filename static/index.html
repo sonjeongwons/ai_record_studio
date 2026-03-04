@@ -4017,10 +4017,27 @@ function showPage(page) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function api(path, opts) {
   opts = opts || {};
-  var res = await fetch('/api' + path, opts);
+  // 타임아웃: 기본 30초 (poll 요청은 noTimeout 플래그로 제외)
+  var controller, timer;
+  if (!opts.noTimeout && !opts.signal) {
+    controller = new AbortController();
+    timer = setTimeout(function() { controller.abort(); }, 30000);
+    opts.signal = controller.signal;
+  }
+  var res;
+  try {
+    res = await fetch('/api' + path, opts);
+  } catch(e) {
+    if (timer) clearTimeout(timer);
+    if (e.name === 'AbortError') throw new Error('요청 타임아웃 (30초)');
+    throw e;
+  }
+  if (timer) clearTimeout(timer);
   if (!res.ok) {
-    var err = await res.json().catch(function() { return { detail: 'Error' }; });
-    throw new Error(err.detail || 'Request failed');
+    var err = await res.json().catch(function() {
+      return { detail: 'HTTP ' + res.status + ': ' + res.statusText };
+    });
+    throw new Error(err.detail || 'HTTP ' + res.status);
   }
   return res.json();
 }
@@ -4039,7 +4056,9 @@ function getChecked(id) {
 
 function downloadFile(url, filename) {
   if (!url) { toast('다운로드 URL이 없습니다', 'error'); return; }
-  var displayName = filename || decodeURIComponent(url.split('/').pop());
+  var displayName = (filename || '').trim()
+    || decodeURIComponent(url.split('/').pop()).trim()
+    || 'download';
 
   // 다운로드 진행률 UI 생성
   var panel = document.getElementById('download-panel');
@@ -4049,7 +4068,7 @@ function downloadFile(url, filename) {
   item.id = itemId;
   item.innerHTML =
     '<div class="download-item-header">' +
-      '<span class="download-item-filename" title="' + displayName + '">' + displayName + '</span>' +
+      '<span class="download-item-filename" title="' + escapeHtml(displayName) + '">' + escapeHtml(displayName) + '</span>' +
       '<button class="download-item-close" onclick="dismissDownloadItem(\'' + itemId + '\')">&times;</button>' +
     '</div>' +
     '<div class="download-progress-bar"><div class="download-progress-fill" id="' + itemId + '-fill" style="width:0%;transition:width 0.5s ease"></div></div>' +
@@ -5066,12 +5085,15 @@ async function startPreprocess() {
   }
 }
 
+var _preprocessPolling = false;
 async function pollPreprocessStatus() {
   if (!preprocessJobId || _preprocessPaused) return;
+  if (_preprocessPolling) return;
+  _preprocessPolling = true;
   if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
   document.getElementById('preprocess-ring').classList.add('running');
   try {
-    var job = await api('/jobs/' + preprocessJobId);
+    var job = await api('/jobs/' + preprocessJobId, { noTimeout: true });
     _preprocessPollErrors = 0; // reset on success
     var pct = job.progress || 0;
     var circ = 2 * Math.PI * 42;
@@ -5171,6 +5193,8 @@ async function pollPreprocessStatus() {
       return;
     }
     _preprocessPollTimer = setTimeout(pollPreprocessStatus, 5000);
+  } finally {
+    _preprocessPolling = false;
   }
 }
 
@@ -5472,12 +5496,15 @@ async function _doStartTraining() {
 
 var _trainPollErrors = 0;
 
+var _trainPolling = false;
 async function pollTrainingStatus() {
   if (!currentTrainJobId || _trainPaused) return;
+  if (_trainPolling) return;
+  _trainPolling = true;
   if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
   document.getElementById('train-ring').classList.add('running');
   try {
-    var job = await api('/jobs/' + currentTrainJobId);
+    var job = await api('/jobs/' + currentTrainJobId, { noTimeout: true });
     _trainPollErrors = 0; // reset on success
 
     var pct = job.progress || 0;
@@ -5558,6 +5585,8 @@ async function pollTrainingStatus() {
       return;
     }
     _trainPollTimer = setTimeout(pollTrainingStatus, 10000);
+  } finally {
+    _trainPolling = false;
   }
 }
 
@@ -5978,12 +6007,15 @@ async function startConversion() {
 
 var _convertPollErrors = 0;
 
+var _convertPolling = false;
 async function pollConvertStatus() {
   if (!currentConvertJobId || _convertPaused) return;
+  if (_convertPolling) return;
+  _convertPolling = true;
   if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
   document.getElementById('convert-ring').classList.add('running');
   try {
-    var job = await api('/jobs/' + currentConvertJobId);
+    var job = await api('/jobs/' + currentConvertJobId, { noTimeout: true });
     _convertPollErrors = 0;
     var pct = job.progress || 0;
     var circ = 2 * Math.PI * 60;
@@ -6139,6 +6171,8 @@ async function pollConvertStatus() {
       return;
     }
     _convertPollTimer = setTimeout(pollConvertStatus, 5000);
+  } finally {
+    _convertPolling = false;
   }
 }
 
@@ -6320,10 +6354,10 @@ async function startBatchConversion() {
       ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     var dlBtn = r.resultUrl
-      ? '<button class="btn btn-secondary" onclick="downloadFile(\'' + r.resultUrl.replace(/'/g, "\\'") + '\')" style="padding:6px 12px;font-size:11px">보컬</button>'
+      ? '<button class="btn btn-secondary" onclick="downloadFile(' + JSON.stringify(r.resultUrl) + ',' + JSON.stringify(r.filename || '') + ')" style="padding:6px 12px;font-size:11px">보컬</button>'
       : '';
     var mixBtn = r.mixedUrl
-      ? '<button class="btn btn-primary" onclick="downloadFile(\'' + r.mixedUrl.replace(/'/g, "\\'") + '\')" style="padding:6px 12px;font-size:11px">믹스</button>'
+      ? '<button class="btn btn-primary" onclick="downloadFile(' + JSON.stringify(r.mixedUrl) + ',' + JSON.stringify(r.mixedFilename || '') + ')" style="padding:6px 12px;font-size:11px">믹스</button>'
       : '';
     dlBtn = dlBtn + mixBtn;
     var playerHtml = (r.mixedUrl || r.resultUrl) ? createAudioPlayer(r.mixedUrl || r.resultUrl, 'br_' + idx) : '';

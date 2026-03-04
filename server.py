@@ -234,17 +234,29 @@ def prepare_files_for_runpod(file_paths: list[str]) -> list[list[dict]]:
 # 설정 파일 관리
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+DEFAULT_CONFIG = {
+    "runpod_api_key": "",
+    "runpod_endpoint_id": "",
+    "r2_endpoint_url": "",
+    "r2_access_key_id": "",
+    "r2_secret_access_key": "",
+    "r2_bucket_name": "",
+    "download_folder": str(Path.home() / "Downloads"),
+}
+
 def load_config():
+    cfg = DEFAULT_CONFIG.copy()
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH, encoding="utf-8") as f:
-                return json.load(f)
+                saved = json.load(f)
+            cfg.update(saved)
         except (json.JSONDecodeError, UnicodeDecodeError):
             # 손상된 config 백업 후 초기화
             backup = CONFIG_PATH.with_suffix(".json.bak")
             shutil.copy2(str(CONFIG_PATH), str(backup))
             print(f"[Warning] config.json 손상 → 백업: {backup}")
-    return {"runpod_api_key": "", "runpod_endpoint_id": ""}
+    return cfg
 
 def save_config(config):
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
@@ -799,14 +811,10 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             msg = progress_text
 
                 if pct is None:
-                    # fallback: 경과 시간 기반 추정
-                    if job_type == "train":
-                        est_total = 900  # ~15분 예상
-                        pct = min(90, int((elapsed / est_total) * 100))
-                    elif job_type == "preprocess":
-                        pct = min(90, int(elapsed / 3))
-                    else:
-                        pct = min(90, int(elapsed / 0.6))
+                    # fallback: 경과 시간 기반 추정 (작업 유형별 예상 시간)
+                    _EST_TIMES = {"train": 900, "preprocess": 600, "convert": 300}
+                    est_total = _EST_TIMES.get(job_type, 600)
+                    pct = min(90, int((elapsed / est_total) * 100))
 
                 pct = min(95, max(5, pct))
                 mins = elapsed // 60
@@ -826,10 +834,14 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                 update_job(job_id, status="running",
                           message=f"상태: {status} ({elapsed}초)")
 
-            if elapsed > 10 * 3600:  # 10시간 타임아웃
+            # 작업 타입별 타임아웃: train=10시간, preprocess=1시간, convert=30분
+            _JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 1800}
+            job_timeout = _JOB_TIMEOUTS.get(job_type, 3600)
+            if elapsed > job_timeout:
                 _poll_error_counts.pop(job_id, None)
                 _active_job_states.pop(job_id, None)
-                update_job(job_id, status="failed", message="시간 초과 (10시간)")
+                timeout_label = f"{job_timeout // 3600}시간" if job_timeout >= 3600 else f"{job_timeout // 60}분"
+                update_job(job_id, status="failed", message=f"시간 초과 ({timeout_label})")
                 return
 
         except Exception as e:
@@ -1266,6 +1278,15 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 async def startup():
     init_db()
     cleanup_stale_jobs_on_startup()
+    # 30분마다 오래된 청크 업로드 세션 자동 정리
+    def _chunk_cleanup_loop():
+        while True:
+            time.sleep(1800)
+            try:
+                _cleanup_stale_chunk_uploads()
+            except Exception:
+                pass
+    threading.Thread(target=_chunk_cleanup_loop, daemon=True).start()
 
 
 # ─── 메인 페이지 ───
