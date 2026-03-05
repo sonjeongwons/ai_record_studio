@@ -3678,6 +3678,7 @@ var _convertPausedCostSec = 0;
 var batchFiles = [];
 var batchResults = [];
 var batchProcessing = false;
+var _batchCancelled = false;
 
 // Connection check
 var connectionOk = null;
@@ -4467,7 +4468,7 @@ function estimateConversionCost() {
 
   var f0El = document.getElementById('convert-f0');
   var f0   = f0El ? f0El.value.toLowerCase() : 'crepe';
-  var f0Factor = (f0 === 'crepe-tiny') ? 0.85 : 1.10; // crepe/rmvpe 유사
+  var f0Factor = (f0 === 'crepe') ? 1.10 : (f0 === 'crepe-tiny') ? 0.85 : 1.0; // rmvpe=1.0 기본
 
   // GPU 시간: Demucs 보컬 분리(~1x realtime) + RVC 추론(~0.3x) + 모델 로딩
   var overheadSecs  = 60 + (files.length - 1) * 10; // 첫 파일 60s(모델+Demucs 로딩), 이후 10s
@@ -5040,6 +5041,8 @@ function deleteSelectedFiles() {
 // Preprocess
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function startPreprocess() {
+  if (preprocessJobId) { toast('이미 전처리가 진행 중입니다.', 'warning'); return; }
+  if (_preprocessPaused) { toast('일시정지된 전처리가 있습니다. 재개하거나 취소하세요.', 'warning'); return; }
   var selectedIds = getSelectedFileIds();
   if (selectedIds.length === 0) {
     toast('전처리할 파일을 선택해 주세요', 'warning');
@@ -5158,14 +5161,24 @@ async function pollPreprocessStatus() {
       }
       return;
     }
-    if (job.status === 'paused' || job.status === 'cancelled') {
+    if (job.status === 'cancelled') {
+      document.getElementById('preprocess-ring').classList.remove('running');
+      document.getElementById('preprocess-running').style.display = 'none';
+      document.getElementById('preprocess-idle').style.display = 'block';
+      preprocessJobId = null;
+      _preprocessPaused = false;
+      document.title = 'AI Voice Studio';
+      toast('전처리가 외부에서 취소되었습니다', 'warning');
+      return;
+    }
+    if (job.status === 'paused') {
       _preprocessPaused = true;
       _showPausedCost('preprocess-paused-cost-info', 'preprocess-paused-cost-val', _preprocessStartTime);
       document.getElementById('preprocess-ring').classList.remove('running');
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-paused').style.display = 'block';
       document.title = 'AI Voice Studio';
-      if (job.status === 'paused') toast('전처리가 일시정지되었습니다', 'info');
+      toast('전처리가 일시정지되었습니다', 'info');
       return;
     }
     if (job.status === 'failed') {
@@ -5199,6 +5212,11 @@ async function pollPreprocessStatus() {
 }
 
 function skipPreprocess() {
+  if (preprocessJobId) {
+    api('/jobs/' + preprocessJobId + '/cancel', { method: 'POST' }).catch(function(){});
+  }
+  _preprocessPaused = false;
+  _preprocessPollErrors = 0;
   preprocessDone = true;
   preprocessJobId = null;
   document.getElementById('preprocess-idle').style.display = 'none';
@@ -5256,6 +5274,7 @@ async function resumePreprocess() {
     }
     _preprocessPaused = false;
     _preprocessPollErrors = 0;
+    _preprocessStartTime = Date.now();
     document.getElementById('preprocess-paused').style.display = 'none';
     document.getElementById('preprocess-running').style.display = 'block';
     setButtonLoading('btn-resume-preprocess', false);
@@ -5433,7 +5452,12 @@ async function startTraining() {
   try { await _doStartTraining(); } finally { _submitting = false; }
 }
 async function _doStartTraining() {
-  var modelName = document.getElementById('model-name').value.trim() || 'My Voice';
+  var modelName = document.getElementById('model-name').value.trim();
+  if (!modelName) {
+    toast('모델 이름을 입력해 주세요.', 'error');
+    document.getElementById('model-name').focus();
+    return;
+  }
   if (modelName.length > 100) {
     toast('모델 이름은 100자 이하여야 합니다.', 'error');
     return;
@@ -5445,7 +5469,9 @@ async function _doStartTraining() {
   if (models.length > 0 && models.find(function(m) {
     return (m.name || '').toLowerCase() === modelName.toLowerCase();
   })) {
-    toast('"' + modelName + '" 이름의 모델이 이미 존재합니다. 덮어씌워집니다.', 'warning');
+    toast('"' + modelName + '" 이름의 모델이 이미 존재합니다. 다른 이름을 입력하세요.', 'error');
+    document.getElementById('model-name').focus();
+    return;
   }
   var epochs = document.getElementById('train-epochs').value;
   var sr = document.getElementById('train-sr').value;
@@ -5529,7 +5555,7 @@ async function pollTrainingStatus() {
       document.getElementById('train-info-epochs').textContent = epochInfo;
     }
     document.getElementById('train-status-msg').textContent = trainMsg + etaStr;
-    document.getElementById('train-info-status').textContent = job.status;
+    document.getElementById('train-info-status').textContent = {running:'실행 중',submitting:'제출 중',in_progress:'진행 중'}[job.status] || job.status;
     document.title = 'AI Voice Studio — 학습 ' + pct + '%';
 
     if (job.status === 'completed') {
@@ -5545,7 +5571,18 @@ async function pollTrainingStatus() {
       updateNavBadges();
       return;
     }
-    if (job.status === 'paused' || job.status === 'cancelled') {
+    if (job.status === 'cancelled') {
+      document.getElementById('train-ring').classList.remove('running');
+      document.getElementById('train-info-status').textContent = '취소됨';
+      document.getElementById('train-cancel-area').style.display = 'none';
+      document.getElementById('train-running').style.display = 'none';
+      currentTrainJobId = null;
+      _trainPaused = false;
+      document.title = 'AI Voice Studio';
+      toast('학습이 외부에서 취소되었습니다', 'warning');
+      return;
+    }
+    if (job.status === 'paused') {
       _trainPaused = true;
       _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
       document.getElementById('train-ring').classList.remove('running');
@@ -5553,7 +5590,7 @@ async function pollTrainingStatus() {
       document.getElementById('train-cancel-area').style.display = 'none';
       document.getElementById('train-paused-area').style.display = 'block';
       document.title = 'AI Voice Studio';
-      if (job.status === 'paused') toast('학습이 일시정지되었습니다', 'info');
+      toast('학습이 일시정지되었습니다', 'info');
       return;
     }
     if (job.status === 'failed') {
@@ -5573,7 +5610,7 @@ async function pollTrainingStatus() {
     _trainPollTimer = setTimeout(pollTrainingStatus, 5000);
   } catch(e) {
     _trainPollErrors++;
-    if (_trainPollErrors > 20) {
+    if (_trainPollErrors >= 20) {
       // 20 consecutive failures (~3 min) — auto-pause to stop billing
       _trainPaused = true;
       _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
@@ -5690,6 +5727,7 @@ async function resumeTraining() {
     }
     _trainPaused = false;
     _trainPollErrors = 0;
+    _trainStartTime = Date.now();
     document.getElementById('train-paused-area').style.display = 'none';
     document.getElementById('train-cancel-area').style.display = 'block';
     document.getElementById('train-info-status').textContent = '실행 중';
@@ -5706,6 +5744,7 @@ function retryTraining() {
   currentTrainJobId = null;
   _trainPaused = false;
   _trainPollErrors = 0;
+  _trainStartTime = null;
   document.getElementById('train-paused-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
   // 버튼 비활성화 + 로딩 표시
@@ -5752,7 +5791,7 @@ function handleConvertFiles(fileList) {
     return;
   }
   var wasSingle = batchFiles.length <= 1;
-  if (fileList.length === 1 && batchFiles.length === 0) {
+  if (fileList.length === 1 && batchFiles.length <= 1) {
     setConvertFile(fileList[0]);
   } else {
     for (var i = 0; i < fileList.length; i++) {
@@ -6135,7 +6174,17 @@ async function pollConvertStatus() {
       loadConversionHistory();
       return;
     }
-    if (job.status === 'paused' || job.status === 'cancelled') {
+    if (job.status === 'cancelled') {
+      document.getElementById('convert-ring').classList.remove('running');
+      document.getElementById('convert-cancel-area').style.display = 'none';
+      currentConvertJobId = null;
+      _convertPaused = false;
+      document.title = 'AI Voice Studio';
+      resetConversion();
+      toast('변환이 외부에서 취소되었습니다', 'warning');
+      return;
+    }
+    if (job.status === 'paused') {
       _convertPaused = true;
       _showPausedCost('convert-paused-cost-info', 'convert-paused-cost-val', _convertStartTime);
       document.getElementById('convert-ring').classList.remove('running');
@@ -6143,7 +6192,7 @@ async function pollConvertStatus() {
       document.getElementById('convert-cancel-area').style.display = 'none';
       document.getElementById('convert-paused-area').style.display = 'block';
       document.title = 'AI Voice Studio';
-      if (job.status === 'paused') toast('변환이 일시정지되었습니다', 'info');
+      toast('변환이 일시정지되었습니다', 'info');
       return;
     }
     if (job.status === 'failed') {
@@ -6290,6 +6339,7 @@ async function startBatchConversion() {
 
   document.body.classList.add('busy');
   batchProcessing = true;
+  _batchCancelled = false;
   batchResults = batchFiles.map(function(f) {
     return { file: f, jobId: null, status: 'pending', resultUrl: null, mixedUrl: null, error: null };
   });
@@ -6337,6 +6387,7 @@ async function startBatchConversion() {
       batchResults[i].error = e.message;
     }
     renderBatchProgress();
+    if (_batchCancelled) break;
   }
 
   document.body.classList.remove('busy');
@@ -6395,9 +6446,9 @@ function pollBatchItem(index) {
         if (job.status === 'completed') {
           r.status = 'completed';
           var outFile = job.result ? job.result.output_file : null;
-          if (outFile) r.resultUrl = '/api/download/' + encodeURIComponent(outFile);
+          if (outFile) { r.resultUrl = '/api/download/' + encodeURIComponent(outFile); r.filename = outFile; }
           var mixFile = job.result ? job.result.mixed_file : null;
-          if (mixFile) r.mixedUrl = '/api/download/' + encodeURIComponent(mixFile);
+          if (mixFile) { r.mixedUrl = '/api/download/' + encodeURIComponent(mixFile); r.mixedFilename = mixFile; }
           renderBatchProgress();
           resolve();
           return;
@@ -6405,6 +6456,20 @@ function pollBatchItem(index) {
         if (job.status === 'failed') {
           r.status = 'failed';
           r.error = job.message || '변환 실패';
+          renderBatchProgress();
+          resolve();
+          return;
+        }
+        if (job.status === 'paused' || job.status === 'cancelled') {
+          r.status = 'failed';
+          r.error = job.status === 'paused' ? '일시정지됨' : '취소됨';
+          renderBatchProgress();
+          resolve();
+          return;
+        }
+        if (_batchCancelled) {
+          r.status = 'failed';
+          r.error = '일괄 변환 취소됨';
           renderBatchProgress();
           resolve();
           return;
@@ -6553,6 +6618,7 @@ function reuseFileForConvert() {
 
 async function cancelConversion() {
   setButtonLoading('btn-cancel-convert', true);
+  _batchCancelled = true;
   if (currentConvertJobId) {
     try { await api('/jobs/' + currentConvertJobId + '/cancel', { method: 'POST' }); } catch(e) {}
   }
@@ -6594,6 +6660,7 @@ async function resumeConversion() {
     }
     _convertPaused = false;
     _convertPollErrors = 0;
+    _convertStartTime = Date.now();
     document.getElementById('convert-paused-area').style.display = 'none';
     document.getElementById('convert-cancel-area').style.display = 'block';
     document.getElementById('convert-status-msg').textContent = 'GPU 변환 중...';

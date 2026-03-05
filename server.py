@@ -14,6 +14,7 @@ import base64
 import threading
 import webbrowser
 import uuid
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -554,7 +555,10 @@ class RunPodClient:
             json=body,
             timeout=120
         )
-        return resp.json()["id"]
+        job_id = resp.json().get("id")
+        if not job_id:
+            raise RuntimeError(f"RunPod 응답에 job ID가 없습니다: {resp.text[:200]}")
+        return job_id
 
     def check_status(self, runpod_job_id: str) -> dict:
         """작업 상태 확인 (재시도 포함)"""
@@ -605,6 +609,9 @@ _training_file_map: dict[str, list[str]] = {}
 
 # 활성 작업 상태 (일시정지/재개용 파라미터 저장, job_id → dict)
 _active_job_states: dict[str, dict] = {}
+
+# 작업 유형별 타임아웃 (초)
+_JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 1800}
 
 
 def upload_to_r2(file_path: Path, key: str) -> str:
@@ -769,7 +776,6 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
 
                 # progress_update → output 필드 (IN_PROGRESS 상태)
                 # 또는 stream 배열에서 최신 메시지 확인
-                import re
                 progress_text = ""
                 output_field = result.get("output")
                 if isinstance(output_field, str) and output_field:
@@ -835,7 +841,6 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                           message=f"상태: {status} ({elapsed}초)")
 
             # 작업 타입별 타임아웃: train=10시간, preprocess=1시간, convert=30분
-            _JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 1800}
             job_timeout = _JOB_TIMEOUTS.get(job_type, 3600)
             if elapsed > job_timeout:
                 _poll_error_counts.pop(job_id, None)
@@ -1645,8 +1650,7 @@ async def start_training(
         raise HTTPException(400, "모델 이름을 입력해 주세요.")
     if len(model_name) > 100:
         raise HTTPException(400, "모델 이름은 100자 이하여야 합니다.")
-    import re as _re
-    if _re.search(r'[/\\:*?"<>|]', model_name):
+    if re.search(r'[/\\:*?"<>|]', model_name):
         raise HTTPException(400, "모델 이름에 사용할 수 없는 문자가 포함되어 있습니다: / \\ : * ? \" < > |")
     with get_db() as db:
         existing = db.execute(
@@ -1662,6 +1666,8 @@ async def start_training(
         raise HTTPException(400, f"배치 사이즈는 0~64 사이여야 합니다. (입력: {batch_size})")
     if sample_rate not in (32000, 40000, 48000):
         raise HTTPException(400, f"샘플레이트는 32000/40000/48000 중 하나여야 합니다. (입력: {sample_rate})")
+    if f0_method not in ("rmvpe", "crepe", "crepe-tiny"):
+        raise HTTPException(400, f"피치 추출 방식은 rmvpe/crepe/crepe-tiny 중 하나여야 합니다. (입력: {f0_method})")
 
     # 학습 파일 수집
     with get_db() as db:
@@ -1671,7 +1677,7 @@ async def start_training(
             except ValueError:
                 raise HTTPException(400, "잘못된 파일 ID 형식입니다.")
             if not ids:
-                rows = db.execute("SELECT * FROM training_files WHERE deleted=0").fetchall()
+                raise HTTPException(400, "유효한 파일 ID가 없습니다.")
             else:
                 placeholders = ",".join("?" * len(ids))
                 rows = db.execute(
@@ -2334,7 +2340,7 @@ async def cancel_job(job_id: str):
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
             raise HTTPException(404, "작업을 찾을 수 없습니다.")
-        if row["status"] in ("completed", "cancelled"):
+        if row["status"] in ("completed", "cancelled", "failed"):
             return {"status": "already_done", "current_status": row["status"]}
 
         # RunPod 작업 실제 취소 (과금 즉시 중지)
@@ -2362,7 +2368,7 @@ async def pause_job(job_id: str):
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
             raise HTTPException(404, "작업을 찾을 수 없습니다.")
-        if row["status"] in ("completed", "cancelled", "paused"):
+        if row["status"] in ("completed", "cancelled", "paused", "failed"):
             return {"status": "already_done", "current_status": row["status"]}
 
         # RunPod 작업 취소 (과금 중지)
