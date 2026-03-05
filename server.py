@@ -61,6 +61,7 @@ for d in [UPLOAD_DIR, MODEL_DIR, OUTPUT_DIR, CHUNK_DIR, PREPROCESSED_DIR]:
 
 # 청크 업로드 상태 추적 (메모리 내, upload_id → {total, received, filename, category, started_at})
 chunk_uploads: dict = {}
+_chunk_lock = threading.Lock()  # 청크 업로드 동시성 보호
 
 # 전처리 작업별 원본 파일 ID 추적 (완료 시 preprocessed=1 마킹용)
 preprocess_file_map: dict[str, list[int]] = {}
@@ -72,19 +73,21 @@ _poll_error_counts: dict[str, int] = {}
 def _cleanup_stale_chunk_uploads():
     """24시간 이상 완료되지 않은 청크 업로드 정리 (메모리 + 임시 파일)"""
     now = time.time()
-    stale_ids = [uid for uid, sess in list(chunk_uploads.items())
-                 if now - sess.get("started_at", now) > 86400]
+    with _chunk_lock:
+        stale_ids = [uid for uid, sess in list(chunk_uploads.items())
+                     if now - sess.get("started_at", now) > 86400]
+        for uid in stale_ids:
+            chunk_uploads.pop(uid, None)
     for uid in stale_ids:
         chunk_dir = CHUNK_DIR / uid
         shutil.rmtree(chunk_dir, ignore_errors=True)
-        chunk_uploads.pop(uid, None)
     if stale_ids:
         print(f"[ChunkCleanup] {len(stale_ids)}개 미완료 업로드 정리")
 
 def _list_preprocessed_files() -> list[Path]:
-    """전처리된 오디오 파일 목록 (WAV + MP3)."""
+    """전처리된 오디오 파일 목록 (WAV + MP3 + FLAC)."""
     files: list[Path] = []
-    for ext in ("*.wav", "*.mp3"):
+    for ext in ("*.wav", "*.mp3", "*.flac"):
         files.extend(PREPROCESSED_DIR.glob(ext))
     return sorted(files)
 
@@ -260,8 +263,11 @@ def load_config():
     return cfg
 
 def save_config(config):
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    # 원자적 쓰기: 임시 파일에 먼저 쓰고 rename (크래시 시 손상 방지)
+    tmp_path = CONFIG_PATH.with_suffix(".json.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
+    tmp_path.replace(CONFIG_PATH)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SQLite 데이터베이스
@@ -276,6 +282,9 @@ def get_db():
     try:
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -671,7 +680,14 @@ def update_job(job_id: str, **kwargs):
             vals = list(kwargs.values())
             vals.append(datetime.now().isoformat())
             vals.append(job_id)
-            db.execute(f"UPDATE jobs SET {sets}, updated_at=? WHERE id=?", vals)
+            # 터미널 상태(cancelled, failed, completed)는 poll 스레드가 덮어쓰지 않도록 보호
+            new_status = kwargs.get("status", "")
+            if new_status in ("cancelled", "failed", "completed"):
+                db.execute(f"UPDATE jobs SET {sets}, updated_at=? WHERE id=?", vals)
+            else:
+                db.execute(
+                    f"UPDATE jobs SET {sets}, updated_at=? WHERE id=? "
+                    f"AND status NOT IN ('cancelled', 'failed', 'completed')", vals)
     except Exception as e:
         print(f"[update_job] DB 업데이트 실패 (job_id={job_id}): {e}")
 
@@ -800,7 +816,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                         pct = int(m.group(1))
                     else:
                         m2 = re.search(r'(\d+)\s*/\s*(\d+)', progress_text)
-                        if m2:
+                        if m2 and int(m2.group(2)) > 0:
                             pct = min(95, int(int(m2.group(1)) / int(m2.group(2)) * 100))
 
                     # 한국어 메시지 변환
@@ -811,7 +827,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                     elif "(" in progress_text and "/" in progress_text:
                         # "(3/5)" 스텝 형태
                         m4 = re.search(r'\((\d+)/(\d+)\)', progress_text)
-                        if m4:
+                        if m4 and int(m4.group(2)) > 0:
                             step, total_steps = int(m4.group(1)), int(m4.group(2))
                             pct = min(90, int(step / total_steps * 90))
                             msg = progress_text
@@ -895,12 +911,9 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
             fname = orig_name if orig_name not in existing else f"{prefix}_{orig_name}"
             fpath = PREPROCESSED_DIR / fname
             if fobj.get("url"):
-                # Download from R2 presigned URL
+                # Download from R2 presigned URL (재시도 포함)
                 try:
-                    resp = requests.get(fobj["url"], timeout=120)
-                    resp.raise_for_status()
-                    with open(fpath, "wb") as f:
-                        f.write(resp.content)
+                    _download_with_retry(fobj["url"], fpath, timeout=120)
                     saved.append({
                         "filename": fname,
                         "duration_seconds": fobj.get("duration_seconds", 0),
@@ -988,6 +1001,23 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     }
 
 
+def _download_with_retry(url: str, dest: Path, timeout: int = 300, retries: int = 3) -> None:
+    """URL에서 파일 다운로드 (재시도 포함). GPU 결과물 손실 방지."""
+    for attempt in range(retries):
+        try:
+            resp = requests.get(url, timeout=timeout)
+            resp.raise_for_status()
+            with open(dest, "wb") as f:
+                f.write(resp.content)
+            return
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as e:
+            if attempt < retries - 1:
+                print(f"[Download] 재시도 {attempt + 1}/{retries}: {dest.name} ({e})")
+                time.sleep(2 ** attempt)
+            else:
+                raise RuntimeError(f"다운로드 {retries}회 실패 ({dest.name}): {e}") from e
+
+
 def handle_job_result(job_id: str, job_type: str, output: dict):
     """RunPod 작업 결과 처리"""
     try:
@@ -1004,10 +1034,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             if output.get("pth_url"):
                 pth_filename = output.get("pth_filename", f"{model_name}.pth")
                 pth_path = str(model_dir / pth_filename)
-                resp = requests.get(output["pth_url"], timeout=300)
-                resp.raise_for_status()
-                with open(pth_path, "wb") as f:
-                    f.write(resp.content)
+                _download_with_retry(output["pth_url"], Path(pth_path), timeout=300)
             # Fallback: base64 encoded model (when R2 upload failed)
             elif output.get("pth_base64"):
                 pth_filename = output.get("pth_filename", f"{model_name}.pth")
@@ -1038,10 +1065,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             if output.get("index_url"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
                 index_path = str(model_dir / idx_filename)
-                resp = requests.get(output["index_url"], timeout=120)
-                resp.raise_for_status()
-                with open(index_path, "wb") as f:
-                    f.write(resp.content)
+                _download_with_retry(output["index_url"], Path(index_path), timeout=120)
             # Fallback: base64 encoded index
             elif output.get("index_base64"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
@@ -1088,14 +1112,11 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             out_path = OUTPUT_DIR / out_filename
             has_vocals = False
 
-            # R2 URL → 다운로드
+            # R2 URL → 다운로드 (재시도 포함 — GPU 결과물 손실 방지)
             if output.get("converted_audio_url"):
-                resp = requests.get(output["converted_audio_url"], timeout=300)
-                resp.raise_for_status()
-                with open(out_path, "wb") as f:
-                    f.write(resp.content)
+                _download_with_retry(output["converted_audio_url"], out_path, timeout=300)
                 has_vocals = True
-                print(f"[Convert] Downloaded vocals from R2: {len(resp.content):,} bytes")
+                print(f"[Convert] Downloaded vocals from R2: {out_path.stat().st_size:,} bytes")
             # inline base64
             elif output.get("converted_audio"):
                 with open(out_path, "wb") as f:
@@ -1112,12 +1133,9 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 mixed_filename = output.get("mixed_filename", f"mixed_{job_id[:8]}.wav")
                 mixed_path = OUTPUT_DIR / mixed_filename
                 if output.get("mixed_audio_url"):
-                    resp = requests.get(output["mixed_audio_url"], timeout=300)
-                    resp.raise_for_status()
-                    with open(mixed_path, "wb") as f:
-                        f.write(resp.content)
+                    _download_with_retry(output["mixed_audio_url"], mixed_path, timeout=300)
                     result_data["mixed_file"] = mixed_filename
-                    print(f"[Convert] Downloaded mixed from R2: {len(resp.content):,} bytes")
+                    print(f"[Convert] Downloaded mixed from R2: {mixed_path.stat().st_size:,} bytes")
                 elif output.get("mixed_audio"):
                     with open(mixed_path, "wb") as f:
                         f.write(base64.b64decode(output["mixed_audio"]))
@@ -1149,6 +1167,13 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
 
     except Exception as e:
         update_job(job_id, status="failed", message=f"결과 처리 오류: {str(e)}")
+        # 변환 작업 실패 시 conversions 테이블도 업데이트
+        if job_type == "convert":
+            try:
+                with get_db() as db:
+                    db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
+            except Exception:
+                pass
     finally:
         # 완료/실패 시 인메모리 재개 상태 정리 (메모리 누수 방지)
         _active_job_states.pop(job_id, None)
@@ -1195,6 +1220,7 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
         while True:
             time.sleep(5)
             if _is_job_cancelled(job_id):
+                runpod_client.cancel_runpod_job(runpod_job_id)
                 return
             try:
                 result = runpod_client.check_status(runpod_job_id)
@@ -1412,7 +1438,10 @@ async def save_to_folder(filename: str = Form(...)):
                 return {"status": "ok", "path": str(dst), "size": dst.stat().st_size}
             except (PermissionError, OSError):
                 continue
-        shutil.copy2(str(src), str(dst))
+        try:
+            shutil.copy2(str(src), str(dst))
+        except (PermissionError, OSError) as e:
+            raise HTTPException(500, detail=f"파일 저장 실패 (모든 번호 시도 실패): {e}")
 
     return {"status": "ok", "path": str(dst), "size": dst.stat().st_size}
 
@@ -1433,6 +1462,8 @@ async def upload_files(
         raise HTTPException(507, "디스크 공간이 부족합니다. 최소 500MB 필요합니다.")
 
     for f in files:
+        if not f.filename:
+            continue
         ext = Path(f.filename).suffix.lower()
         if ext not in [".wav", ".mp3", ".flac", ".ogg", ".m4a", ".mp4", ".mkv", ".webm"]:
             continue
@@ -1531,18 +1562,24 @@ async def upload_chunk(
     chunk: UploadFile = File(...)
 ):
     """청크 단위 업로드 — 대용량 파일을 분할 전송. 모든 청크 도착 시 자동 재조립."""
-    if upload_id not in chunk_uploads:
-        chunk_uploads[upload_id] = {
-            "total_chunks": total_chunks,
-            "received": set(),
-            "filename": filename,
-            "category": category,
-            "started_at": time.time(),
-        }
+    with _chunk_lock:
+        if upload_id not in chunk_uploads:
+            chunk_uploads[upload_id] = {
+                "total_chunks": total_chunks,
+                "received": set(),
+                "filename": filename,
+                "category": category,
+                "started_at": time.time(),
+            }
 
-    session = chunk_uploads[upload_id]
+        session = chunk_uploads[upload_id]
 
-    if chunk_index < 0 or chunk_index >= total_chunks:
+        # total_chunks 일관성 검증
+        if session["total_chunks"] != total_chunks:
+            raise HTTPException(400,
+                f"total_chunks 불일치: 세션={session['total_chunks']}, 요청={total_chunks}")
+
+    if chunk_index < 0 or chunk_index >= session["total_chunks"]:
         raise HTTPException(400, f"잘못된 청크 인덱스: {chunk_index}")
     if chunk_index in session["received"]:
         return {"status": "duplicate", "upload_id": upload_id,
@@ -1556,9 +1593,11 @@ async def upload_chunk(
     with open(chunk_path, "wb") as f:
         f.write(chunk_data)
 
-    session["received"].add(chunk_index)
+    with _chunk_lock:
+        session["received"].add(chunk_index)
+        is_complete = len(session["received"]) == session["total_chunks"]
 
-    if len(session["received"]) == total_chunks:
+    if is_complete:
         ext = Path(filename).suffix.lower()
         if ext not in [".wav", ".mp3", ".flac", ".ogg", ".m4a", ".mp4", ".mkv", ".webm"]:
             shutil.rmtree(chunk_dir, ignore_errors=True)
@@ -1831,6 +1870,7 @@ async def start_training(
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
         _training_file_map.pop(job_id, None)
+        _active_job_states.pop(job_id, None)
 
     return {"job_id": job_id, "segments": total_segments}
 
@@ -1931,6 +1971,7 @@ async def start_preprocess(
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
         preprocess_file_map.pop(job_id, None)
+        _active_job_states.pop(job_id, None)
 
     return {"job_id": job_id, "segments": total_segments, "batches": len(batches),
             "skipped": skipped, "processing": len(unprocessed)}
@@ -2502,7 +2543,10 @@ async def resume_job(job_id: str):
 
             update_job(job_id, status="running", progress=3, message="학습 재개 중...")
 
-            ids = [int(x.strip()) for x in file_ids_str.split(",") if x.strip()] if file_ids_str else []
+            try:
+                ids = [int(x.strip()) for x in file_ids_str.split(",") if x.strip()] if file_ids_str else []
+            except (ValueError, TypeError):
+                ids = []
             with get_db() as db:
                 if ids:
                     placeholders = ",".join("?" * len(ids))
@@ -2514,7 +2558,26 @@ async def resume_job(job_id: str):
 
             all_preprocessed = [f for f in _list_preprocessed_files()
                                  if not f.name.startswith(("mr_", "vocal_"))]
-            file_paths = ([str(p) for p in all_preprocessed] if all_preprocessed
+
+            # file_ids 기반 세그먼트 필터링 (start_training과 동일 로직)
+            preprocessed_files = all_preprocessed
+            if all_preprocessed and ids:
+                meta_path = PREPROCESSED_DIR / "_metadata.json"
+                seg_map = {}
+                if meta_path.exists():
+                    try:
+                        seg_map = json.loads(meta_path.read_text(encoding="utf-8")).get("file_segments", {})
+                    except Exception:
+                        pass
+                selected_seg_names = set()
+                for fid in ids:
+                    selected_seg_names.update(seg_map.get(str(fid), []))
+                if selected_seg_names:
+                    preprocessed_files = [
+                        f for f in all_preprocessed if f.name in selected_seg_names
+                    ]
+
+            file_paths = ([str(p) for p in preprocessed_files] if preprocessed_files
                           else [str(UPLOAD_DIR / r["filename"]) for r in rows])
 
             training_file_names = [r["original_name"] for r in rows]
@@ -2632,6 +2695,32 @@ async def resume_job(job_id: str):
                 payload["pth_url"] = pth_url
             if index_url:
                 payload["index_url"] = index_url
+
+            # pth_url 없는 모델 → 로컬 파일을 R2에 업로드 (presigned URL 만료 대비)
+            if not pth_url and model["pth_path"]:
+                local_pth = Path(model["pth_path"])
+                if not local_pth.is_absolute():
+                    local_pth = MODEL_DIR / local_pth
+                if local_pth.exists():
+                    try:
+                        pth_r2_key = f"convert/{job_id}_resume/model.pth"
+                        pth_url = upload_to_r2(local_pth, pth_r2_key)
+                        payload["pth_url"] = pth_url
+                    except Exception as e:
+                        update_job(job_id, status="failed", message=f"모델 R2 업로드 실패: {e}")
+                        raise HTTPException(500, f"R2 업로드 실패: {e}")
+
+            if not index_url and model["index_path"]:
+                local_idx = Path(model["index_path"])
+                if not local_idx.is_absolute():
+                    local_idx = MODEL_DIR / local_idx
+                if local_idx.exists():
+                    try:
+                        idx_r2_key = f"convert/{job_id}_resume/model.index"
+                        index_url = upload_to_r2(local_idx, idx_r2_key)
+                        payload["index_url"] = index_url
+                    except Exception:
+                        pass  # index는 선택사항
 
             runpod_job_id = runpod_client.submit_job(payload)
             if not runpod_job_id:

@@ -3716,8 +3716,9 @@ function toast(message, type, duration) {
   el.className = 'toast toast-' + type;
   el.innerHTML =
     '<div class="toast-icon">' + (TOAST_ICONS[type] || TOAST_ICONS.info) + '</div>' +
-    '<div class="toast-body">' + message + '</div>' +
+    '<div class="toast-body">' + escapeHtml(message) + '</div>' +
     '<button class="toast-close" onclick="dismissToast(this.parentElement)">&times;</button>';
+  el._dismissMs = duration;
   container.appendChild(el);
 
   if (duration > 0) {
@@ -3937,7 +3938,10 @@ function apRedraw(uid, progress) {
 function cleanupWaveformCache() {
   var keys = Object.keys(apWaveData);
   for (var i = 0; i < keys.length; i++) {
-    if (!document.getElementById(keys[i] + '_wave')) {
+    // result_player uses 'result-waveform' canvas, others use '{uid}_wave'
+    if (keys[i] === 'result_player') {
+      if (!document.getElementById('result-waveform')) delete apWaveData[keys[i]];
+    } else if (!document.getElementById(keys[i] + '_wave')) {
       delete apWaveData[keys[i]];
     }
   }
@@ -5056,7 +5060,7 @@ async function startPreprocess() {
   try {
     var form = new FormData();
     form.append('file_ids', fileIds);
-    var res = await api('/preprocess', { method: 'POST', body: form });
+    var res = await api('/preprocess', { method: 'POST', body: form, noTimeout: true });
 
     setButtonLoading('btn-start-preprocess', false);
     document.body.classList.remove('busy');
@@ -5496,7 +5500,7 @@ async function _doStartTraining() {
   try {
     document.body.classList.add('busy');
     setButtonLoading('btn-start-train', true);
-    var res = await api('/train', { method: 'POST', body: form });
+    var res = await api('/train', { method: 'POST', body: form, noTimeout: true });
     document.body.classList.remove('busy');
     setButtonLoading('btn-start-train', false);
     currentTrainJobId = res.job_id;
@@ -5740,7 +5744,7 @@ async function resumeTraining() {
   }
 }
 
-function retryTraining() {
+async function retryTraining() {
   currentTrainJobId = null;
   _trainPaused = false;
   _trainPollErrors = 0;
@@ -5752,8 +5756,13 @@ function retryTraining() {
   var backBtn = document.getElementById('btn-train-back');
   if (btn) { btn.disabled = true; btn.textContent = '재시작 중...'; }
   if (backBtn) backBtn.disabled = true;
-  // 바로 학습 재시작
-  startTraining();
+  try {
+    await startTraining();
+  } catch(e) {
+    // 실패 시 버튼 복구
+    if (btn) { btn.disabled = false; btn.textContent = '다시 시도'; }
+    if (backBtn) backBtn.disabled = false;
+  }
 }
 
 function extractErrorSummary(msg) {
@@ -5950,7 +5959,9 @@ async function loadModels() {
     applyListEnter(document.getElementById('convert-model-list'), '.model-card', 45);
     renderPagination('model-pagination', _modelPage, filteredModels.length, 'setModelPage');
     updateConvertBtn();
-  } catch(e) {}
+  } catch(e) {
+    if (e.message) toast('모델 목록 로드 실패: ' + e.message, 'error');
+  }
 }
 
 function selectModel(id, el) {
@@ -6023,7 +6034,7 @@ async function startConversion() {
   try {
     document.body.classList.add('busy');
     setButtonLoading('btn-convert', true);
-    var res = await api('/convert', { method: 'POST', body: form });
+    var res = await api('/convert', { method: 'POST', body: form, noTimeout: true });
     document.body.classList.remove('busy');
     setButtonLoading('btn-convert', false);
     currentConvertJobId = res.job_id;
@@ -6143,7 +6154,8 @@ async function pollConvertStatus() {
               }
               apWaveData['result_player'] = { bars: bars, width: rect.width, height: rect.height };
               canvas.onclick = function(e) {
-                var p = e.offsetX / rect.width;
+                var r = canvas.getBoundingClientRect();
+                var p = e.offsetX / (r.width || 1);
                 if (audioEl.duration) audioEl.currentTime = p * audioEl.duration;
               };
               apRedraw('result_player', 0);
@@ -6378,7 +6390,7 @@ async function startBatchConversion() {
       form.append('harmonic_enhance', batchHarmonicCb ? batchHarmonicCb.checked : true);
       form.append('audio', batchResults[i].file);
 
-      var res = await api('/convert', { method: 'POST', body: form });
+      var res = await api('/convert', { method: 'POST', body: form, noTimeout: true });
       batchResults[i].jobId = res.job_id;
 
       await pollBatchItem(i);
@@ -6440,7 +6452,7 @@ function pollBatchItem(index) {
       var r = batchResults[index];
       if (!r.jobId) { resolve(); return; }
       try {
-        var job = await api('/jobs/' + r.jobId);
+        var job = await api('/jobs/' + r.jobId, { noTimeout: true });
         errorCount = 0;
 
         if (job.status === 'completed') {
@@ -6713,7 +6725,7 @@ function renderConvHistoryPage() {
     var isCompleted = c.status === 'completed' && playFile;
     var audioUrl = isCompleted ? '/api/download/' + encodeURIComponent(playFile) : '';
     var playerHtml = isCompleted ? createAudioPlayer(audioUrl) : '';
-    var escapedPlayFile = playFile ? playFile.replace(/'/g, "\\'") : '';
+    // XSS-safe: JSON.stringify로 onclick 속성 안전하게 처리
 
     // Status badge with color coding
     var statusBadgeHtml = '';
@@ -6732,7 +6744,7 @@ function renderConvHistoryPage() {
     }
 
     var downloadBtn = isCompleted
-      ? '<button class="btn-conv-action" onclick="downloadFile(\'/api/download/' + encodeURIComponent(playFile) + '\', \'' + escapedPlayFile + '\')" title="다운로드">' +
+      ? '<button class="btn-conv-action" onclick="downloadFile(' + JSON.stringify('/api/download/' + encodeURIComponent(playFile)) + ',' + JSON.stringify(playFile) + ')" title="다운로드">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
         '</button>'
       : '';
@@ -6783,7 +6795,7 @@ function deleteConversion(id) {
   });
 }
 
-function retryConversion() {
+async function retryConversion() {
   _convertPaused = false;
   _convertPollErrors = 0;
   document.getElementById('convert-paused-area').style.display = 'none';
@@ -6797,7 +6809,12 @@ function retryConversion() {
   currentConvertJobId = null;
   // 이전 파일이 남아있으면 재시도, 없으면 메인으로
   if (convertFile) {
-    startConversion();
+    try {
+      await startConversion();
+    } catch(e) {
+      if (btn) { btn.disabled = false; btn.textContent = '다시 시도'; }
+      if (backBtn) backBtn.disabled = false;
+    }
   } else {
     resetConversion();
   }
@@ -7098,11 +7115,10 @@ document.addEventListener('keydown', function(e) {
   }
   // Esc: close modals / confirm dialogs / dismiss toasts
   if (e.key === 'Escape') {
-    // Close confirm dialogs first
+    // confirm 다이얼로그는 자체 escHandler가 처리하므로 여기서는 무시
     var confirmOverlay = document.querySelector('.confirm-overlay');
     if (confirmOverlay) {
-      confirmOverlay.remove();
-      return;
+      return;  // showConfirm의 escHandler가 정리 담당
     }
     var toasts = document.querySelectorAll('.toast:not(.removing)');
     if (toasts.length > 0) {
@@ -7163,7 +7179,10 @@ function updateSliderFill(el) {
 function initAllSliders() {
   document.querySelectorAll('input[type="range"]').forEach(function(el) {
     updateSliderFill(el);
-    el.addEventListener('input', function() { updateSliderFill(this); });
+    if (!el._sliderInitialized) {
+      el.addEventListener('input', function() { updateSliderFill(this); });
+      el._sliderInitialized = true;
+    }
   });
 }
 
@@ -7448,17 +7467,16 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 window.addEventListener('beforeunload', function(e) {
-  // 연결 폴링 타이머 정리
-  if (connectionTimer) {
-    clearInterval(connectionTimer);
-    connectionTimer = null;
-  }
+  // 타이머 정리는 unload에서 처리 (사용자가 취소하면 타이머가 살아있어야 함)
   if (preprocessJobId || currentTrainJobId || currentConvertJobId) {
     var msg = '진행 중인 작업이 있습니다. 페이지를 나가면 폴링이 중단됩니다.';
     e.preventDefault();
     e.returnValue = msg;
     return msg;
   }
+});
+window.addEventListener('unload', function() {
+  if (connectionTimer) { clearInterval(connectionTimer); connectionTimer = null; }
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -7496,9 +7514,8 @@ loadDashboard();
 startConnectionPolling();
 initAllSliders();
 
-// Setup drag-and-drop on both dropzones
-setupDragDrop('train-dropzone', 'train-file-input');
-setupDragDrop('convert-dropzone', 'convert-file-input');
+// 참고: train-dropzone과 convert-dropzone은 전용 이벤트 핸들러가 이미 등록되어 있음
+// setupDragDrop 호출 시 중복 핸들러로 파일이 2번 업로드되므로 제거
 
 // 파일 목록 로드 → 전처리 상태 확인 → 활성 작업 복원 (순서 보장)
 api('/files').then(function(res) {

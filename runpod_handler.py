@@ -21,6 +21,7 @@ Docker 이미지에 필요한 것:
 from __future__ import annotations
 
 import os
+import re
 import sys
 import gc
 import json
@@ -112,6 +113,30 @@ def encode_file_b64(file_path: Path, compress: bool = False) -> str:
     return base64.b64encode(data).decode("utf-8")
 
 
+def _download_with_retries(
+    requests_mod, url: str, dest: Path, label: str = "파일",
+    timeout: int = 120, retries: int = 3
+) -> None:
+    """Download a file from URL with retry logic for transient network errors."""
+    for attempt in range(retries):
+        try:
+            resp = requests_mod.get(url, timeout=timeout)
+            resp.raise_for_status()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with open(dest, "wb") as f:
+                f.write(resp.content)
+            return
+        except (requests_mod.exceptions.Timeout, requests_mod.exceptions.ConnectionError) as e:
+            if attempt < retries - 1:
+                wait = 2 ** attempt
+                log.warning(f"{label} 다운로드 재시도 {attempt + 1}/{retries} ({wait}초 후): {e}")
+                time.sleep(wait)
+            else:
+                raise RuntimeError(f"{label} 다운로드 {retries}회 실패: {e}") from e
+        except Exception as e:
+            raise RuntimeError(f"{label} 다운로드 실패: {e}") from e
+
+
 def get_audio_duration(file_path: str | Path) -> float:
     """Get duration of an audio file in seconds via ffprobe."""
     try:
@@ -162,7 +187,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
     if not audio_files:
         raise ValueError("No audio_files provided for preprocessing")
 
-    job_id = job.get("id", uuid.uuid4().hex[:12])
+    job_id = job.get("id") or uuid.uuid4().hex[:12]
     work = ensure_dir(WORK_DIR / f"preprocess_{job_id}")
     raw_dir = ensure_dir(work / "raw")
     audio_dir = ensure_dir(work / "audio")
@@ -226,10 +251,20 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         # --- Step 5: Noise reduction ---
         runpod.serverless.progress_update(job, "Noise reduction... (5/6)")
         cleaned_paths = _noise_reduce(diarized_paths, clean_dir)
+        if not cleaned_paths:
+            raise RuntimeError(
+                f"노이즈 제거 후 유효한 오디오 파일이 없습니다. "
+                f"입력 파일 {len(diarized_paths)}개 모두 손상되었거나 비정상적입니다."
+            )
 
         # --- Step 6: Segment into 3-12s clips ---
         runpod.serverless.progress_update(job, "Segmenting audio clips... (6/6)")
         segments, skipped_files = _segment_audio(cleaned_paths, segment_dir)
+        if not segments:
+            raise RuntimeError(
+                f"세그먼트 생성 실패: 유효한 세그먼트가 0개입니다. "
+                f"모든 오디오가 너무 짧거나 (< 2초) 손상되었습니다."
+            )
 
         # Convert segments to FLAC (lossless) for transfer.
         # CRITICAL QUALITY DECISION: FLAC (lossless) vs MP3 (lossy)
@@ -885,17 +920,16 @@ def task_train(job_input: dict, job: dict) -> dict:
     audio_files: list[dict] = job_input.get("audio_files", [])
     audio_urls: list[dict] = job_input.get("audio_urls", [])
     sample_rate: int = int(job_input.get("sample_rate", 40000))  # 40k recommended for SVC
-    epochs: int = job_input.get("epochs", 500)
-    batch_size: int = job_input.get("batch_size", 0)  # 0 = auto-detect
+    epochs: int = int(job_input.get("epochs", 500))
+    batch_size: int = int(job_input.get("batch_size", 0))  # 0 = auto-detect
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    save_every_epoch: int = job_input.get("save_every_epoch", 50)
+    save_every_epoch: int = max(1, int(job_input.get("save_every_epoch", 50)))
 
     if not audio_files and not audio_urls:
         raise ValueError("No audio_files or audio_urls provided for training")
 
     # Validate model name — must be safe for filesystem paths
-    import re
     model_name = re.sub(r'[<>:"/\\|?*]', '_', model_name).strip()
     if not model_name:
         model_name = "my_voice_model"
@@ -920,7 +954,7 @@ def task_train(job_input: dict, job: dict) -> dict:
             batch_size = 4  # GPU VRAM 감지 실패 시 보수적 기본값
     batch_size = max(4, min(48, batch_size))
 
-    job_id = job.get("id", uuid.uuid4().hex[:12])
+    job_id = job.get("id") or uuid.uuid4().hex[:12]
     start_time = time.time()
 
     # Applio expects a specific directory structure for training:
@@ -978,9 +1012,13 @@ def task_train(job_input: dict, job: dict) -> dict:
 
         # Convert all to WAV at target sample rate
         wav_dir = ensure_dir(WORK_DIR / f"train_{job_id}" / "wav")
-        for f in dataset_dir.iterdir():
+        wav_idx = 0
+        for f in sorted(dataset_dir.iterdir()):
             if f.suffix.lower() in AUDIO_EXTS:
-                out_wav = wav_dir / (f.stem + ".wav")
+                # Use index prefix to avoid collision when stems match
+                # (e.g., song.mp3 and song.flac → 0000_song.wav, 0001_song.wav)
+                out_wav = wav_dir / f"{wav_idx:04d}_{f.stem}.wav"
+                wav_idx += 1
                 run_ffmpeg([
                     "-i", str(f),
                     "-acodec", "pcm_s16le",
@@ -1554,9 +1592,8 @@ def _rvc_train(
         # Applio outputs: "model | epoch=394 | step=14578 | ..."
         # Also tqdm batch bars: "35%|███▌ | 13/37 [00:03<00:05, 4.49it/s]"
         # We must distinguish epoch lines from tqdm batch bars.
-        import re as _re
         prev_epoch = epoch_count
-        epoch_match = _re.search(r'epoch[=:\s]+(\d+)', line, _re.IGNORECASE)
+        epoch_match = re.search(r'epoch[=:\s]+(\d+)', line, re.IGNORECASE)
         if epoch_match:
             parsed_epoch = int(epoch_match.group(1))
             if parsed_epoch > epoch_count:
@@ -1679,12 +1716,17 @@ def _rvc_create_index(model_name: str, logs_dir: Path) -> None:
     try:
         import faiss
 
-        feature_dir = logs_dir / "3_feature768"
-        if not feature_dir.exists():
-            feature_dir = logs_dir / "3_feature256"
+        # Applio extract.py may store features in different directories
+        # depending on version: extracted/, 3_feature768/, or 3_feature256/
+        feature_dir = None
+        for candidate_name in ("extracted", "3_feature768", "3_feature256"):
+            candidate = logs_dir / candidate_name
+            if candidate.exists() and any(candidate.glob("*.npy")):
+                feature_dir = candidate
+                break
 
-        if not feature_dir.exists():
-            log.warning(f"Feature directory not found: {feature_dir}")
+        if feature_dir is None:
+            log.warning(f"Feature directory not found in {logs_dir}")
             return
 
         # Collect all feature .npy files
@@ -1981,7 +2023,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
         log.warning(f"Invalid export_format '{export_format}', defaulting to 'wav'")
         export_format = "wav"
 
-    job_id = job.get("id", uuid.uuid4().hex[:12])
+    job_id = job.get("id") or uuid.uuid4().hex[:12]
     work = ensure_dir(WORK_DIR / f"convert_{job_id}")
     start_time = time.time()
 
@@ -1993,14 +2035,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
         if pth_url:
             import requests as _req
             log.info(f"Downloading model from URL: {pth_url[:80]}...")
-            try:
-                resp = _req.get(pth_url, timeout=120)
-                resp.raise_for_status()
-            except Exception as dl_err:
-                raise RuntimeError(f"모델 파일 다운로드 실패: {dl_err}") from dl_err
             pth_path = work / "model.pth"
-            with open(pth_path, "wb") as f:
-                f.write(resp.content)
+            _download_with_retries(_req, pth_url, pth_path, "모델 파일", timeout=120)
         else:
             pth_path = decode_b64_file(pth_b64, work / "model.pth")
         log.info(f"Model file ready: {pth_path.stat().st_size / 1024:.1f} KB")
@@ -2011,15 +2047,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
             import requests as _req
             log.info(f"Downloading index from URL: {index_url[:80]}...")
             try:
-                resp = _req.get(index_url, timeout=60)
-                resp.raise_for_status()
+                _download_with_retries(_req, index_url, work / "model.index", "인덱스 파일", timeout=60)
+                index_path = work / "model.index"
             except Exception as dl_err:
                 log.warning(f"인덱스 파일 다운로드 실패 (선택사항, 계속 진행): {dl_err}")
                 index_path = None
-            else:
-                index_path = work / "model.index"
-                with open(index_path, "wb") as f:
-                    f.write(resp.content)
         elif index_b64:
             index_path = decode_b64_file(index_b64, work / "model.index")
         if index_path:
@@ -2030,14 +2062,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
         if audio_url:
             import requests as _req
             log.info(f"Downloading audio from URL: {audio_url[:80]}...")
-            try:
-                resp = _req.get(audio_url, timeout=120)
-                resp.raise_for_status()
-            except Exception as dl_err:
-                raise RuntimeError(f"오디오 파일 다운로드 실패: {dl_err}") from dl_err
             raw_input = work / f"input{input_ext}"
-            with open(raw_input, "wb") as f:
-                f.write(resp.content)
+            _download_with_retries(_req, audio_url, raw_input, "오디오 파일", timeout=120)
         else:
             raw_input = decode_b64_file(audio_b64, work / f"input{input_ext}")
         log.info(f"Audio file ready: {raw_input.stat().st_size / 1024:.1f} KB")
@@ -2338,11 +2364,11 @@ def _rvc_infer(
         # Load model
         cpt = torch.load(str(pth_path), map_location="cpu")
         config = cpt.get("config", [])
-        tgt_sr = config[-1] if config else 40000
+        tgt_sr = config[-1] if config and len(config) >= 1 else 40000
         if not tgt_sr or tgt_sr <= 1:
             tgt_sr = 40000
 
-        if "weight" in cpt and "emb_g.weight" in cpt["weight"]:
+        if "weight" in cpt and "emb_g.weight" in cpt["weight"] and len(config) >= 3:
             config[-3] = cpt["weight"]["emb_g.weight"].shape[0]
         if_f0 = cpt.get("f0", 1)
         version = cpt.get("version", "v2")
