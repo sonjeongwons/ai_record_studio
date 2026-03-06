@@ -645,7 +645,7 @@ _training_file_map: dict[str, list[str]] = {}
 _active_job_states: dict[str, dict] = {}
 
 # 작업 유형별 타임아웃 (초)
-_JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 1800}
+_JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 3600}  # convert: 30분→60분
 
 
 def upload_to_r2(file_path: Path, key: str) -> str:
@@ -680,7 +680,7 @@ def upload_to_r2(file_path: Path, key: str) -> str:
         presigned_url = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=86400 * 7,  # 7일
+            ExpiresIn=86400 * 30,  # 30일 (일시정지 후 재개, 장기 보관 지원)
         )
     except Exception as e:
         print(f"[R2 Upload Error] {type(e).__name__}: {e}")
@@ -897,7 +897,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
         except Exception as e:
             poll_errors = _poll_error_counts.get(job_id, 0) + 1
             _poll_error_counts[job_id] = poll_errors
-            if poll_errors > 30:  # 30 consecutive errors = ~5 min of failures
+            if poll_errors > 60:  # 60회 연속 오류 = ~10분 장애 허용 (일시적 네트워크 불안정 대응)
                 _poll_error_counts.pop(job_id, None)
                 _active_job_states.pop(job_id, None)
                 update_job(job_id, status="failed",
@@ -1150,13 +1150,19 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
 
             # R2 URL → 다운로드 (재시도 포함 — GPU 결과물 손실 방지)
             if output.get("converted_audio_url"):
-                _download_with_retry(output["converted_audio_url"], out_path, timeout=300)
+                _download_with_retry(output["converted_audio_url"], out_path, timeout=600)
+                file_size = out_path.stat().st_size if out_path.exists() else 0
+                print(f"[Convert] Downloaded vocals from R2: {file_size:,} bytes")
+                if file_size < 50_000:
+                    raise RuntimeError(f"다운로드된 보컬 파일이 너무 작습니다 ({file_size:,} bytes). 변환이 실패했을 수 있습니다.")
                 has_vocals = True
-                print(f"[Convert] Downloaded vocals from R2: {out_path.stat().st_size:,} bytes")
             # inline base64
             elif output.get("converted_audio"):
                 with open(out_path, "wb") as f:
                     f.write(base64.b64decode(output["converted_audio"]))
+                file_size = out_path.stat().st_size
+                if file_size < 50_000:
+                    raise RuntimeError(f"inline base64 보컬 파일이 너무 작습니다 ({file_size:,} bytes).")
                 has_vocals = True
 
             if has_vocals:
@@ -2171,7 +2177,7 @@ async def start_conversion(
     clean_strength: float = Form(0.7),
     protect: float = Form(0.50),
     rms_mix_rate: float = Form(0.15),
-    filter_radius: int = Form(2),
+    filter_radius: int = Form(3),
     hop_length: int = Form(64),
     post_reverb: float = Form(0.10),
     harmonic_enhance: bool = Form(True),
@@ -2715,7 +2721,7 @@ async def resume_job(job_id: str):
                 "clean_strength": pause_state.get("clean_strength", 0.7),
                 "protect": pause_state.get("protect", 0.50),
                 "rms_mix_rate": pause_state.get("rms_mix_rate", 0.15),
-                "filter_radius": pause_state.get("filter_radius", 2),
+                "filter_radius": pause_state.get("filter_radius", 3),
                 "hop_length": pause_state.get("hop_length", 64),
                 "separate_vocals": True,
                 "vocal_volume": pause_state.get("vocal_volume", 1.0),
@@ -2875,6 +2881,13 @@ async def delete_model(model_id: int):
         row = db.execute("SELECT * FROM voice_models WHERE id=?", (model_id,)).fetchone()
         if not row:
             raise HTTPException(404, "모델을 찾을 수 없습니다.")
+        # 실행 중 또는 일시정지된 변환 작업이 있으면 삭제 거부
+        active = db.execute(
+            "SELECT id FROM conversions WHERE model_id=? AND status IN ('pending','processing','paused')",
+            (model_id,)
+        ).fetchall()
+        if active:
+            raise HTTPException(409, f"이 모델을 사용 중인 변환 작업이 {len(active)}개 있습니다. 먼저 작업을 취소하거나 완료하세요.")
         dirs_to_check = set()
         for path_key in ["pth_path", "index_path"]:
             if row[path_key] and Path(row[path_key]).exists():

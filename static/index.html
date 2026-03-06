@@ -3193,10 +3193,10 @@ input.input-error   { border-color: var(--red) !important; animation: inputError
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n📖 비유: 사진에서 '선명도'와 '부드럽게' 필터의 차이와 비슷합니다. 값을 높이면 음정이 부드럽게 연결되고, 낮추면 원본의 날카로운 음정 변화를 유지합니다.\n\n🔢 설정 가이드:\n• 3~5 = 일반 노래 (추천)\n• 1~2 = 가성·고음이 많은 노래, 빠른 멜로디\n• 6~7 = 발라드 등 느린 곡에 적합\n• 0 = 음정 보정 없음 (원본 그대로)\n\n💡 변환 결과에서 음정이 '뚝뚝' 끊기는 느낌이면 값을 높이고, 반대로 너무 밋밋하면 낮추세요.\n\n💰 비용 영향: 없음.">ⓘ</i></span>
-              <span class="slider-value" id="filter-val">2</span>
+              <span class="slider-value" id="filter-val">3</span>
             </div>
-            <input type="range" id="filter-slider" min="0" max="7" value="2" oninput="document.getElementById('filter-val').textContent=this.value">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (2~4 권장, 가성/고음: 1~2)</div>
+            <input type="range" id="filter-slider" min="0" max="7" value="3" oninput="document.getElementById('filter-val').textContent=this.value">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (3 기본, 2~4 권장, 가성/고음: 1~2)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4606,29 +4606,29 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default: RMVPE, optimized naturalness settings
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 2, hop: 0, // hop idx: 0=64, 1=128, 2=256
+      // Default: RMVPE, balanced naturalness settings
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 0, // hop idx: 0=64, 1=128, 2=256
       clean: false, cleanStr: 70, index: 50,
       postReverb: 10, useReverb: true, harmonicEnhance: true,
       desc: '기본 설정으로 되돌렸습니다'
     },
     falsetto: {
-      // Falsetto/high notes: Crepe for high pitch accuracy, max protect, fine hop
-      f0: 'crepe', protect: 48, rms: 20, filter: 1, hop: 0, // hop=64
-      clean: false, cleanStr: 70, index: 55,
-      postReverb: 8, useReverb: true, harmonicEnhance: true,
-      desc: '가성/고음 최적화 — Crepe, protect↑0.48, filter↓1'
+      // 가성/고음: Crepe로 높은 피치 정확도, filter=1로 빠른 피치 변화 보존
+      f0: 'crepe', protect: 50, rms: 15, filter: 1, hop: 0, // hop=64
+      clean: false, cleanStr: 70, index: 50,
+      postReverb: 6, useReverb: true, harmonicEnhance: true,
+      desc: '가성/고음 최적화 — Crepe, filter↓1 (빠른 피치 변화 보존)'
     },
     natural: {
-      // Natural: maximize naturalness, preserve original dynamics
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 0, // hop=64
+      // Natural: 원곡 다이나믹스 최대 보존
+      f0: 'rmvpe', protect: 50, rms: 10, filter: 3, hop: 0, // hop=64
       clean: false, cleanStr: 70, index: 45,
       postReverb: 12, useReverb: true, harmonicEnhance: true,
       desc: '최대 자연스러움 — 원곡 다이나믹스 최대 보존'
     },
     studio: {
-      // Studio: optimized for clean studio recordings
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 2, hop: 0, // hop=64
+      // Studio: 깨끗한 원본에 최적화
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 0, // hop=64
       clean: false, cleanStr: 70, index: 50,
       postReverb: 6, useReverb: true, harmonicEnhance: true,
       desc: '스튜디오 품질 — 깨끗한 원본에 최적화'
@@ -6111,7 +6111,7 @@ async function startConversion() {
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
   form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
   form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
-  form.append('filter_radius', getVal('filter-slider', '2'));
+  form.append('filter_radius', getVal('filter-slider', '3'));
   var hopSteps = [64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '0')] || 64);
   // Post-processing for naturalness
@@ -6408,8 +6408,13 @@ function switchResultAudio(mode) {
   var url = mode === 'mix' ? _resultUrls.mix : _resultUrls.vocal;
   if (!audio || !url) return;
   var wasPlaying = !audio.paused;
+  audio.onerror = null;  // 이전 오류 핸들러 제거
   audio.src = url;
-  if (wasPlaying) audio.play();
+  audio.onerror = function() {
+    toast('오디오 파일을 재생할 수 없습니다. 만료된 링크이거나 파일이 없을 수 있습니다.', 'error');
+    audio.onerror = null;
+  };
+  if (wasPlaying) audio.play().catch(function() {});
   var mixBtn = document.getElementById('toggle-mix');
   var vocalBtn = document.getElementById('toggle-vocal');
   if (mode === 'mix') {
@@ -6474,7 +6479,7 @@ async function startBatchConversion() {
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
       form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
       form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
-      form.append('filter_radius', getVal('filter-slider', '2'));
+      form.append('filter_radius', getVal('filter-slider', '3'));
       var hopSteps2 = [64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '0')] || 64);
       // Post-processing for naturalness

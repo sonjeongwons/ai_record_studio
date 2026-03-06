@@ -724,27 +724,27 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
 
             out_path = output_dir / f"{ap.stem}_clean.wav"
 
-            if noise_floor_db > -20:
-                # 매우 깨끗 (스튜디오 녹음 after Demucs) → NR 스킵
-                # 하모닉스, 숨소리, 미세 보컬 텍스처 완전 보존
+            if noise_floor_db > -25:
+                # 깨끗한 신호 (스튜디오/Demucs 분리 후) → NR 완전 스킵
+                # -25dBFS까지 확장: 미세한 룸노이즈도 고음 하모닉스 보존 우선
                 sf.write(str(out_path), audio_data, samplerate=sr, subtype="PCM_16")
                 cleaned.append(out_path)
                 skipped_clean += 1
                 log.info(f"Clean signal ({noise_floor_db:.1f}dB), NR skipped: {ap.name}")
                 continue
 
-            if noise_floor_db > -30:
-                prop = 0.25  # 약한 NR — 보컬 텍스처 최대 보존
+            if noise_floor_db > -35:
+                prop = 0.15  # 매우 약한 NR — 숨소리/가성 고주파 텍스처 최대 보존
             else:
-                prop = 0.35  # 중간 NR — 노이즈 있는 소스
+                prop = 0.25  # 약한 NR — 명백한 노이즈가 있는 소스
 
             reduced = nr.reduce_noise(
                 y=audio_data,
                 sr=sr,
                 prop_decrease=prop,
                 stationary=True,
-                n_fft=4096,            # 4096: 더 정밀한 하모닉/노이즈 분리
-                hop_length=256,
+                n_fft=2048,     # 2048: 46ms 윈도우 — 고음 하모닉스 보존 (4096은 과도한 스펙트럼 평활화)
+                hop_length=128, # 128: 2.9ms → 더 세밀한 시간적 해상도
             )
 
             sf.write(str(out_path), reduced, samplerate=sr, subtype="PCM_16")
@@ -835,12 +835,15 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
             end_s = min(int(end_sec * sr), total_samples)
             segment = audio_data[start_s:end_s].copy()
 
-            # 10ms 페이드인/아웃 → 세그먼트 경계 클릭 방지
-            # F0 추출 시 경계 아티팩트 감소 → 더 정확한 피치 학습
-            fade_samples = min(int(sr * 0.01), len(segment) // 4)
+            # 30ms Hann 창 페이드인/아웃 → 세그먼트 경계 클릭 방지
+            # 선형(linspace) → Hann half-window: 에너지 연속성 보장, 스펙트럼 누설 감소
+            # 30ms는 1 글로탈 사이클(남성: 5-15ms)의 2-6배 → 자연스러운 에너지 전환
+            fade_samples = min(int(sr * 0.03), len(segment) // 6)
             if fade_samples > 0:
-                fade_in = np.linspace(0, 1, fade_samples)
-                fade_out = np.linspace(1, 0, fade_samples)
+                # Hann window half: 0→1 (fade-in) and 1→0 (fade-out)
+                hann = np.hanning(fade_samples * 2)
+                fade_in = hann[:fade_samples]
+                fade_out = hann[fade_samples:]
                 segment[:fade_samples] *= fade_in
                 segment[-fade_samples:] *= fade_out
 
@@ -1922,17 +1925,20 @@ def _post_process_vocal(
        → 4탭→8탭: 더 밀도 높은 초기 반사음으로 자연스러운 공간감
     """
     filters = [
-        # --- De-essing (targeted sibilance reduction) ---
-        # HiFi-GAN 보코더가 4-9kHz 치찰음을 과도하게 재구성 → 6kHz 중심 타겟 EQ
-        "equalizer=f=6000:width_type=o:width=1.5:g=-3.0",
-        # --- Pre-comp EQ (완화: 미드 스쿱 2dB로 감소) ---
-        "highshelf=f=10000:width_type=o:width=0.8:g=-1.5",  # 10kHz, -1.5dB (was 9kHz -2.5)
-        "equalizer=f=1500:width_type=o:width=0.7:g=-1.0",   # -1.0dB (was -1.5)
-        # --- Gentle dynamic compression (threshold=0.1 ≈ -20dBFS: compresses full vocal range) ---
-        "acompressor=threshold=0.1:ratio=2:attack=20:release=250:makeup=1.05:knee=8",
+        # --- De-essing: HiFi-GAN 치찰음 과합성 억제 ---
+        # 한국어 마찰음(ㅅ/ㅆ/ㅈ/ㅊ)은 7-9kHz에 집중; 6kHz는 고음부 하모닉스 영역이므로 건드리지 않음
+        "equalizer=f=7500:width_type=o:width=1.0:g=-2.0",
+        # --- Pre-comp EQ ---
+        # 12kHz로 올려 고음·가성 brilliance(공기감) 보존; -0.8dB로 완화
+        "highshelf=f=12000:width_type=o:width=0.6:g=-0.8",
+        # 1.5kHz 기계적 공명 제거 — 매우 약하게 (고음부 warmth 손상 방지)
+        "equalizer=f=1500:width_type=o:width=0.7:g=-0.3",
+        # --- Gentle dynamic compression ---
+        # ratio=1.5 (투명도↑), release=100ms (비브라토 6Hz 주기167ms의 60% = 펌핑 방지)
+        "acompressor=threshold=0.1:ratio=1.5:attack=20:release=100:makeup=1.05:knee=8",
         # --- Post-comp EQ ---
-        "lowshelf=f=150:width_type=o:width=0.8:g=1.0",      # 150Hz +1.0dB (was 180Hz +1.5)
-        "equalizer=f=3000:width_type=o:width=0.8:g=1.0",    # 3kHz +1.0dB (was 3.5kHz +1.5)
+        "lowshelf=f=150:width_type=o:width=0.8:g=1.0",      # 150Hz +1.0dB (warmth)
+        "equalizer=f=3000:width_type=o:width=0.8:g=1.0",    # 3kHz +1.0dB (presence)
     ]
 
     if harmonic_enhance:
@@ -2037,8 +2043,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     index_rate: float = float(job_input.get("index_rate", 0.50))
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    # filter_radius 2: 20ms window preserves vibrato better than 28ms (3)
-    filter_radius: int = int(job_input.get("filter_radius", 2))
+    # filter_radius 3: 균형점 — 너무 작으면(1-2) 고음 경계에서 pitch jump 발생,
+    # 너무 크면(5+) vibrato가 뭉개짐. 3은 Applio 기본값이자 실전 최적값.
+    filter_radius: int = int(job_input.get("filter_radius", 3))
     # rms_mix_rate 0.15: preserve original dynamics more → natural volume contour
     rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
     # protect 0.50: maximize consonant/breathiness preservation
@@ -2163,6 +2170,27 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 log.info(f"Accompaniment saved: {accomp_path.name}")
         else:
             rvc_input = input_wav
+
+        # --- Step 2b: Pre-RVC fricative de-esser ---
+        # HiFi-GAN 보코더는 mel-spectrogram에서 4-9kHz 치찰음을 과합성(hallucinate)함.
+        # RVC 입력 단계에서 미리 제거해 HiFi-GAN이 재합성할 여지를 줄임.
+        pre_rvc_deessed = work / "pre_rvc_deessed.wav"
+        try:
+            run_ffmpeg([
+                "-i", str(rvc_input),
+                "-af", (
+                    "equalizer=f=4500:width_type=o:width=0.8:g=-1.0,"  # 4.5kHz pre-reduction
+                    "equalizer=f=8000:width_type=o:width=1.0:g=-1.5"   # 8kHz main sibilance target
+                ),
+                "-acodec", "pcm_s16le",
+                "-ar", "44100",
+                str(pre_rvc_deessed),
+            ])
+            if pre_rvc_deessed.exists() and pre_rvc_deessed.stat().st_size > 1000:
+                rvc_input = pre_rvc_deessed
+                log.info("Pre-RVC de-esser applied to reduce HiFi-GAN sibilance over-synthesis")
+        except Exception as de_err:
+            log.warning(f"Pre-RVC de-esser failed, using original: {de_err}")
 
         # --- Step 3: RVC voice conversion on vocals ---
         runpod.serverless.progress_update(job, "Running voice conversion (RVC)... (3/4)")
@@ -2318,7 +2346,7 @@ def _rvc_infer(
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 2,
+    filter_radius: int = 3,
     rms_mix_rate: float = 0.15,
 ) -> None:
     """
