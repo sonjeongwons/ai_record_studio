@@ -3096,7 +3096,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="노래에서 'ㅅ', 'ㅊ' 같은 자음 발음과 가성(고음)을 얼마나 원본에 가깝게 보존할지 정합니다.\n\n📖 비유: AI가 목소리를 바꿀 때 '발음의 질감'을 얼마나 살릴지 정하는 것입니다.\n\n🔢 설정 가이드:\n• 0.30~0.35 = 기본값 (일반 노래에 적합)\n• 0.40~0.50 = 가성·고음이 많은 노래 (기계음 방지)\n\n⚠️ 변환 결과에서 고음이 로봇처럼 들리나요? → 0.45~0.50으로 올려보세요.\n⚠️ 자음 발음이 뭉개지나요? → 0.40 이상으로 올려보세요.\n\n💰 비용 영향: 없음 — 추가 비용 없이 처리됩니다.">ⓘ</i></span>
+              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="노래에서 'ㅅ', 'ㅊ' 같은 자음 발음과 가성(고음)을 얼마나 원본에 가깝게 보존할지 정합니다.\n\n📖 비유: AI가 목소리를 바꿀 때 '발음의 질감'을 얼마나 살릴지 정하는 것입니다.\n\n🔢 설정 가이드:\n• 0.50 = 기본값 (자음·가성 최대 보존, 추천!)\n• 0.45~0.48 = 가성·고음이 많은 노래 (기계음 방지)\n• 0.30~0.40 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 변환 결과에서 고음이 로봇처럼 들리나요? → 0.48~0.50으로 유지하세요.\n⚠️ 자음 발음이 뭉개지나요? → 0.50에서 조금씩 낮춰보세요.\n\n💰 비용 영향: 없음 — 추가 비용 없이 처리됩니다.">ⓘ</i></span>
               <span class="slider-value" id="protect-val">0.50</span>
             </div>
             <input type="range" id="protect-slider" min="0" max="50" value="50" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2)">
@@ -3108,7 +3108,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
               <span class="slider-value" id="rms-val">0.15</span>
             </div>
             <input type="range" id="rms-slider" min="0" max="100" value="15" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (0.2~0.3 권장, 낮을수록 원본 음량 패턴 유지)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (0.15 기본, 0.1~0.2 권장, 낮을수록 원본 음량 패턴 유지)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -5515,6 +5515,8 @@ async function _doStartTraining() {
     setButtonLoading('btn-start-train', false);
     currentTrainJobId = res.job_id;
     _trainStartTime = Date.now();
+    _trainPaused = false;          // 이전 작업 일시정지 상태 초기화
+    _trainPollErrors = 0;          // 이전 작업 오류 카운트 초기화
     updateNavBadges();
 
     document.getElementById('train-upload').style.display = 'none';
@@ -6049,6 +6051,8 @@ async function startConversion() {
     setButtonLoading('btn-convert', false);
     currentConvertJobId = res.job_id;
     _convertStartTime = Date.now();
+    _convertPaused = false;        // 이전 작업 일시정지 상태 초기화
+    _convertPollErrors = 0;        // 이전 작업 오류 카운트 초기화
 
     document.getElementById('convert-main').style.display = 'none';
     document.getElementById('convert-progress').style.display = 'block';
@@ -6362,6 +6366,8 @@ async function startBatchConversion() {
   document.body.classList.add('busy');
   batchProcessing = true;
   _batchCancelled = false;
+  _convertPaused = false;          // 이전 일시정지 상태 초기화
+  _convertPollErrors = 0;
   batchResults = batchFiles.map(function(f) {
     return { file: f, jobId: null, status: 'pending', resultUrl: null, mixedUrl: null, error: null };
   });
@@ -6593,7 +6599,7 @@ function resetConversion() {
   if (resultAudio) { resultAudio.pause(); resultAudio.src = ''; }
   // batch result waveform 키 정리
   Object.keys(apWaveData).forEach(function(k) {
-    if (k.startsWith('br_') || k === 'result') delete apWaveData[k];
+    if (k.startsWith('br_') || k === 'result_player') delete apWaveData[k];
   });
   loadModels();
   loadConversionHistory();

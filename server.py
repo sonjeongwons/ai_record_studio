@@ -2211,7 +2211,7 @@ async def start_conversion(
         raise HTTPException(404, "모델을 찾을 수 없습니다.")
 
     # 입력 파일 저장
-    temp_name = f"input_{uuid.uuid4().hex[:8]}_{audio.filename}"
+    temp_name = f"input_{uuid.uuid4().hex[:8]}_{Path(audio.filename).name}"
     temp_path = UPLOAD_DIR / temp_name
     with open(temp_path, "wb") as f:
         content = await audio.read()
@@ -2709,13 +2709,13 @@ async def resume_job(job_id: str):
                 "task_type": "convert",
                 "audio_filename": audio_filename,
                 "pitch_shift": pause_state.get("pitch_shift", 0),
-                "index_rate": pause_state.get("index_rate", 0.55),
+                "index_rate": pause_state.get("index_rate", 0.50),
                 "f0_method": pause_state.get("f0_method", "rmvpe"),
                 "clean_audio": pause_state.get("clean_audio", False),
                 "clean_strength": pause_state.get("clean_strength", 0.7),
-                "protect": pause_state.get("protect", 0.45),
-                "rms_mix_rate": pause_state.get("rms_mix_rate", 0.25),
-                "filter_radius": pause_state.get("filter_radius", 3),
+                "protect": pause_state.get("protect", 0.50),
+                "rms_mix_rate": pause_state.get("rms_mix_rate", 0.15),
+                "filter_radius": pause_state.get("filter_radius", 2),
                 "hop_length": pause_state.get("hop_length", 64),
                 "separate_vocals": True,
                 "vocal_volume": pause_state.get("vocal_volume", 1.0),

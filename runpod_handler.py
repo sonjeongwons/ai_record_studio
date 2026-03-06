@@ -1322,7 +1322,7 @@ def _rvc_preprocess(
                         gt_path.unlink(missing_ok=True)
                         log.info(f"Skipped quiet segment ({_rms_db:.1f}dB): {padded}")
                         continue
-                    _audio = _audio * (0.89 / _peak)  # -1 dBFS
+                    _audio = _audio * (10.0 ** (-1 / 20) / _peak)  # 정확한 -1 dBFS = 0.89125
                     _sf.write(str(gt_path), _audio, samplerate=_sr, subtype="PCM_16")
 
                 # Save at 16kHz for F0 & feature extraction
@@ -1342,7 +1342,7 @@ def _rvc_preprocess(
                 _audio16, _sr16 = _sf.read(str(sr16k_path))
                 _peak16 = np.max(np.abs(_audio16))
                 if _peak16 > 0:
-                    _audio16 = _audio16 * (0.89 / _peak16)
+                    _audio16 = _audio16 * (10.0 ** (-1 / 20) / _peak16)  # 정확한 -1 dBFS
                     _sf.write(str(sr16k_path), _audio16, samplerate=_sr16, subtype="PCM_16")
 
                 idx += 1
@@ -1928,8 +1928,8 @@ def _post_process_vocal(
         # --- Pre-comp EQ (완화: 미드 스쿱 2dB로 감소) ---
         "highshelf=f=10000:width_type=o:width=0.8:g=-1.5",  # 10kHz, -1.5dB (was 9kHz -2.5)
         "equalizer=f=1500:width_type=o:width=0.7:g=-1.0",   # -1.0dB (was -1.5)
-        # --- Gentle dynamic compression ---
-        "acompressor=threshold=0.5:ratio=2:attack=20:release=250:makeup=1.05:knee=8",
+        # --- Gentle dynamic compression (threshold=0.1 ≈ -20dBFS: compresses full vocal range) ---
+        "acompressor=threshold=0.1:ratio=2:attack=20:release=250:makeup=1.05:knee=8",
         # --- Post-comp EQ ---
         "lowshelf=f=150:width_type=o:width=0.8:g=1.0",      # 150Hz +1.0dB (was 180Hz +1.5)
         "equalizer=f=3000:width_type=o:width=0.8:g=1.0",    # 3kHz +1.0dB (was 3.5kHz +1.5)
