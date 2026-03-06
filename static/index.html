@@ -6335,7 +6335,8 @@ function deleteModel(id, name) {
 
 function updateConvertBtn() {
   var hasFiles = batchFiles.length > 0 || convertFile;
-  document.getElementById('btn-convert').disabled = !(selectedModelId && hasFiles);
+  // 변환 진행 중이면 버튼 비활성화 (중복 제출 방지)
+  document.getElementById('btn-convert').disabled = !(selectedModelId && hasFiles && !currentConvertJobId && !_submitting);
 }
 
 async function startConversion() {

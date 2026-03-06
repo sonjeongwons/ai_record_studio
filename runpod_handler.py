@@ -1962,17 +1962,20 @@ def _post_process_vocal(
        → 4탭→8탭: 더 밀도 높은 초기 반사음으로 자연스러운 공간감
     """
     filters = [
-        # --- De-essing: HiFi-GAN 치찰음 과합성 억제 ---
-        # 한국어 마찰음(ㅅ/ㅆ/ㅈ/ㅊ)은 7-9kHz에 집중; 6kHz는 고음부 하모닉스 영역이므로 건드리지 않음
-        "equalizer=f=7500:width_type=o:width=1.0:g=-2.0",
+        # --- De-essing: HiFi-GAN 보코더 후처리 치찰음 억제 ---
+        # ※ Pre-RVC de-esser(7kHz Q=3 -2dB)와 이중 적용되므로 여기서는 더 높은 주파수 + 약한 감쇠
+        # 기존 width_type=o:width=1.0 (5.3~10.6kHz -2dB) → 발음 뭉개짐의 핵심 원인이었음
+        # 개선: 8.5kHz Q=4 (좁은 대역, 7.4~9.6kHz만) -1dB → 자음/모음 명료도 보존
+        "equalizer=f=8500:width_type=q:width=4:g=-1.0",
         # --- Pre-comp EQ ---
-        # 12kHz로 올려 고음·가성 brilliance(공기감) 보존; -0.8dB로 완화
+        # 12kHz 이상: AI 날카로움만 완화 (가성 brilliance 보존)
         "highshelf=f=12000:width_type=o:width=0.6:g=-0.8",
-        # 1.5kHz 기계적 공명 제거 — 매우 약하게 (고음부 warmth 손상 방지)
+        # 1.5kHz 기계적 공명 제거 — 매우 약하게 (자연스러운 warmth 손상 방지)
         "equalizer=f=1500:width_type=o:width=0.7:g=-0.3",
         # --- Gentle dynamic compression ---
+        # attack=25ms (20ms→25ms): 자음 트랜지언트를 더 자연스럽게 통과시킴
         # ratio=1.5 (투명도↑), release=100ms (비브라토 6Hz 주기167ms의 60% = 펌핑 방지)
-        "acompressor=threshold=0.1:ratio=1.5:attack=20:release=100:makeup=1.05:knee=8",
+        "acompressor=threshold=0.1:ratio=1.5:attack=25:release=100:makeup=1.05:knee=8",
         # --- Post-comp EQ ---
         "lowshelf=f=150:width_type=o:width=0.8:g=1.0",      # 150Hz +1.0dB (warmth)
         "equalizer=f=3000:width_type=o:width=0.8:g=1.0",    # 3kHz +1.0dB (presence)

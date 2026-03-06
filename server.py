@@ -744,7 +744,8 @@ def _is_job_cancelled(job_id: str) -> bool:
 def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
     """RunPod 작업 완료까지 폴링"""
     start_time = time.time()
-    while True:
+    try:  # 외부 try: 폴링 스레드 크래시 시 작업을 failed로 마킹 (무한 running 방지)
+     while True:
         time.sleep(5)
 
         # 취소된 작업이면 폴링 중단
@@ -916,6 +917,20 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             update_job(job_id, status="running",
                       message=f"상태 확인 중... (재시도 {poll_errors})")
             time.sleep(10)
+    except Exception as _poll_fatal:
+        # 폴링 스레드 예상치 못한 크래시 — 작업을 failed로 마킹하여 영구 running 상태 방지
+        print(f"[CRITICAL] poll_runpod_job crashed for {job_id}: {_poll_fatal}")
+        try:
+            update_job(job_id, status="failed",
+                      message=f"내부 오류로 작업이 중단되었습니다. 다시 시도해 주세요.")
+            if job_type == "convert":
+                with get_db() as db:
+                    db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
+        except Exception:
+            pass
+    finally:
+        _active_job_states.pop(job_id, None)
+        _poll_error_counts.pop(job_id, None)
 
 
 def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
@@ -2389,6 +2404,13 @@ async def start_conversion(
     except Exception as e:
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
+        # conversions 테이블도 동기화 (pending→failed) — 정합성 유지
+        try:
+            with get_db() as db:
+                db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
+        except Exception:
+            pass
+        _active_job_states.pop(job_id, None)
 
     return {"job_id": job_id}
 
