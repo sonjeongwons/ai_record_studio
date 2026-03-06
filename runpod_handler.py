@@ -149,8 +149,12 @@ def get_audio_duration(file_path: str | Path) -> float:
             ],
             capture_output=True, text=True, timeout=30,
         )
-        return float(result.stdout.strip())
-    except Exception:
+        dur = float(result.stdout.strip())
+        if dur <= 0:
+            log.warning(f"ffprobe returned non-positive duration ({dur}) for {file_path}")
+        return dur
+    except Exception as e:
+        log.warning(f"get_audio_duration failed for {file_path}: {e}")
         return 0.0
 
 
@@ -1391,8 +1395,12 @@ def _rvc_preprocess(
                 try:
                     _a16, _sr16_g = _sf_g.read(str(_gf16))
                     if np.any(np.isnan(_a16)) or np.any(np.isinf(_a16)):
-                        log.warning(f"Corrupted 16k file {_gf16.name}, deleting")
+                        log.warning(f"Corrupted 16k file {_gf16.name}, deleting (+ matching gt)")
                         _gf16.unlink(missing_ok=True)
+                        # 대응하는 gt 파일도 삭제 (16k/gt 쌍 불일치 방지)
+                        _matching_gt = gt_dir / _gf16.name
+                        if _matching_gt.exists():
+                            _matching_gt.unlink(missing_ok=True)
                         continue
                     _sf_g.write(str(_gf16), _a16 * _norm_factor, samplerate=_sr16_g, subtype="PCM_16")
                 except Exception as _ne16:
@@ -1827,9 +1835,20 @@ def _rvc_create_index(model_name: str, logs_dir: Path) -> None:
         # Stack all feature vectors
         features = []
         for npy_file in npys:
-            feat = np.load(str(npy_file))
-            features.append(feat)
+            try:
+                feat = np.load(str(npy_file))
+                if feat.size > 0:
+                    features.append(feat)
+            except Exception as _npy_err:
+                log.warning(f"Failed to load {npy_file.name}: {_npy_err}, skipping")
+        if not features:
+            log.warning("No valid feature data loaded — skipping FAISS index creation")
+            return
         big_npy = np.concatenate(features, axis=0).astype(np.float32)
+
+        if big_npy.shape[0] == 0:
+            log.warning("All feature files were empty — skipping FAISS index creation")
+            return
 
         log.info(f"Building FAISS index from {len(npys)} files, {big_npy.shape[0]} vectors")
 
@@ -2265,8 +2284,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
 
         # 오디오 길이 검증 (너무 짧으면 RVC가 빈 출력이나 오류 반환)
         import soundfile as _sf_check
-        _rvc_info = _sf_check.info(str(rvc_input))
-        _rvc_duration = _rvc_info.frames / _rvc_info.samplerate
+        try:
+            _rvc_info = _sf_check.info(str(rvc_input))
+            _rvc_duration = _rvc_info.frames / _rvc_info.samplerate
+        except Exception as _dur_err:
+            log.warning(f"Audio duration check failed: {_dur_err}, defaulting to 60s")
+            _rvc_duration = 60.0
         if _rvc_duration < 0.3:
             raise RuntimeError(
                 f"입력 오디오가 너무 짧습니다 ({_rvc_duration:.2f}초). "

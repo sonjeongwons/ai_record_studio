@@ -1013,7 +1013,8 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
 
     # 전처리 완료된 파일 마킹 + 세그먼트 매핑 기록
     # pop 은 DB 업데이트 성공 후에 실행 (실패하면 재시도 가능하도록)
-    file_ids = preprocess_file_map.get(job_id, [])
+    with _preprocess_lock:
+        file_ids = preprocess_file_map.get(job_id, [])
     if file_ids:
         try:
             with get_db() as db:
@@ -1025,9 +1026,11 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
         except Exception as e:
             print(f"[Preprocess] DB update failed for file_ids (will retry next poll): {e}")
         else:
-            preprocess_file_map.pop(job_id, None)
+            with _preprocess_lock:
+                preprocess_file_map.pop(job_id, None)
     else:
-        preprocess_file_map.pop(job_id, None)
+        with _preprocess_lock:
+            preprocess_file_map.pop(job_id, None)
 
     # 전체 전처리 세그먼트 수 (학습용 세그먼트만 카운트, mr_/vocal_ 제외)
     all_files = _list_preprocessed_files()
@@ -1650,6 +1653,8 @@ async def upload_chunk(
     chunk: UploadFile = File(...)
 ):
     """청크 단위 업로드 — 대용량 파일을 분할 전송. 모든 청크 도착 시 자동 재조립."""
+    if total_chunks < 1:
+        raise HTTPException(400, f"잘못된 total_chunks: {total_chunks}")
     with _chunk_lock:
         if upload_id not in chunk_uploads:
             chunk_uploads[upload_id] = {
@@ -2441,6 +2446,12 @@ async def start_conversion(
             pass
         with _job_states_lock:
             _active_job_states.pop(job_id, None)
+        # 임시 입력 파일 정리 (실패 시에도 누수 방지)
+        try:
+            if temp_path.exists():
+                temp_path.unlink()
+        except Exception:
+            pass
 
     return {"job_id": job_id}
 
@@ -2509,7 +2520,8 @@ async def cancel_job(job_id: str):
         _active_job_states.pop(job_id, None)
     with _poll_errors_lock:
         _poll_error_counts.pop(job_id, None)
-    preprocess_file_map.pop(job_id, None)
+    with _preprocess_lock:
+        preprocess_file_map.pop(job_id, None)
 
     return {"status": "cancelled"}
 
@@ -2541,7 +2553,8 @@ async def pause_job(job_id: str):
             (pause_state_json, datetime.now().isoformat(), job_id)
         )
 
-    _poll_error_counts.pop(job_id, None)
+    with _poll_errors_lock:
+        _poll_error_counts.pop(job_id, None)
     # _active_job_states는 보존 (재개 시 필요)
 
     return {
@@ -2931,7 +2944,8 @@ async def cleanup_all_stuck_jobs():
         _active_job_states.clear()
     with _poll_errors_lock:
         _poll_error_counts.clear()
-    preprocess_file_map.clear()
+    with _preprocess_lock:
+        preprocess_file_map.clear()
     return {"cleaned": result.rowcount}
 
 
