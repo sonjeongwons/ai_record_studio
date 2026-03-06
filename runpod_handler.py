@@ -522,7 +522,8 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                     # Save vocals as MONO (RVC requires mono input)
                     vocal_wav = output_dir / f"{audio_path.stem}_vocals.wav"
                     vocal_np = _to_mono(separated["vocals"].cpu().numpy())
-                    sf.write(str(vocal_wav), vocal_np, samplerate=44100, subtype="PCM_16")
+                    # FLOAT: Demucs float32 출력을 그대로 보존 (PCM_16 대비 양자화 손실 제거)
+                    sf.write(str(vocal_wav), vocal_np, samplerate=44100, subtype="FLOAT")
                     vocal_paths.append(vocal_wav)
 
                     # Build accompaniment = drums + bass + other (STEREO preserved)
@@ -534,7 +535,8 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                         accomp_np = _safe_sum_stems(mr_stems)
                         accomp_wav = output_dir / f"{audio_path.stem}_accompaniment.wav"
                         # Transpose [channels, samples] → [samples, channels] for soundfile
-                        sf.write(str(accomp_wav), accomp_np.T, samplerate=44100, subtype="PCM_16")
+                        # FLOAT: 반주 트랙도 float32 보존 (믹싱 시 최대 다이나믹레인지)
+                        sf.write(str(accomp_wav), accomp_np.T, samplerate=44100, subtype="FLOAT")
                         accomp_paths.append(accomp_wav)
 
                     log.info(f"Demucs separation done: {audio_path.name} → vocals (mono) + accompaniment (stereo)")
@@ -582,7 +584,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                 # Save vocals as MONO (RVC requires mono input)
                 vocal_wav_path = output_dir / f"{audio_path.stem}_vocals.wav"
                 vocal_np = _to_mono(sources[vocals_idx].cpu().numpy())
-                sf.write(str(vocal_wav_path), vocal_np, samplerate=model.samplerate, subtype="PCM_16")
+                sf.write(str(vocal_wav_path), vocal_np, samplerate=model.samplerate, subtype="FLOAT")
                 vocal_paths.append(vocal_wav_path)
 
                 # Build accompaniment: sum all non-vocal sources (STEREO preserved)
@@ -593,7 +595,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                 if mr_stems:
                     accomp_np = _safe_sum_stems(mr_stems)
                     accomp_wav_path = output_dir / f"{audio_path.stem}_accompaniment.wav"
-                    sf.write(str(accomp_wav_path), accomp_np.T, samplerate=model.samplerate, subtype="PCM_16")
+                    sf.write(str(accomp_wav_path), accomp_np.T, samplerate=model.samplerate, subtype="FLOAT")
                     accomp_paths.append(accomp_wav_path)
 
                 log.info(f"Demucs separation done (fallback): {audio_path.name} → vocals (mono) + accompaniment (stereo)")
@@ -1968,8 +1970,7 @@ def _post_process_vocal(
     filters = [
         # --- De-essing: HiFi-GAN 보코더 후처리 치찰음 억제 ---
         # ※ Pre-RVC de-esser(7kHz Q=3 -2dB)와 이중 적용되므로 여기서는 더 높은 주파수 + 약한 감쇠
-        # 기존 width_type=o:width=1.0 (5.3~10.6kHz -2dB) → 발음 뭉개짐의 핵심 원인이었음
-        # 개선: 8.5kHz Q=4 (좁은 대역, 7.4~9.6kHz만) -1dB → 자음/모음 명료도 보존
+        # 8.5kHz Q=4 (좁은 대역, 7.4~9.6kHz만) -1dB → 자음/모음 명료도 보존
         "equalizer=f=8500:width_type=q:width=4:g=-1.0",
         # --- Pre-comp EQ ---
         # 12kHz 이상: AI 날카로움만 완화 (가성 brilliance 보존)
@@ -1977,12 +1978,16 @@ def _post_process_vocal(
         # 1.5kHz 기계적 공명 제거 — 매우 약하게 (자연스러운 warmth 손상 방지)
         "equalizer=f=1500:width_type=o:width=0.7:g=-0.3",
         # --- Gentle dynamic compression ---
-        # attack=25ms (20ms→25ms): 자음 트랜지언트를 더 자연스럽게 통과시킴
+        # attack=25ms: 자음 트랜지언트를 더 자연스럽게 통과시킴
         # ratio=1.5 (투명도↑), release=100ms (비브라토 6Hz 주기167ms의 60% = 펌핑 방지)
         "acompressor=threshold=0.1:ratio=1.5:attack=25:release=100:makeup=1.05:knee=8",
         # --- Post-comp EQ ---
         "lowshelf=f=150:width_type=o:width=0.8:g=1.0",      # 150Hz +1.0dB (warmth)
         "equalizer=f=3000:width_type=o:width=0.8:g=1.0",    # 3kHz +1.0dB (presence)
+        # --- Air band 복원 ---
+        # HiFi-GAN 보코더는 mel-spec→오디오 재합성 시 10kHz+ 고역 디테일 손실
+        # 인간 보컬의 "air"(숨결감)은 10-16kHz 대역에 존재 — 미세한 부스트로 자연스러움 복원
+        "highshelf=f=10000:width_type=o:width=1.0:g=0.8",    # 10kHz+ air band +0.8dB
     ]
 
     if harmonic_enhance:
@@ -2188,11 +2193,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
 
         # Normalize to WAV for processing (keep STEREO for Demucs quality)
         # soxr precision=28: 최고품질 리샘플링 — 원음 주파수 특성 최대 보존
+        # pcm_s24le: 24-bit PCM으로 중간 파일 품질 향상 (16-bit 대비 양자화 노이즈 48dB 감소)
         input_stereo = work / "input_stereo.wav"
         run_ffmpeg([
             "-i", str(raw_input),
             "-af", "aresample=resampler=soxr:precision=28:osr=44100",
-            "-acodec", "pcm_s16le",
+            "-acodec", "pcm_s24le",
             "-ar", "44100",
             str(input_stereo),  # preserve original channel count (stereo if source is stereo)
         ])
@@ -2201,7 +2207,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
         run_ffmpeg([
             "-i", str(raw_input),
             "-af", "aresample=resampler=soxr:precision=28:osr=44100",
-            "-acodec", "pcm_s16le",
+            "-acodec", "pcm_s24le",
             "-ar", "44100",
             "-ac", "1",
             str(input_wav),
@@ -2244,7 +2250,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 "-af", (
                     "equalizer=f=7000:width_type=q:width=3:g=-2.0"  # 7kHz Q=3 치찰음 좁은 대역 타겟
                 ),
-                "-acodec", "pcm_s16le",
+                "-acodec", "pcm_s24le",
                 "-ar", "44100",
                 str(pre_rvc_deessed),
             ])
@@ -2268,6 +2274,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
             )
         if _rvc_duration > 300:
             log.warning(f"긴 오디오 입력 ({_rvc_duration:.0f}초). 변환에 시간이 오래 걸릴 수 있습니다.")
+        # split_audio: 5분 이하는 분할 없이 한 번에 처리 → 청크 경계 아티팩트(가사 끊김) 방지
+        # 5분 이상은 GPU OOM 방지를 위해 분할 처리
+        _should_split = _rvc_duration > 300
 
         converted_vocals_path = work / f"converted_vocals.{export_format}"
         _rvc_infer(
@@ -2285,6 +2294,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
             export_format=export_format,
             filter_radius=filter_radius,
             rms_mix_rate=rms_mix_rate,
+            split_audio=_should_split,
         )
 
         if not converted_vocals_path.exists():
@@ -2296,6 +2306,28 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 f"Conversion produced no output file at {converted_vocals_path.name}. "
                 f"Work dir contains: {[f.name for f in all_files if f.is_file()]}"
             )
+
+        # --- Step 3a-fix: RVC 출력 SR 정규화 (40kHz→44.1kHz) ---
+        # RVC 모델은 보통 tgt_sr=40000Hz로 출력, 후처리/믹싱은 44.1kHz 기준.
+        # SR 불일치 시 soxr 최고품질 리샘플링으로 44.1kHz 통일.
+        import soundfile as _sf_sr
+        try:
+            _rvc_out_info = _sf_sr.info(str(converted_vocals_path))
+            _rvc_out_sr = _rvc_out_info.samplerate
+            if _rvc_out_sr != 44100:
+                log.info(f"RVC output SR={_rvc_out_sr} → resampling to 44100Hz (soxr)")
+                _resampled_path = work / "converted_vocals_44k.wav"
+                run_ffmpeg([
+                    "-i", str(converted_vocals_path),
+                    "-af", "aresample=resampler=soxr:precision=28:osr=44100",
+                    "-acodec", "pcm_s24le",
+                    "-ar", "44100",
+                    str(_resampled_path),
+                ])
+                if _resampled_path.exists() and _resampled_path.stat().st_size > 1000:
+                    converted_vocals_path = _resampled_path
+        except Exception as _sr_err:
+            log.warning(f"SR check/resample failed, continuing with original: {_sr_err}")
 
         # --- Step 3b: Post-process converted vocals for naturalness ---
         # EQ + compression + optional harmonic saturation + optional room reverb
@@ -2422,6 +2454,7 @@ def _rvc_infer(
     export_format: str = "wav",
     filter_radius: int = 3,
     rms_mix_rate: float = 0.15,
+    split_audio: bool = True,
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.
@@ -2448,7 +2481,7 @@ def _rvc_infer(
             output_path=str(output_path),
             pth_path=str(pth_path),
             index_path=index_str,
-            split_audio=True,
+            split_audio=split_audio,
             f0_autotune=False,
             f0_autotune_strength=1.0,
             proposed_pitch=False,
@@ -2488,7 +2521,7 @@ def _rvc_infer(
             volume_envelope=1.0,
             protect=protect,
             hop_length=hop_length,
-            split_audio=True,
+            split_audio=split_audio,
             clean_audio=clean_audio,
             clean_strength=clean_strength,
             export_format=export_format.upper(),
@@ -2597,8 +2630,9 @@ def _rvc_infer(
         )
 
         # Save output — always write as WAV first, then convert to target format if needed
+        # FLOAT subtype: RVC pipeline float32 출력을 손실 없이 보존
         wav_tmp = output_path.with_suffix(".wav")
-        sf.write(str(wav_tmp), audio_opt, tgt_sr, format="WAV")
+        sf.write(str(wav_tmp), audio_opt, tgt_sr, format="WAV", subtype="FLOAT")
         if output_path.suffix.lower() != ".wav":
             run_ffmpeg(["-i", str(wav_tmp), str(output_path)])
             wav_tmp.unlink(missing_ok=True)
@@ -2628,7 +2662,7 @@ def _rvc_infer(
         "--output_path", str(output_path),
         "--pth_path", str(pth_path),
         "--index_path", index_str,
-        "--split_audio", "True",
+        "--split_audio", str(split_audio),
         "--clean_audio", str(clean_audio),
         "--clean_strength", str(clean_strength),
         "--export_format", export_format.upper(),

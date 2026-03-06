@@ -4823,11 +4823,13 @@ function applyConvertPreset(preset) {
       desc: '기본 설정으로 되돌렸습니다'
     },
     falsetto: {
-      // 가성/고음: Crepe로 높은 피치 정확도, filter=1로 빠른 피치 변화 보존
-      f0: 'crepe', protect: 50, rms: 15, filter: 1, hop: 0, // hop=64
-      clean: false, cleanStr: 70, index: 50,
-      postReverb: 6, useReverb: true, harmonicEnhance: true,
-      desc: '가성/고음 최적화 — Crepe, filter↓1 (빠른 피치 변화 보존)'
+      // 가성/고음: Crepe로 높은 피치 정확도, filter=2로 피치점프 방지 + 빠른 피치 변화 보존
+      // protect=55: 가성 전환 구간의 자음/숨소리 보호 강화
+      // rms=10: 가성 다이나믹스(ppp~pp) 최대 보존
+      f0: 'crepe', protect: 55, rms: 10, filter: 2, hop: 0, // hop=64
+      clean: false, cleanStr: 70, index: 45,
+      postReverb: 8, useReverb: true, harmonicEnhance: true,
+      desc: '가성/고음 최적화 — Crepe, protect↑, 원곡 다이나믹스 보존'
     },
     natural: {
       // Natural: 원곡 다이나믹스 최대 보존
