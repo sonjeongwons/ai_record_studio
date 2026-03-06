@@ -325,7 +325,7 @@ select {
 .badge-amber {
   background: rgba(245,158,11,0.1); color: var(--amber);
   border: 1px solid rgba(245,158,11,0.2);
-  animation: badgePulse 1.8s ease-in-out infinite;
+  animation: badgePulse 1.4s ease-in-out infinite;
 }
 .badge-red { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
 .badge-violet { background: var(--violet-g); color: var(--violet); border: 1px solid rgba(139,92,246,0.2); }
@@ -608,11 +608,11 @@ input[type="range"].has-fill {
   content: '';
   position: absolute;
   top: 0; left: 0;
-  width: 3px; height: 100%;
+  width: 4px; height: 100%;
   background: currentColor;
-  opacity: 0.3;
-  border-radius: 0 2px 2px 0;
-  transition: opacity var(--transition);
+  opacity: 0.45;
+  border-radius: 0 3px 3px 0;
+  transition: opacity var(--transition), width var(--transition);
 }
 .stat-card:hover {
   border-color: var(--border-hover);
@@ -1222,10 +1222,10 @@ input[type="range"].has-fill {
 /* ─── Batch Item State Animations ─── */
 @keyframes batchShake {
   0%, 100% { transform: translateX(0); }
-  20%      { transform: translateX(-5px); }
-  40%      { transform: translateX(5px); }
-  60%      { transform: translateX(-3px); }
-  80%      { transform: translateX(3px); }
+  20%      { transform: translateX(-3px); }
+  40%      { transform: translateX(3px); }
+  60%      { transform: translateX(-2px); }
+  80%      { transform: translateX(2px); }
 }
 @keyframes batchSuccessPop {
   0%   { transform: scale(0.96); }
@@ -1339,7 +1339,7 @@ input[type="range"].has-fill {
   50%       { opacity: 0.6; }
 }
 .batch-item.processing .batch-item-icon {
-  animation: processingPulse 1.4s ease-in-out infinite;
+  animation: processingPulse 1.1s ease-in-out infinite;
 }
 
 /* ─── 설정 입력 포커스 강화 ─── */
@@ -1406,9 +1406,9 @@ input[type="range"].has-fill {
   100% { background-position: -200% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
+  background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.05) 75%);
   background-size: 200% 100%;
-  animation: skeletonPulse 1.8s ease-in-out infinite;
+  animation: skeletonPulse 1.6s ease-in-out infinite;
   border-radius: 8px;
 }
 .skeleton-line {
@@ -1575,7 +1575,8 @@ input[type="range"].has-fill {
 .empty-state-enhanced .empty-icon svg {
   width: 32px;
   height: 32px;
-  opacity: 0.3;
+  opacity: 0.45;
+  transition: opacity var(--transition);
 }
 .empty-state-enhanced .empty-title {
   font-size: 15px;
@@ -2100,7 +2101,9 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
   background: rgba(139,92,246,0.06);
   border-color: rgba(139,92,246,0.18);
   box-shadow: 0 0 24px rgba(139,92,246,0.12);
+  animation-play-state: paused;
 }
+.empty-state-enhanced .empty-icon:hover svg { opacity: 0.65; }
 
 /* ─── Pagination Active Scale ─── */
 .page-btn.active { transform: scale(1.04); }
@@ -2383,8 +2386,8 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 .empty-state-enhanced .btn { margin-top: 16px; }
 
 /* ─── Stat grid item color accent line transition ─── */
-.stat-card::before { transition: opacity var(--transition), height var(--transition); }
-.stat-card:hover::before { height: 80%; opacity: 0.55; }
+.stat-card::before { transition: opacity var(--transition), width var(--transition); }
+.stat-card:hover::before { width: 5px; opacity: 0.9; }
 
 /* ─── 설정 카드 입력 row 스타일 ─── */
 #page-settings .card > div + div { margin-top: 12px; }
@@ -2435,6 +2438,83 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
   font-weight: 600;
   color: var(--amber);
 }
+
+/* ─── Firefox 스크롤바 ─── */
+* { scrollbar-width: thin; scrollbar-color: rgba(139,92,246,0.35) transparent; }
+
+/* ─── Alert 호버 상태 ─── */
+.alert-info  { transition: border-color var(--transition), background var(--transition); }
+.alert-warn  { transition: border-color var(--transition), background var(--transition); }
+.alert-success { transition: border-color var(--transition), background var(--transition); }
+.alert-info:hover  { border-color: rgba(6,182,212,0.45); background: rgba(6,182,212,0.10); }
+.alert-warn:hover  { border-color: rgba(245,158,11,0.45); background: rgba(245,158,11,0.10); }
+.alert-success:hover { border-color: rgba(16,185,129,0.45); background: rgba(16,185,129,0.10); }
+
+/* ─── 카드 등장 애니메이션 nth-child 확장 ─── */
+.model-grid .model-card:nth-child(6) { animation-delay: 0.15s; }
+.model-grid .model-card:nth-child(7) { animation-delay: 0.175s; }
+.model-grid .model-card:nth-child(8) { animation-delay: 0.2s; }
+
+/* ─── 배치 파일 삭제 버튼 opacity reveal ─── */
+.batch-file-row .batch-remove { opacity: 0.35; transition: opacity var(--transition); }
+.batch-file-row:hover .batch-remove { opacity: 1; }
+
+/* ─── 파일 행 삭제 버튼 opacity reveal ─── */
+.file-row .file-delete { opacity: 0.35; transition: opacity var(--transition); }
+.file-row:hover .file-delete { opacity: 1; }
+
+/* ─── 모델 카드 삭제 버튼 opacity reveal ─── */
+.model-card .btn-icon-sm { opacity: 0.4; transition: opacity var(--transition), color var(--transition); }
+.model-card:hover .btn-icon-sm { opacity: 1; }
+
+/* ─── 변환 액션 버튼 opacity reveal ─── */
+.conv-actions { opacity: 0.5; transition: opacity var(--transition); }
+.conversion-row:hover .conv-actions { opacity: 1; }
+
+/* ─── Section description 호버 ─── */
+.section-desc { transition: color var(--transition); }
+.section-desc:hover { color: var(--text2); }
+
+/* ─── Input focus micro-animation ─── */
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="password"]:focus,
+input[type="url"]:focus,
+textarea:focus,
+select:focus {
+  animation: inputFocusPop 0.18s ease-out;
+}
+@keyframes inputFocusPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.012); }
+  100% { transform: scale(1); }
+}
+
+/* ─── 고급 옵션 패널 열릴 때 콘텐츠 페이드인 ─── */
+.adv-panel { overflow: hidden; }
+.adv-panel.open > * { animation: advContentIn 0.22s ease-out; }
+@keyframes advContentIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── 드롭존 드래그오버 아이콘 팝 ─── */
+.dropzone.drag-over .dropzone-icon { animation: dropIconPop 0.25s ease-out forwards; }
+@keyframes dropIconPop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.22) rotate(-6deg); }
+  100% { transform: scale(1.08) rotate(0deg); }
+}
+
+/* ─── Input 유효성 상태 ─── */
+input.input-success { border-color: var(--emerald) !important; }
+input.input-error   { border-color: var(--red) !important; animation: inputErrorShake 0.3s ease; }
+@keyframes inputErrorShake {
+  0%,100% { transform: translateX(0); }
+  25%     { transform: translateX(-4px); }
+  75%     { transform: translateX(4px); }
+}
+
 
 </style>
 </head>
@@ -7527,6 +7607,98 @@ function updateNavBadges() {
     } else if (badge2) { badge2.remove(); }
   }
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Real-time Model Name Validation
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(function() {
+  var input = document.getElementById('model-name');
+  if (!input) return;
+  var INVALID = /[\/\\:*?"<>|]/;
+  input.addEventListener('input', function() {
+    var val = input.value.trim();
+    if (!val) {
+      input.classList.remove('input-success', 'input-error');
+    } else if (val.length < 2 || INVALID.test(val)) {
+      input.classList.add('input-error');
+      input.classList.remove('input-success');
+    } else {
+      input.classList.add('input-success');
+      input.classList.remove('input-error');
+    }
+  });
+})();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Audio Player Keyboard Shortcuts
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+document.addEventListener('keydown', function(e) {
+  // Only when not focused in an input/textarea
+  if (['INPUT','TEXTAREA','SELECT'].indexOf(document.activeElement.tagName) !== -1) return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+  // Find the active (playing) or most recently added audio player
+  var activePlayers = document.querySelectorAll('.audio-player audio:not([paused])');
+  // Try to find a playing audio
+  var playingAudio = null;
+  document.querySelectorAll('.audio-player audio').forEach(function(a) {
+    if (!a.paused) playingAudio = a;
+  });
+
+  if (e.key === ' ' || e.code === 'Space') {
+    var player = playingAudio;
+    if (!player) {
+      // Find focused or last audio player
+      var focused = document.querySelector('.audio-player:focus-within');
+      if (focused) player = focused.querySelector('audio');
+      if (!player) {
+        var all = document.querySelectorAll('.audio-player audio');
+        if (all.length) player = all[all.length - 1];
+      }
+    }
+    if (player) {
+      e.preventDefault();
+      var uid = player.id.replace('_audio', '');
+      apToggle(uid);
+    }
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (!playingAudio) return;
+    e.preventDefault();
+    var delta = e.key === 'ArrowLeft' ? -5 : 5;
+    playingAudio.currentTime = Math.max(0, Math.min(playingAudio.duration || 0, playingAudio.currentTime + delta));
+    var uid2 = playingAudio.id.replace('_audio', '');
+    apUpdateTime(uid2);
+  }
+}, false);
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Search Debounce
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(function() {
+  function debounce(fn, delay) {
+    var t;
+    return function() {
+      var self = this, args = arguments;
+      clearTimeout(t);
+      t = setTimeout(function() { fn.apply(self, args); }, delay);
+    };
+  }
+
+  var searchMap = [
+    { id: 'file-search',         fn: function() { filterFiles(); } },
+    { id: 'model-search',        fn: function() { filterModels(); } },
+    { id: 'conv-history-search', fn: function() { filterConversionHistory(); } },
+    { id: 'jobs-search',         fn: function() { filterRecentJobs(); } }
+  ];
+
+  searchMap.forEach(function(entry) {
+    var el = document.getElementById(entry.id);
+    if (!el) return;
+    // Remove inline oninput and replace with debounced listener
+    el.removeAttribute('oninput');
+    el.addEventListener('input', debounce(entry.fn, 180));
+  });
+})();
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Init
