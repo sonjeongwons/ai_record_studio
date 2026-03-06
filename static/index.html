@@ -7200,7 +7200,8 @@ async function restoreActiveJobs() {
           preprocessJobId = job.id;
           _preprocessPaused = false;
           _preprocessPollErrors = 0;
-          _preprocessStartTime = Date.now(); // 정확하지 않지만 ETA에 사용
+          // started_at 있으면 실제 시작 시간 사용 (경과 시간 정확도 개선)
+          _preprocessStartTime = job.started_at ? new Date(job.started_at).getTime() : Date.now();
           document.getElementById('preprocess-idle').style.display = 'none';
           document.getElementById('preprocess-running').style.display = 'block';
           document.getElementById('preprocess-paused').style.display = 'none';
@@ -7220,7 +7221,7 @@ async function restoreActiveJobs() {
           currentTrainJobId = job.id;
           _trainPaused = false;
           _trainPollErrors = 0;
-          _trainStartTime = Date.now();
+          _trainStartTime = job.started_at ? new Date(job.started_at).getTime() : Date.now();
           document.getElementById('train-upload').style.display = 'none';
           document.getElementById('train-progress').style.display = 'block';
           document.getElementById('train-done').style.display = 'none';
@@ -7247,7 +7248,7 @@ async function restoreActiveJobs() {
           currentConvertJobId = job.id;
           _convertPaused = false;
           _convertPollErrors = 0;
-          _convertStartTime = Date.now();
+          _convertStartTime = job.started_at ? new Date(job.started_at).getTime() : Date.now();
           document.getElementById('convert-main').style.display = 'none';
           document.getElementById('convert-progress').style.display = 'block';
           document.getElementById('convert-done').style.display = 'none';
@@ -7468,7 +7469,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 window.addEventListener('beforeunload', function(e) {
   // 타이머 정리는 unload에서 처리 (사용자가 취소하면 타이머가 살아있어야 함)
-  if (preprocessJobId || currentTrainJobId || currentConvertJobId) {
+  // 일시정지된 작업은 RunPod 과금이 중지됐으므로 경고 불필요
+  var preprocessActive = preprocessJobId && !_preprocessPaused;
+  var trainActive = currentTrainJobId && !_trainPaused;
+  var convertActive = currentConvertJobId && !_convertPaused;
+  if (preprocessActive || trainActive || convertActive) {
     var msg = '진행 중인 작업이 있습니다. 페이지를 나가면 폴링이 중단됩니다.';
     e.preventDefault();
     e.returnValue = msg;
