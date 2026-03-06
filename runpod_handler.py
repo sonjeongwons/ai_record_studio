@@ -682,7 +682,7 @@ def _speaker_diarize(vocal_paths: list[Path], output_dir: Path) -> list[Path]:
             if segments:
                 concatenated = np.concatenate(segments, axis=0)
                 out_path = output_dir / f"{vp.stem}_speaker.wav"
-                sf.write(str(out_path), concatenated, samplerate=sr, subtype="PCM_16")
+                sf.write(str(out_path), concatenated, samplerate=sr, subtype="FLOAT")
                 result_paths.append(out_path)
             else:
                 result_paths.append(vp)
@@ -726,24 +726,34 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
                 continue
 
             # SNR 기반 적응형 NR 강도 결정
-            rms = np.sqrt(np.mean(audio_data ** 2))
-            noise_floor_db = 20 * np.log10(max(rms, 1e-10))
+            # 전체 RMS가 아닌 실제 SNR 추정: 가장 조용한 10% 프레임 = 노이즈 추정
+            # → 조용하지만 깨끗한 가성/소프트 보컬을 잘못 NR하는 문제 방지
+            _frame_size = max(1, int(sr * 0.02))  # 20ms 프레임
+            _n_frames = max(1, len(audio_data) // _frame_size)
+            _frame_rms = np.array([
+                np.sqrt(np.mean(audio_data[i*_frame_size:(i+1)*_frame_size] ** 2))
+                for i in range(_n_frames)
+            ])
+            _frame_rms_sorted = np.sort(_frame_rms)
+            _noise_rms = float(np.mean(_frame_rms_sorted[:max(1, _n_frames // 10)]))  # 하위 10%
+            _signal_rms = float(np.sqrt(np.mean(audio_data ** 2)))
+            snr_db = 20 * np.log10(max(_signal_rms, 1e-10) / max(_noise_rms, 1e-10))
 
             out_path = output_dir / f"{ap.stem}_clean.wav"
 
-            if noise_floor_db > -25:
-                # 깨끗한 신호 (스튜디오/Demucs 분리 후) → NR 완전 스킵
-                # -25dBFS까지 확장: 미세한 룸노이즈도 고음 하모닉스 보존 우선
-                sf.write(str(out_path), audio_data, samplerate=sr, subtype="PCM_16")
+            if snr_db > 25:
+                # 높은 SNR (깨끗한 신호) → NR 완전 스킵
+                # Demucs 분리 후 또는 스튜디오 녹음 → 고음 하모닉스 보존 우선
+                sf.write(str(out_path), audio_data, samplerate=sr, subtype="FLOAT")
                 cleaned.append(out_path)
                 skipped_clean += 1
-                log.info(f"Clean signal ({noise_floor_db:.1f}dB), NR skipped: {ap.name}")
+                log.info(f"Clean signal (SNR={snr_db:.1f}dB), NR skipped: {ap.name}")
                 continue
 
-            if noise_floor_db > -35:
-                prop = 0.15  # 매우 약한 NR — 숨소리/가성 고주파 텍스처 최대 보존
+            if snr_db > 15:
+                prop = 0.12  # 매우 약한 NR — 숨소리/가성 고주파 텍스처 최대 보존
             else:
-                prop = 0.25  # 약한 NR — 명백한 노이즈가 있는 소스
+                prop = 0.20  # 약한 NR — 명백한 노이즈가 있는 소스
 
             reduced = nr.reduce_noise(
                 y=audio_data,
@@ -754,9 +764,9 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
                 hop_length=128, # 128: 2.9ms → 더 세밀한 시간적 해상도
             )
 
-            sf.write(str(out_path), reduced, samplerate=sr, subtype="PCM_16")
+            sf.write(str(out_path), reduced, samplerate=sr, subtype="FLOAT")
             cleaned.append(out_path)
-            log.info(f"NR done (prop={prop}, floor={noise_floor_db:.1f}dB): {ap.name}")
+            log.info(f"NR done (prop={prop}, SNR={snr_db:.1f}dB): {ap.name}")
 
         if skipped_clean:
             log.info(f"Adaptive NR: {skipped_clean}/{len(audio_paths)} files clean enough to skip")
@@ -808,13 +818,13 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
             # File is already short enough, keep as-is if >= SEGMENT_MIN
             if total_duration >= SEGMENT_MIN:
                 out = output_dir / f"{source_stem}_seg_{seg_idx:04d}.wav"
-                sf.write(str(out), audio_data, samplerate=sr, subtype="PCM_16")
+                sf.write(str(out), audio_data, samplerate=sr, subtype="FLOAT")
                 all_segments.append(out)
                 seg_idx += 1
             elif total_duration >= 2.0:
                 # Keep very short clips too (will be less than 5s but still usable)
                 out = output_dir / f"{source_stem}_seg_{seg_idx:04d}.wav"
-                sf.write(str(out), audio_data, samplerate=sr, subtype="PCM_16")
+                sf.write(str(out), audio_data, samplerate=sr, subtype="FLOAT")
                 all_segments.append(out)
                 seg_idx += 1
             continue
@@ -855,7 +865,7 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
                 segment[-fade_samples:] *= fade_out
 
             out = output_dir / f"{source_stem}_seg_{seg_idx:04d}.wav"
-            sf.write(str(out), segment, samplerate=sr, subtype="PCM_16")
+            sf.write(str(out), segment, samplerate=sr, subtype="FLOAT")
             all_segments.append(out)
             seg_idx += 1
 
@@ -1248,7 +1258,8 @@ def _rvc_preprocess(
 
     Also creates config.json from rvc/configs/{sample_rate}.json template.
     """
-    SLICE_DURATION = 1.5  # seconds — Applio's standard segment size
+    SLICE_DURATION = 3.5  # seconds — 긴 슬라이스로 가창 비브라토, 한국어 음절 전환, 호흡 패턴 보존
+                          # (Applio 기본 1.5s는 짧은 음성용 — SVC에서는 3-4s가 최적)
 
     gt_dir = ensure_dir(logs_dir / "sliced_audios")
     sr16k_dir = ensure_dir(logs_dir / "sliced_audios_16k")
@@ -1377,7 +1388,7 @@ def _rvc_preprocess(
             except Exception:
                 continue
         if _global_peak > 0:
-            _TARGET = 10.0 ** (-1 / 20)  # -1 dBFS = 0.89125
+            _TARGET = 10.0 ** (-3 / 20)  # -3 dBFS = 0.708 (충분한 헤드룸 → RVC 내부 클리핑 방지)
             _norm_factor = _TARGET / _global_peak
             log.info(
                 f"Global normalization: peak={_global_peak:.4f}, "
@@ -1639,7 +1650,7 @@ def _rvc_train(
         "True",                   # 10: save_every_weights
         "False",                  # 11: cache_data_in_gpu
         "True",                   # 12: overtraining_detector
-        "50",                     # 13: overtraining_threshold (75→50: 더 오래 학습 허용)
+        "30",                     # 13: overtraining_threshold (50→30: 과적합 방지 → 새 곡 일반화 향상)
         "False",                  # 14: cleanup
         "HiFi-GAN",              # 15: vocoder
         "False",                  # 16: checkpointing
@@ -1966,54 +1977,44 @@ def _find_index(logs_dir: Path, model_name: str) -> Optional[Path]:
 def _post_process_vocal(
     vocal_path: Path,
     output_path: Path,
-    reverb_amount: float = 0.10,
-    harmonic_enhance: bool = True,
+    reverb_amount: float = 0.05,
+    harmonic_enhance: bool = False,
 ) -> None:
-    """Post-process converted vocal to reduce AI/robotic artifacts.
+    """Post-process converted vocal — 최소한의 처리로 자연스러움 극대화.
 
-    Processing chain (optimized for maximum naturalness):
-    1. De-essing: targeted sibilance reduction at 6kHz
-       → Korean ㅅ/ㅆ/ㅈ/ㅊ 치찰음 아티팩트 제거 (HiFi-GAN 보코더 과재구성)
-    2. Pre-comp EQ: gentle AI artifact reduction
-       - highshelf cut at 10kHz → soften harsh AI highs (광대역 아닌 타겟 접근)
-       - peaking cut at 1.5kHz → reduce metallic ring (완화된 강도)
-    3. Gentle dynamic compression (2:1) → even out RVC's unnatural level jumps
-    4. Post-comp EQ: restore warmth and presence
-       - lowshelf boost at 150Hz → add body/warmth (과도하지 않게)
-       - peaking boost at 3kHz  → restore clarity/presence
-    5. Optional soft saturation (tanh, threshold=0.88)
-       → 높은 threshold로 피크만 새츄레이션 → 일관된 하모닉 강화
-    6. Optional room reverb (8 early reflections)
-       → 4탭→8탭: 더 밀도 높은 초기 반사음으로 자연스러운 공간감
+    원칙: RVC 출력은 이미 학습된 음색을 갖고 있음. 과처리가 AI스러움의 주요 원인.
+    이전 9단계 체인을 3단계로 축소:
+    1. De-essing: 9kHz Q=5 -1.5dB (매우 좁은 대역, 한국어 자음 4-8kHz 보존)
+    2. 투명 컴프레션: threshold=-12dBFS, ratio=1.3 (큰 피크만, 다이나믹스 보존)
+    3. Air band 미세 복원: 12kHz+ +0.5dB (HiFi-GAN 고역 손실 보상)
+    4. (선택) 소프트 새츄레이션: threshold=0.95 (기본 OFF)
+    5. (선택) 리버브: 8탭 초기 반사 (기본 0.05 → 매우 미세)
     """
     filters = [
-        # --- De-essing: HiFi-GAN 보코더 후처리 치찰음 억제 ---
-        # ※ Pre-RVC de-esser(7kHz Q=3 -2dB)와 이중 적용되므로 여기서는 더 높은 주파수 + 약한 감쇠
-        # 8.5kHz Q=4 (좁은 대역, 7.4~9.6kHz만) -1dB → 자음/모음 명료도 보존
-        "equalizer=f=8500:width_type=q:width=4:g=-1.0",
-        # --- Pre-comp EQ ---
-        # 12kHz 이상: AI 날카로움만 완화 (가성 brilliance 보존)
-        "highshelf=f=12000:width_type=o:width=0.6:g=-0.8",
-        # 1.5kHz 기계적 공명 제거 — 매우 약하게 (자연스러운 warmth 손상 방지)
-        "equalizer=f=1500:width_type=o:width=0.7:g=-0.3",
-        # --- Gentle dynamic compression ---
-        # attack=25ms: 자음 트랜지언트를 더 자연스럽게 통과시킴
-        # ratio=1.5 (투명도↑), release=100ms (비브라토 6Hz 주기167ms의 60% = 펌핑 방지)
-        "acompressor=threshold=0.1:ratio=1.5:attack=25:release=100:makeup=1.05:knee=8",
-        # --- Post-comp EQ ---
-        "lowshelf=f=150:width_type=o:width=0.8:g=1.0",      # 150Hz +1.0dB (warmth)
-        "equalizer=f=3000:width_type=o:width=0.8:g=1.0",    # 3kHz +1.0dB (presence)
-        # --- Air band 복원 ---
-        # HiFi-GAN 보코더는 mel-spec→오디오 재합성 시 10kHz+ 고역 디테일 손실
-        # 인간 보컬의 "air"(숨결감)은 10-16kHz 대역에 존재 — 미세한 부스트로 자연스러움 복원
-        "highshelf=f=10000:width_type=o:width=1.0:g=0.8",    # 10kHz+ air band +0.8dB
+        # ─── 최소한의 후처리 (과처리 = AI스러움의 주요 원인) ───
+        #
+        # 원칙: RVC 출력은 이미 학습된 음색을 갖고 있으므로, 후처리는 최소한으로.
+        # 이전 9단계 체인(디에서+EQ+컴프+EQ+새츄+리버브)이 누적되어
+        # 주파수 밸런스 왜곡 → 기계적 소리의 주요 원인이었음.
+        #
+        # --- De-essing: 9kHz+ 좁은 대역만 (한국어 자음 4-8kHz 보존) ---
+        # Q=5 → 매우 좁은 대역 (8.1-10kHz만) → 자연스러운 치찰음은 통과
+        "equalizer=f=9000:width_type=q:width=5:g=-1.5",
+        # --- 투명 다이나믹 컴프레션 (RVC 레벨 점프만 완화) ---
+        # threshold=0.25 (-12dBFS): 큰 피크만 압축 (이전 0.1 = -20dBFS 에서 거의 전체 신호 압축)
+        # ratio=1.3: 매우 부드러운 압축 → 자연스러운 다이나믹스 보존
+        # attack=30ms: 자음 트랜지언트 완전 통과
+        # release=200ms: 비브라토 주기(~167ms)보다 약간 길게 → 펌핑 방지
+        "acompressor=threshold=0.25:ratio=1.3:attack=30:release=200:makeup=1.0:knee=10",
+        # --- Air band 미세 복원 (HiFi-GAN의 10kHz+ 디테일 손실 보상) ---
+        "highshelf=f=12000:width_type=o:width=0.8:g=0.5",
     ]
 
     if harmonic_enhance:
-        # tanh soft saturation: smooth tube-amp-like harmonic richness
-        # threshold=0.88: 높은 피크만 새츄레이션 → 다이나믹 구간 일관성 향상
-        # output=0.96: 미세 게인 보정
-        filters.append("asoftclip=type=tanh:threshold=0.88:output=0.96")
+        # tanh soft saturation: 매우 높은 피크만 미세 새츄레이션
+        # threshold=0.95 (-0.45dBFS): 하드 클리핑 직전 피크만 부드럽게 라운딩
+        # → 가성/고음에서 불필요한 홀수 하모닉(3,5,7차) 추가 방지
+        filters.append("asoftclip=type=tanh:threshold=0.95:output=0.98")
 
     # 범위 클램프: aecho decay 계수가 0~1을 벗어나지 않도록 보장
     reverb_amount = max(0.0, min(0.5, float(reverb_amount)))
@@ -2069,14 +2070,13 @@ def _mix_audio(
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
-        # 보컬: soxr 리샘플링 + 볼륨 + 미묘한 중저역/프레즌스 부스트로 MR 위에 안착
-        # MR: soxr 리샘플링 + 볼륨 + 보컬 주파수 공간 확보 (완화된 EQ — 지나친 착색 방지)
-        f"[0:a]aresample=resampler=soxr,volume={vocal_volume},"
-        f"equalizer=f=200:width_type=o:width=0.8:g=0.5,"   # 보컬 온기 +0.5dB
-        f"equalizer=f=3000:width_type=o:width=0.8:g=0.3[v];"   # 보컬 프레즌스 +0.3dB
+        # 보컬: soxr 리샘플링 + 볼륨 (추가 EQ 없음 — 후처리에서 이미 완료)
+        # MR: soxr 리샘플링 + 볼륨 + 최소한의 보컬 공간 확보
+        # 원칙: MR EQ를 최소화 → 보컬이 MR 안에 자연스럽게 blend (위에 얹히지 않고)
+        f"[0:a]aresample=resampler=soxr,volume={vocal_volume}[v];"
         f"[1:a]aresample=resampler=soxr,volume={mr_volume},"
-        f"equalizer=f=800:width_type=o:width=1.5:g=-1.0,"   # MR 중저역 -1dB (기존 -2dB)
-        f"equalizer=f=2500:width_type=o:width=1.0:g=-0.8[m];"  # MR 프레즌스 -0.8dB (기존 -1.5dB)
+        f"equalizer=f=800:width_type=o:width=1.0:g=-0.5,"     # MR 중저역 미세 정리
+        f"equalizer=f=2500:width_type=o:width=0.7:g=-0.5[m];"  # MR 프레즌스 미세 공간 확보
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
         f"alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1",
         "-acodec", "pcm_s24le",  # 24-bit for maximum dynamic range
@@ -2112,7 +2112,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     audio_filename: str = Path(job_input.get("audio_filename", "input.wav")).name  # path traversal 방지
     # 명시적 타입 변환: RunPod job_input에서 문자열로 전달될 수 있음
     pitch_shift: int = int(job_input.get("pitch_shift", 0))
-    index_rate: float = float(job_input.get("index_rate", 0.50))
+    index_rate: float = float(job_input.get("index_rate", 0.65))
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     f0_method: str = job_input.get("f0_method", "rmvpe")
     # filter_radius 3: 균형점 — 너무 작으면(1-2) 고음 경계에서 pitch jump 발생,
@@ -2120,8 +2120,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
     filter_radius: int = int(job_input.get("filter_radius", 3))
     # rms_mix_rate 0.15: preserve original dynamics more → natural volume contour
     rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
-    # protect 0.50: maximize consonant/breathiness preservation
-    protect: float = float(job_input.get("protect", 0.50))
+    # protect 0.35: 적절한 자음/숨소리 보존 (0.5는 원본 50% 잔류 → uncanny valley)
+    protect: float = float(job_input.get("protect", 0.35))
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     hop_length: int = int(job_input.get("hop_length", 64))
     clean_audio_raw = job_input.get("clean_audio", False)
@@ -2134,8 +2134,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
     vocal_volume: float = float(job_input.get("vocal_volume", 1.0))
     mr_volume: float = float(job_input.get("mr_volume", 1.0))
     # Post-processing for naturalness (applied after RVC conversion)
-    post_reverb: float = float(job_input.get("post_reverb", 0.10))
-    harmonic_enhance_raw = job_input.get("harmonic_enhance", True)
+    post_reverb: float = float(job_input.get("post_reverb", 0.05))
+    harmonic_enhance_raw = job_input.get("harmonic_enhance", False)
     harmonic_enhance: bool = harmonic_enhance_raw not in (False, "false", "0", 0)
 
     # 파라미터 범위 클램프
@@ -2252,32 +2252,10 @@ def task_convert(job_input: dict, job: dict) -> dict:
         else:
             rvc_input = input_wav
 
-        # --- Step 2b: Pre-RVC fricative de-esser ---
-        # HiFi-GAN 보코더는 mel-spectrogram에서 치찰음(ㅅ,ㅊ,ㅈ)을 과합성(hallucinate)함.
-        # RVC 입력 단계에서 좁은 대역(Q=3)으로 타겟팅 → HiFi-GAN 과합성 여지를 최소화.
-        #
-        # 기존 방식 (width_type=o:width=0.8~1.0) 문제:
-        #   4.5kHz에서 width=0.8옥타브 → 2.7kHz~7.5kHz를 -1dB 깎음 → 중역대 모음/자음 왜곡
-        #   8kHz에서 width=1.0옥타브 → 4kHz~16kHz를 -1.5dB 깎음 → 전체 고역 손실 → 발음 뭉개짐
-        #
-        # 개선: width_type=q (Q팩터) 사용 → 좁은 대역만 타겟
-        #   7kHz Q=3 → 5.8kHz~8.2kHz만 -2dB 감쇠 → 모음/자음 발음 보존, 치찰음만 제거
-        pre_rvc_deessed = work / "pre_rvc_deessed.wav"
-        try:
-            run_ffmpeg([
-                "-i", str(rvc_input),
-                "-af", (
-                    "equalizer=f=7000:width_type=q:width=3:g=-2.0"  # 7kHz Q=3 치찰음 좁은 대역 타겟
-                ),
-                "-acodec", "pcm_s24le",
-                "-ar", "44100",
-                str(pre_rvc_deessed),
-            ])
-            if pre_rvc_deessed.exists() and pre_rvc_deessed.stat().st_size > 1000:
-                rvc_input = pre_rvc_deessed
-                log.info("Pre-RVC de-esser applied (7kHz Q=3 -2dB) to reduce HiFi-GAN sibilance")
-        except Exception as de_err:
-            log.warning(f"Pre-RVC de-esser failed, using original: {de_err}")
+        # --- Step 2b: Pre-RVC 디에서 제거됨 ---
+        # 이전: 7kHz Q=3 -2dB + 후처리 8.5kHz -1dB = 이중 디에싱 → 한국어 자음 포먼트(4-8kHz) 파괴
+        # 한국어 마찰음(ㅅ,ㅆ,ㅈ,ㅊ,ㅎ)의 에너지가 4-8kHz에 집중 → 이 대역 커팅은 발음 뭉개짐 유발
+        # → 디에싱은 후처리에서 한 번만 적용 (9kHz 이상의 좁은 대역만 타겟)
 
         # --- Step 3: RVC voice conversion on vocals ---
         runpod.serverless.progress_update(job, "Running voice conversion (RVC)... (3/4)")
@@ -2351,6 +2329,40 @@ def task_convert(job_input: dict, job: dict) -> dict:
                     converted_vocals_path = _resampled_path
         except Exception as _sr_err:
             log.warning(f"SR check/resample failed, continuing with original: {_sr_err}")
+
+        # --- Step 3a-verify: 출력 길이 검증 (가사 끊김 감지) ---
+        try:
+            _out_dur = get_audio_duration(converted_vocals_path)
+            _dur_ratio = _out_dur / max(_rvc_duration, 0.1)
+            if _dur_ratio < 0.85:
+                log.error(
+                    f"⚠️ OUTPUT TRUNCATED: input={_rvc_duration:.1f}s, output={_out_dur:.1f}s "
+                    f"(ratio={_dur_ratio:.2f}). 가사가 잘릴 수 있습니다."
+                )
+                # split_audio=False였다면 True로 재시도
+                if not _should_split and _rvc_duration > 60:
+                    log.info("Retrying with split_audio=True...")
+                    _retry_path = work / f"converted_vocals_retry.{export_format}"
+                    _rvc_infer(
+                        rvc_input, _retry_path, model_path=pth_path,
+                        index_path=index_path, pitch_shift=pitch_shift,
+                        index_rate=index_rate, f0_method=f0_method,
+                        filter_radius=filter_radius, rms_mix_rate=rms_mix_rate,
+                        protect=protect, hop_length=hop_length,
+                        clean_audio=clean_audio, clean_strength=clean_strength,
+                        export_format=export_format, split_audio=True,
+                    )
+                    if _retry_path.exists():
+                        _retry_dur = get_audio_duration(_retry_path)
+                        if _retry_dur > _out_dur:
+                            log.info(f"Retry improved: {_out_dur:.1f}s → {_retry_dur:.1f}s")
+                            converted_vocals_path = _retry_path
+            elif _dur_ratio > 1.15:
+                log.warning(
+                    f"Output longer than input: {_rvc_duration:.1f}s → {_out_dur:.1f}s"
+                )
+        except Exception as _vfy_err:
+            log.warning(f"Output duration verification failed: {_vfy_err}")
 
         # --- Step 3b: Post-process converted vocals for naturalness ---
         # EQ + compression + optional harmonic saturation + optional room reverb

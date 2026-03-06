@@ -764,7 +764,8 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             elapsed = int(time.time() - start_time)
 
             if status == "COMPLETED":
-                _poll_error_counts.pop(job_id, None)
+                with _poll_errors_lock:
+                    _poll_error_counts.pop(job_id, None)
                 output = result.get("output", {})
                 if not output:
                     update_job(job_id, status="failed",
@@ -778,7 +779,8 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             pass
                     with _job_states_lock:
                         _active_job_states.pop(job_id, None)
-                    _poll_error_counts.pop(job_id, None)
+                    with _poll_errors_lock:
+                        _poll_error_counts.pop(job_id, None)
                     return
                 try:
                     handle_job_result(job_id, job_type, output)
@@ -794,11 +796,13 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             pass
                     with _job_states_lock:
                         _active_job_states.pop(job_id, None)
-                    _poll_error_counts.pop(job_id, None)
+                    with _poll_errors_lock:
+                        _poll_error_counts.pop(job_id, None)
                 return
 
             elif status in ("FAILED", "TIMED_OUT", "CANCELLED"):
-                _poll_error_counts.pop(job_id, None)
+                with _poll_errors_lock:
+                    _poll_error_counts.pop(job_id, None)
                 raw_error = result.get("error", "알 수 없는 오류")
                 # RunPod 에러가 dict이면 error_message 추출
                 if isinstance(raw_error, dict):
@@ -1273,6 +1277,19 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
 def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
     """대용량 파일의 다중 배치 전처리를 순차 실행.
     각 배치를 별도 RunPod 작업으로 제출하고 완료를 기다린 뒤 다음 배치로 진행."""
+    try:
+        _run_batched_preprocess_inner(job_id, batches)
+    except Exception as e:
+        print(f"[BatchPreprocess] Unexpected crash for job {job_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        update_job(job_id, status="failed",
+                   message=f"배치 전처리 중 예기치 않은 오류: {e}")
+    finally:
+        with _job_states_lock:
+            _active_job_states.pop(job_id, None)
+
+def _run_batched_preprocess_inner(job_id: str, batches: list[list[dict]]):
     total_batches = len(batches)
     all_results = []
 
@@ -2227,18 +2244,18 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.50),
+    index_rate: float = Form(0.65),
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
     clean_audio: bool = Form(False),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.50),
+    protect: float = Form(0.35),
     rms_mix_rate: float = Form(0.15),
     filter_radius: int = Form(3),
     hop_length: int = Form(64),
-    post_reverb: float = Form(0.10),
-    harmonic_enhance: bool = Form(True),
+    post_reverb: float = Form(0.05),
+    harmonic_enhance: bool = Form(False),
     separate_vocals: bool = Form(True),
     audio: UploadFile = File(...)
 ):
@@ -2804,19 +2821,19 @@ async def resume_job(job_id: str):
                 "task_type": "convert",
                 "audio_filename": audio_filename,
                 "pitch_shift": pause_state.get("pitch_shift", 0),
-                "index_rate": pause_state.get("index_rate", 0.50),
+                "index_rate": pause_state.get("index_rate", 0.65),
                 "f0_method": pause_state.get("f0_method", "rmvpe"),
                 "clean_audio": pause_state.get("clean_audio", False),
                 "clean_strength": pause_state.get("clean_strength", 0.7),
-                "protect": pause_state.get("protect", 0.50),
+                "protect": pause_state.get("protect", 0.35),
                 "rms_mix_rate": pause_state.get("rms_mix_rate", 0.15),
                 "filter_radius": pause_state.get("filter_radius", 3),
                 "hop_length": pause_state.get("hop_length", 64),
                 "separate_vocals": pause_state.get("separate_vocals", True),
                 "vocal_volume": pause_state.get("vocal_volume", 1.0),
                 "mr_volume": pause_state.get("mr_volume", 1.0),
-                "post_reverb": pause_state.get("post_reverb", 0.10),
-                "harmonic_enhance": pause_state.get("harmonic_enhance", True),
+                "post_reverb": pause_state.get("post_reverb", 0.05),
+                "harmonic_enhance": pause_state.get("harmonic_enhance", False),
                 "bucket_name": r2_bucket,
             }
 

@@ -3358,9 +3358,9 @@ input[type="range"]::-moz-range-track {
       <div class="slider-group">
         <div class="slider-header">
           <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0 = 원래 가수 목소리에 가까움 (AI 최소)\n• 0.5~0.7 = 자연스러운 AI 목소리 (추천!)\n• 1.0 = AI 목소리 100%\n\n⚠️ 0.8 이상은 어색하거나 잡음이 생길 수 있습니다.\n💡 처음엔 0.50(기본값)으로 해보고 0.60~0.70으로 조절하세요.">ⓘ</i></span>
-          <span class="slider-value" id="index-val">0.50</span>
+          <span class="slider-value" id="index-val">0.65</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="50" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2)">
+        <input type="range" id="index-slider" min="0" max="100" value="65" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2)">
         <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.5~0.75 권장)</div>
       </div>
       <!-- Advanced settings (collapsible) -->
@@ -3417,9 +3417,9 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.50 = 기본값 (자음·가성 최대 보존, 추천!)\n• 0.45~0.48 = 가성·고음 많은 노래 (기계음 방지)\n• 0.30~0.40 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.48~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.50에서 조금씩 낮추기">ⓘ</i></span>
-              <span class="slider-value" id="protect-val">0.50</span>
+              <span class="slider-value" id="protect-val">0.35</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="50" value="50" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2)">
+            <input type="range" id="protect-slider" min="0" max="50" value="35" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2)">
             <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 자음·가성 원본 질감 보존 (0.40~0.50 권장)</div>
           </div>
           <div class="slider-group">
@@ -3452,17 +3452,17 @@ input[type="range"]::-moz-range-track {
             <div class="slider-header">
               <span class="slider-label">공간감 (리버브) <i class="tip" data-tip="변환된 목소리에 작은 방에 있는 듯한 자연스러운 공간감을 추가합니다.\n\n📖 왜 필요한가요?\nRVC 변환 결과는 완전히 건조(Dry)한 느낌으로 녹음되어 AI스러운 느낌이 납니다. 미세한 공간감을 추가하면 훨씬 자연스럽게 들립니다.\n\n🔢 설정 가이드:\n• ON (기본) = 미세한 공간감 추가\n• 강도 0.05~0.10 = 아주 작은 스튜디오 느낌\n• 강도 0.15~0.25 = 중간 크기 홀 느낌\n\n💡 처음엔 기본값(0.10)으로 사용하세요.">ⓘ</i></span>
               <span style="display:flex;align-items:center;gap:6px">
-                <label class="toggle-switch"><input type="checkbox" id="post-reverb-cb" checked onchange="document.getElementById('post-reverb-val').textContent=this.checked?'ON':'OFF';document.getElementById('post-reverb-strength-row').style.display=this.checked?'':'none'"><span class="toggle-track"></span></label>
-                <span class="slider-value" id="post-reverb-val">ON</span>
+                <label class="toggle-switch"><input type="checkbox" id="post-reverb-cb" onchange="document.getElementById('post-reverb-val').textContent=this.checked?'ON':'OFF';document.getElementById('post-reverb-strength-row').style.display=this.checked?'':'none'"><span class="toggle-track"></span></label>
+                <span class="slider-value" id="post-reverb-val">OFF</span>
               </span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">AI 특유의 건조한 느낌을 제거하는 미세한 공간감 추가</div>
-            <div id="post-reverb-strength-row" style="margin-top:8px">
+            <div id="post-reverb-strength-row" style="margin-top:8px;display:none">
               <div class="slider-header">
                 <span class="slider-label" style="font-size:12px;color:var(--text2)">리버브 강도 <i class="tip" data-tip="공간감(리버브)의 세기를 조절합니다.\n\n🔢 설정 가이드:\n• 0.05~0.10 = 작은 스튜디오 느낌 (추천)\n• 0.10~0.20 = 중간 홀 느낌\n• 0.20~0.30 = 큰 공연장 느낌\n\n⚠️ 0.20 이상은 울림이 강해 부자연스러울 수 있습니다.\n💡 처음엔 기본값 0.10 그대로 사용하세요.">ⓘ</i></span>
-                <span class="slider-value" id="post-reverb-strength-val">0.10</span>
+                <span class="slider-value" id="post-reverb-strength-val">0.05</span>
               </div>
-              <input type="range" id="post-reverb-slider" min="0" max="30" value="10" oninput="document.getElementById('post-reverb-strength-val').textContent=(this.value/100).toFixed(2)">
+              <input type="range" id="post-reverb-slider" min="0" max="30" value="5" oninput="document.getElementById('post-reverb-strength-val').textContent=(this.value/100).toFixed(2)">
               <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 미세한 공간감, 높을수록 홀 느낌 (0.05~0.15 권장)</div>
             </div>
           </div>
@@ -3472,8 +3472,8 @@ input[type="range"]::-moz-range-track {
             <div class="slider-header">
               <span class="slider-label">배음 강화 <i class="tip" data-tip="변환된 목소리의 음색에 자연스러운 배음(Harmonics)을 추가하여 AI 금속성 질감을 줄입니다.\n\n📖 왜 필요한가요?\nRVC 변환 결과는 디지털 특유의 차갑고 금속적인 느낌이 날 수 있습니다. 배음 강화는 실제 목소리에서 나오는 따뜻한 배음 성분을 부드럽게 추가합니다 (튜브 앰프와 비슷한 원리).\n\n💡 대부분의 경우 ON으로 두는 것이 권장됩니다.">ⓘ</i></span>
               <span style="display:flex;align-items:center;gap:6px">
-                <label class="toggle-switch"><input type="checkbox" id="harmonic-enhance-cb" checked onchange="document.getElementById('harmonic-enhance-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
-                <span class="slider-value" id="harmonic-enhance-val">ON</span>
+                <label class="toggle-switch"><input type="checkbox" id="harmonic-enhance-cb" onchange="document.getElementById('harmonic-enhance-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
+                <span class="slider-value" id="harmonic-enhance-val">OFF</span>
               </span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">부드러운 배음 추가로 AI 금속성·차가운 질감 제거 (대부분 ON 권장)</div>
@@ -4872,34 +4872,34 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default: RMVPE, balanced naturalness settings
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 0, // hop idx: 0=64, 1=128, 2=256
-      clean: false, cleanStr: 70, index: 50,
-      postReverb: 10, useReverb: true, harmonicEnhance: true,
+      // Default: 최소 후처리로 자연스러움 극대화
+      f0: 'rmvpe', protect: 35, rms: 15, filter: 3, hop: 0,
+      clean: false, cleanStr: 70, index: 65,
+      postReverb: 5, useReverb: false, harmonicEnhance: false,
       desc: '기본 설정으로 되돌렸습니다'
     },
     falsetto: {
-      // 가성/고음: Crepe로 높은 피치 정확도, filter=2로 피치점프 방지 + 빠른 피치 변화 보존
-      // protect=55: 가성 전환 구간의 자음/숨소리 보호 강화
+      // 가성/고음: Crepe로 높은 피치 정확도
+      // protect=40: 가성 전환 구간 보호 (0.35보다 약간 높게)
       // rms=10: 가성 다이나믹스(ppp~pp) 최대 보존
-      f0: 'crepe', protect: 55, rms: 10, filter: 2, hop: 0, // hop=64
-      clean: false, cleanStr: 70, index: 45,
-      postReverb: 8, useReverb: true, harmonicEnhance: true,
-      desc: '가성/고음 최적화 — Crepe, protect↑, 원곡 다이나믹스 보존'
+      f0: 'crepe', protect: 40, rms: 10, filter: 2, hop: 0,
+      clean: false, cleanStr: 70, index: 60,
+      postReverb: 3, useReverb: false, harmonicEnhance: false,
+      desc: '가성/고음 최적화 — Crepe, 원곡 다이나믹스 보존'
     },
     natural: {
-      // Natural: 원곡 다이나믹스 최대 보존
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 3, hop: 0, // hop=64
-      clean: false, cleanStr: 70, index: 45,
-      postReverb: 12, useReverb: true, harmonicEnhance: true,
-      desc: '최대 자연스러움 — 원곡 다이나믹스 최대 보존'
+      // Natural: 최대 자연스러움 — 후처리 거의 없음
+      f0: 'rmvpe', protect: 35, rms: 10, filter: 3, hop: 0,
+      clean: false, cleanStr: 70, index: 70,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
+      desc: '최대 자연스러움 — 후처리 최소, 원곡 다이나믹스 최대 보존'
     },
     studio: {
-      // Studio: 깨끗한 원본에 최적화
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 0, // hop=64
-      clean: false, cleanStr: 70, index: 50,
-      postReverb: 6, useReverb: true, harmonicEnhance: true,
-      desc: '스튜디오 품질 — 깨끗한 원본에 최적화'
+      // Studio: 깨끗한 원본 + 미세 리버브
+      f0: 'rmvpe', protect: 35, rms: 15, filter: 3, hop: 0,
+      clean: false, cleanStr: 70, index: 65,
+      postReverb: 5, useReverb: true, harmonicEnhance: false,
+      desc: '스튜디오 품질 — 깨끗한 원본 + 미세한 공간감'
     }
   };
   var p = presets[preset];
@@ -5577,6 +5577,8 @@ async function pollPreprocessStatus() {
       document.getElementById('preprocess-msg').textContent = job.message || '전처리 실패';
       document.title = 'AI Voice Studio';
       toast('전처리 실패: ' + (job.message || ''), 'error');
+      preprocessJobId = null;
+      _preprocessStartTime = null;
       setTimeout(function() {
         document.getElementById('preprocess-running').style.display = 'none';
         document.getElementById('preprocess-idle').style.display = 'block';
@@ -6437,24 +6439,24 @@ async function startConversion() {
   var form = new FormData();
   form.append('model_id', selectedModelId);
   form.append('pitch_shift', getVal('pitch-slider', '0'));
-  form.append('index_rate', (getVal('index-slider', '50') / 100).toFixed(2));
+  form.append('index_rate', (getVal('index-slider', '65') / 100).toFixed(2));
   form.append('f0_method', getVal('convert-f0', 'rmvpe'));
   form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-  form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
+  form.append('protect', (getVal('protect-slider', '35') / 100).toFixed(2));
   form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
   form.append('filter_radius', getVal('filter-slider', '3'));
   var hopSteps = [64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '0')] || 64);
   // Post-processing for naturalness
   var reverbCb = document.getElementById('post-reverb-cb');
-  var useReverb = reverbCb ? reverbCb.checked : true;
-  var postReverb = useReverb ? (getVal('post-reverb-slider', '10') / 100).toFixed(2) : '0';
+  var useReverb = reverbCb ? reverbCb.checked : false;
+  var postReverb = useReverb ? (getVal('post-reverb-slider', '5') / 100).toFixed(2) : '0';
   form.append('post_reverb', postReverb);
   var harmonicCb = document.getElementById('harmonic-enhance-cb');
-  form.append('harmonic_enhance', harmonicCb ? harmonicCb.checked : true);
+  form.append('harmonic_enhance', harmonicCb ? harmonicCb.checked : false);
   form.append('audio', convertFile);
 
   try {
@@ -6830,24 +6832,24 @@ async function startBatchConversion() {
       var form = new FormData();
       form.append('model_id', selectedModelId);
       form.append('pitch_shift', getVal('pitch-slider', '0'));
-      form.append('index_rate', (getVal('index-slider', '50') / 100).toFixed(2));
+      form.append('index_rate', (getVal('index-slider', '65') / 100).toFixed(2));
       form.append('f0_method', getVal('convert-f0', 'rmvpe'));
       form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-      form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
+      form.append('protect', (getVal('protect-slider', '35') / 100).toFixed(2));
       form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
       form.append('filter_radius', getVal('filter-slider', '3'));
       var hopSteps2 = [64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '0')] || 64);
       // Post-processing for naturalness
       var batchReverbCb = document.getElementById('post-reverb-cb');
-      var batchUseReverb = batchReverbCb ? batchReverbCb.checked : true;
-      var batchPostReverb = batchUseReverb ? (getVal('post-reverb-slider', '10') / 100).toFixed(2) : '0';
+      var batchUseReverb = batchReverbCb ? batchReverbCb.checked : false;
+      var batchPostReverb = batchUseReverb ? (getVal('post-reverb-slider', '5') / 100).toFixed(2) : '0';
       form.append('post_reverb', batchPostReverb);
       var batchHarmonicCb = document.getElementById('harmonic-enhance-cb');
-      form.append('harmonic_enhance', batchHarmonicCb ? batchHarmonicCb.checked : true);
+      form.append('harmonic_enhance', batchHarmonicCb ? batchHarmonicCb.checked : false);
       form.append('audio', batchResults[i].file);
 
       var res = await api('/convert', { method: 'POST', body: form, noTimeout: true });
@@ -7094,6 +7096,14 @@ async function cancelConversion() {
   _batchCancelled = true;
   if (currentConvertJobId) {
     try { await api('/jobs/' + currentConvertJobId + '/cancel', { method: 'POST' }); } catch(e) {}
+  }
+  // 배치 변환 중일 때: 현재 진행 중인 배치 아이템의 작업도 취소
+  if (batchResults && batchResults.length > 0) {
+    for (var bi = 0; bi < batchResults.length; bi++) {
+      if (batchResults[bi].jobId && batchResults[bi].status === 'processing') {
+        try { await api('/jobs/' + batchResults[bi].jobId + '/cancel', { method: 'POST' }); } catch(e) {}
+      }
+    }
   }
   setButtonLoading('btn-cancel-convert', false);
   _convertPaused = false;
