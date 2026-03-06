@@ -429,7 +429,8 @@ def restore_paused_jobs_state():
         try:
             state = json.loads(row["pause_state_json"])
             if state:
-                _active_job_states[row["id"]] = state
+                with _job_states_lock:
+                    _active_job_states[row["id"]] = state
                 count += 1
         except Exception:
             pass
@@ -650,9 +651,14 @@ runpod_client = RunPodClient()
 
 # 학습 작업별 사용된 훈련 파일 목록 (job_id → [파일명, ...])
 _training_file_map: dict[str, list[str]] = {}
+_training_lock = threading.Lock()  # _training_file_map 동시성 보호
 
 # 활성 작업 상태 (일시정지/재개용 파라미터 저장, job_id → dict)
 _active_job_states: dict[str, dict] = {}
+_job_states_lock = threading.Lock()  # _active_job_states 동시성 보호
+
+# RunPod 폴링 에러 카운터 동시성 보호
+_poll_errors_lock = threading.Lock()
 
 # 작업 유형별 타임아웃 (초)
 _JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 3600}  # convert: 30분→60분
@@ -770,7 +776,8 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
                             pass
-                    _active_job_states.pop(job_id, None)
+                    with _job_states_lock:
+                        _active_job_states.pop(job_id, None)
                     _poll_error_counts.pop(job_id, None)
                     return
                 try:
@@ -785,7 +792,8 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
                             pass
-                    _active_job_states.pop(job_id, None)
+                    with _job_states_lock:
+                        _active_job_states.pop(job_id, None)
                     _poll_error_counts.pop(job_id, None)
                 return
 
@@ -817,7 +825,8 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                     except Exception:
                         pass
-                _active_job_states.pop(job_id, None)
+                with _job_states_lock:
+                    _active_job_states.pop(job_id, None)
                 return
 
             elif status == "IN_QUEUE":
@@ -899,18 +908,23 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             # 작업 타입별 타임아웃: train=10시간, preprocess=1시간, convert=30분
             job_timeout = _JOB_TIMEOUTS.get(job_type, 3600)
             if elapsed > job_timeout:
-                _poll_error_counts.pop(job_id, None)
-                _active_job_states.pop(job_id, None)
+                with _poll_errors_lock:
+                    _poll_error_counts.pop(job_id, None)
+                with _job_states_lock:
+                    _active_job_states.pop(job_id, None)
                 timeout_label = f"{job_timeout // 3600}시간" if job_timeout >= 3600 else f"{job_timeout // 60}분"
                 update_job(job_id, status="failed", message=f"시간 초과 ({timeout_label})")
                 return
 
         except Exception as e:
-            poll_errors = _poll_error_counts.get(job_id, 0) + 1
-            _poll_error_counts[job_id] = poll_errors
+            with _poll_errors_lock:
+                poll_errors = _poll_error_counts.get(job_id, 0) + 1
+                _poll_error_counts[job_id] = poll_errors
             if poll_errors > 60:  # 60회 연속 오류 = ~10분 장애 허용 (일시적 네트워크 불안정 대응)
-                _poll_error_counts.pop(job_id, None)
-                _active_job_states.pop(job_id, None)
+                with _poll_errors_lock:
+                    _poll_error_counts.pop(job_id, None)
+                with _job_states_lock:
+                    _active_job_states.pop(job_id, None)
                 update_job(job_id, status="failed",
                           message=f"RunPod 상태 확인 반복 실패: {e}")
                 return
@@ -929,8 +943,10 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
         except Exception:
             pass
     finally:
-        _active_job_states.pop(job_id, None)
-        _poll_error_counts.pop(job_id, None)
+        with _job_states_lock:
+            _active_job_states.pop(job_id, None)
+        with _poll_errors_lock:
+            _poll_error_counts.pop(job_id, None)
 
 
 def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
@@ -1147,6 +1163,8 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                     f.write(raw)
 
             try:
+                with _training_lock:
+                    _train_files_json = json.dumps(_training_file_map.pop(job_id, []), ensure_ascii=False)
                 with get_db() as db:
                     db.execute("""
                         INSERT INTO voice_models (name, pth_path, index_path, pth_url, index_url,
@@ -1156,7 +1174,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                           output.get("pth_url"), output.get("index_url"),
                           output.get("epochs_trained", 0),
                           output.get("training_time_seconds", 0),
-                          json.dumps(_training_file_map.pop(job_id, []), ensure_ascii=False)))
+                          _train_files_json))
             except Exception as db_err:
                 # DB 삽입 실패 시 다운로드된 모델 파일 정리 (고아 파일 방지)
                 print(f"[Train] DB insert failed, cleaning up model files: {db_err}")
@@ -1243,8 +1261,10 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 pass
     finally:
         # 완료/실패 시 인메모리 재개 상태 정리 (메모리 누수 방지)
-        _active_job_states.pop(job_id, None)
-        _poll_error_counts.pop(job_id, None)
+        with _job_states_lock:
+            _active_job_states.pop(job_id, None)
+        with _poll_errors_lock:
+            _poll_error_counts.pop(job_id, None)
 
 
 def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
@@ -1844,17 +1864,19 @@ async def start_training(
 
     # Job 생성
     job_id = uuid.uuid4().hex[:12]
-    _training_file_map[job_id] = training_file_names
+    with _training_lock:
+        _training_file_map[job_id] = training_file_names
     # 재개용 상태 저장 (일시정지/재개 시 사용)
-    _active_job_states[job_id] = {
-        "type": "train",
-        "model_name": model_name,
-        "epochs": epochs,
-        "sample_rate": sample_rate,
-        "batch_size": batch_size,
-        "f0_method": f0_method,
-        "file_ids": file_ids,
-    }
+    with _job_states_lock:
+        _active_job_states[job_id] = {
+            "type": "train",
+            "model_name": model_name,
+            "epochs": epochs,
+            "sample_rate": sample_rate,
+            "batch_size": batch_size,
+            "f0_method": f0_method,
+            "file_ids": file_ids,
+        }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -1937,8 +1959,10 @@ async def start_training(
     except Exception as e:
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
-        _training_file_map.pop(job_id, None)
-        _active_job_states.pop(job_id, None)
+        with _training_lock:
+            _training_file_map.pop(job_id, None)
+        with _job_states_lock:
+            _active_job_states.pop(job_id, None)
 
     return {"job_id": job_id, "segments": total_segments}
 
@@ -1990,10 +2014,11 @@ async def start_preprocess(
     with _preprocess_lock:
         preprocess_file_map[job_id] = preprocess_file_ids
     # 재개용 상태 저장
-    _active_job_states[job_id] = {
-        "type": "preprocess",
-        "file_ids": preprocess_file_ids,
-    }
+    with _job_states_lock:
+        _active_job_states[job_id] = {
+            "type": "preprocess",
+            "file_ids": preprocess_file_ids,
+        }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -2041,7 +2066,8 @@ async def start_preprocess(
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
         with _preprocess_lock:
             preprocess_file_map.pop(job_id, None)
-        _active_job_states.pop(job_id, None)
+        with _job_states_lock:
+            _active_job_states.pop(job_id, None)
 
     return {"job_id": job_id, "segments": total_segments, "batches": len(batches),
             "skipped": skipped, "processing": len(unprocessed)}
@@ -2258,25 +2284,26 @@ async def start_conversion(
     # Job + 변환 기록 동시 생성 (원자성: RunPod 제출 전에 모든 DB 레코드 삽입)
     job_id = uuid.uuid4().hex[:12]
     # 재개용 상태 기반 설정 (audio_url은 R2 업로드 후 업데이트)
-    _active_job_states[job_id] = {
-        "type": "convert",
-        "model_id": model_id,
-        "audio_filename": audio.filename,
-        "pitch_shift": pitch_shift,
-        "index_rate": index_rate,
-        "f0_method": f0_method,
-        "vocal_volume": vocal_volume,
-        "mr_volume": mr_volume,
-        "clean_audio": clean_audio,
-        "clean_strength": clean_strength,
-        "protect": protect,
-        "rms_mix_rate": rms_mix_rate,
-        "filter_radius": filter_radius,
-        "hop_length": hop_length,
-        "post_reverb": post_reverb,
-        "harmonic_enhance": harmonic_enhance,
-        "separate_vocals": separate_vocals,
-    }
+    with _job_states_lock:
+        _active_job_states[job_id] = {
+            "type": "convert",
+            "model_id": model_id,
+            "audio_filename": audio.filename,
+            "pitch_shift": pitch_shift,
+            "index_rate": index_rate,
+            "f0_method": f0_method,
+            "vocal_volume": vocal_volume,
+            "mr_volume": mr_volume,
+            "clean_audio": clean_audio,
+            "clean_strength": clean_strength,
+            "protect": protect,
+            "rms_mix_rate": rms_mix_rate,
+            "filter_radius": filter_radius,
+            "hop_length": hop_length,
+            "post_reverb": post_reverb,
+            "harmonic_enhance": harmonic_enhance,
+            "separate_vocals": separate_vocals,
+        }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -2317,7 +2344,9 @@ async def start_conversion(
             audio_url = upload_to_r2(temp_path, audio_r2_key)
             payload["audio_url"] = audio_url
             # 재개용 상태에 R2 URL 저장 (temp 파일 삭제 후에도 재개 가능)
-            _active_job_states[job_id]["audio_url"] = audio_url
+            with _job_states_lock:
+                if job_id in _active_job_states:
+                    _active_job_states[job_id]["audio_url"] = audio_url
         except Exception as e:
             print(f"[Convert] R2 audio upload failed: {e}")
             file_size = temp_path.stat().st_size
@@ -2410,7 +2439,8 @@ async def start_conversion(
                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
         except Exception:
             pass
-        _active_job_states.pop(job_id, None)
+        with _job_states_lock:
+            _active_job_states.pop(job_id, None)
 
     return {"job_id": job_id}
 
@@ -2475,8 +2505,10 @@ async def cancel_job(job_id: str):
         )
 
     # 활성 상태 정리
-    _active_job_states.pop(job_id, None)
-    _poll_error_counts.pop(job_id, None)
+    with _job_states_lock:
+        _active_job_states.pop(job_id, None)
+    with _poll_errors_lock:
+        _poll_error_counts.pop(job_id, None)
     preprocess_file_map.pop(job_id, None)
 
     return {"status": "cancelled"}
@@ -2499,7 +2531,8 @@ async def pause_job(job_id: str):
             cancelled_runpod = runpod_client.cancel_runpod_job(runpod_job_id)
 
         # 재개용 상태 저장 (_active_job_states에서 읽기)
-        pause_state = _active_job_states.get(job_id, {})
+        with _job_states_lock:
+            pause_state = _active_job_states.get(job_id, {}).copy()
         pause_state_json = json.dumps(pause_state, ensure_ascii=False)
 
         db.execute(
@@ -2579,7 +2612,8 @@ async def resume_job(job_id: str):
 
             with _preprocess_lock:
                 preprocess_file_map[job_id] = [r["id"] for r in existing_unprocessed]
-            _active_job_states[job_id] = pause_state.copy()
+            with _job_states_lock:
+                _active_job_states[job_id] = pause_state.copy()
 
             update_job(job_id, status="running", progress=3,
                       message=f"전처리 재개 중... ({len(unprocessed)}개 파일)")
@@ -2683,9 +2717,11 @@ async def resume_job(job_id: str):
                           else [str(UPLOAD_DIR / r["filename"]) for r in rows])
 
             training_file_names = [r["original_name"] for r in rows]
-            _training_file_map[job_id] = training_file_names
-            _active_job_states[job_id] = pause_state.copy()
-            _active_job_states[job_id]["model_name"] = model_name  # 업데이트된 이름
+            with _training_lock:
+                _training_file_map[job_id] = training_file_names
+            with _job_states_lock:
+                _active_job_states[job_id] = pause_state.copy()
+                _active_job_states[job_id]["model_name"] = model_name  # 업데이트된 이름
 
             config = load_config()
             r2_bucket = config.get("r2_bucket_name", "")
@@ -2745,7 +2781,8 @@ async def resume_job(job_id: str):
                 raise HTTPException(404, "모델을 찾을 수 없습니다.")
 
             update_job(job_id, status="running", progress=3, message="변환 재개 중...")
-            _active_job_states[job_id] = pause_state.copy()
+            with _job_states_lock:
+                _active_job_states[job_id] = pause_state.copy()
 
             config = load_config()
             r2_bucket = config.get("r2_bucket_name", "")
@@ -2784,7 +2821,9 @@ async def resume_job(job_id: str):
                     try:
                         audio_url = upload_to_r2(temp_path_resume, audio_r2_key)
                         payload["audio_url"] = audio_url
-                        _active_job_states[job_id]["audio_url"] = audio_url
+                        with _job_states_lock:
+                            if job_id in _active_job_states:
+                                _active_job_states[job_id]["audio_url"] = audio_url
                     except Exception as e:
                         file_size = temp_path_resume.stat().st_size
                         if file_size > 7_000_000:
@@ -2859,7 +2898,8 @@ async def resume_job(job_id: str):
         # 실패 시 메모리 맵 정리 (누수 방지)
         with _preprocess_lock:
             preprocess_file_map.pop(job_id, None)
-        _training_file_map.pop(job_id, None)
+        with _training_lock:
+            _training_file_map.pop(job_id, None)
         update_job(job_id, status="failed", message=f"재개 실패: {e}")
         raise HTTPException(500, f"재개 실패: {e}")
 
@@ -2887,8 +2927,10 @@ async def cleanup_all_stuck_jobs():
             WHERE status IN ('running', 'submitting')
         """, (datetime.now().isoformat(),))
     # 메모리 상태도 정리
-    _active_job_states.clear()
-    _poll_error_counts.clear()
+    with _job_states_lock:
+        _active_job_states.clear()
+    with _poll_errors_lock:
+        _poll_error_counts.clear()
     preprocess_file_map.clear()
     return {"cleaned": result.rowcount}
 

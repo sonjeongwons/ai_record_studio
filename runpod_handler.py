@@ -1388,6 +1388,10 @@ def _rvc_preprocess(
             for _gf16 in sorted(sr16k_dir.glob("*.wav")):
                 try:
                     _a16, _sr16_g = _sf_g.read(str(_gf16))
+                    if np.any(np.isnan(_a16)) or np.any(np.isinf(_a16)):
+                        log.warning(f"Corrupted 16k file {_gf16.name}, deleting")
+                        _gf16.unlink(missing_ok=True)
+                        continue
                     _sf_g.write(str(_gf16), _a16 * _norm_factor, samplerate=_sr16_g, subtype="PCM_16")
                 except Exception as _ne16:
                     log.warning(f"Normalization failed for 16k {_gf16.name}: {_ne16}")
@@ -2081,7 +2085,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     index_url: str = job_input.get("index_url", "")
     audio_b64: str = job_input.get("audio_data", "")
     audio_url: str = job_input.get("audio_url", "")
-    audio_filename: str = job_input.get("audio_filename", "input.wav")
+    audio_filename: str = Path(job_input.get("audio_filename", "input.wav")).name  # path traversal 방지
     # 명시적 타입 변환: RunPod job_input에서 문자열로 전달될 수 있음
     pitch_shift: int = int(job_input.get("pitch_shift", 0))
     index_rate: float = float(job_input.get("index_rate", 0.50))
@@ -2113,7 +2117,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # 파라미터 범위 클램프
     pitch_shift = max(-24, min(24, pitch_shift))
     index_rate = max(0.0, min(1.0, index_rate))
-    filter_radius = max(0, min(32, filter_radius))
+    filter_radius = max(1, min(32, filter_radius))  # min 1: 0은 일부 RVC 버전에서 오류
     rms_mix_rate = max(0.0, min(1.0, rms_mix_rate))
     protect = max(0.0, min(1.0, protect))
     clean_strength = max(0.0, min(1.0, clean_strength))
@@ -2165,6 +2169,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
             index_path = decode_b64_file(index_b64, work / "model.index")
         if index_path:
             log.info(f"Index file ready: {index_path.stat().st_size / 1024:.1f} KB")
+        else:
+            # 인덱스 없으면 index_rate 무의미 → 0으로 리셋 (FAISS 조회 방지)
+            if index_rate > 0:
+                log.info(f"No index file available, resetting index_rate {index_rate} → 0")
+                index_rate = 0.0
 
         # Decode input audio: download from URL or decode base64
         input_ext = Path(audio_filename).suffix.lower() or ".mp3"

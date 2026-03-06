@@ -5140,7 +5140,10 @@ trainDropzone.addEventListener('drop', function(e) {
 });
 trainFileInput.addEventListener('change', function(e) { handleTrainFiles(e.target.files); });
 
+var _uploadInProgress = false;
 async function handleTrainFiles(fileList) {
+  if (_uploadInProgress) { toast('업로드가 진행 중입니다. 잠시 기다려 주세요.', 'info'); return; }
+  _uploadInProgress = true;
   var form = new FormData();
   for (var i = 0; i < fileList.length; i++) form.append('files', fileList[i]);
   form.append('category', 'vocal');
@@ -5164,7 +5167,7 @@ async function handleTrainFiles(fileList) {
   } catch(e) {
     trainFileInput.value = '';
     toast('업로드 실패: ' + e.message, 'error');
-  }
+  } finally { _uploadInProgress = false; }
 }
 
 function renderFileList() {
@@ -5491,6 +5494,7 @@ async function pollPreprocessStatus() {
       return;
     }
     if (job.status === 'cancelled') {
+      if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
       document.getElementById('preprocess-ring').classList.remove('running');
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-idle').style.display = 'block';
@@ -5576,8 +5580,10 @@ function cancelPreprocess() {
   toast('전처리를 취소했습니다. 다시 시작하거나 건너뛸 수 있습니다.', 'info');
 }
 
+var _pauseResumeInProgress = false;  // 모든 pause/resume 공용 debounce 플래그
 async function pausePreprocess() {
-  if (!preprocessJobId) return;
+  if (!preprocessJobId || _pauseResumeInProgress) return;
+  _pauseResumeInProgress = true;
   if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
   setButtonLoading('btn-pause-preprocess', true);
   try {
@@ -5591,11 +5597,12 @@ async function pausePreprocess() {
   } catch(e) {
     setButtonLoading('btn-pause-preprocess', false);
     toast('일시정지 실패: ' + (e.message || ''), 'error');
-  }
+  } finally { _pauseResumeInProgress = false; }
 }
 
 async function resumePreprocess() {
-  if (!preprocessJobId) return;
+  if (!preprocessJobId || _pauseResumeInProgress) return;
+  _pauseResumeInProgress = true;
   setButtonLoading('btn-resume-preprocess', true);
   // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
   if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
@@ -5615,7 +5622,7 @@ async function resumePreprocess() {
   } catch(e) {
     setButtonLoading('btn-resume-preprocess', false);
     toast('재개 실패: ' + (e.message || ''), 'error');
-  }
+  } finally { _pauseResumeInProgress = false; }
 }
 
 async function resetPreprocess() {
@@ -5919,6 +5926,7 @@ async function pollTrainingStatus() {
       return;
     }
     if (job.status === 'cancelled') {
+      if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
       document.getElementById('train-ring').classList.remove('running');
       document.getElementById('train-info-status').textContent = '취소됨';
       document.getElementById('train-cancel-area').style.display = 'none';
@@ -6047,7 +6055,8 @@ async function cancelTraining() {
 }
 
 async function pauseTraining() {
-  if (!currentTrainJobId) return;
+  if (!currentTrainJobId || _pauseResumeInProgress) return;
+  _pauseResumeInProgress = true;
   if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
   setButtonLoading('btn-pause-train', true);
   try {
@@ -6062,11 +6071,12 @@ async function pauseTraining() {
   } catch(e) {
     setButtonLoading('btn-pause-train', false);
     toast('일시정지 실패: ' + (e.message || ''), 'error');
-  }
+  } finally { _pauseResumeInProgress = false; }
 }
 
 async function resumeTraining() {
-  if (!currentTrainJobId) return;
+  if (!currentTrainJobId || _pauseResumeInProgress) return;
+  _pauseResumeInProgress = true;
   setButtonLoading('btn-resume-train', true);
   // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
   if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
@@ -6087,7 +6097,7 @@ async function resumeTraining() {
   } catch(e) {
     setButtonLoading('btn-resume-train', false);
     toast('재개 실패: ' + (e.message || ''), 'error');
-  }
+  } finally { _pauseResumeInProgress = false; }
 }
 
 async function retryTraining() {
@@ -6396,6 +6406,12 @@ async function startConversion() {
     document.body.classList.remove('busy');
     setButtonLoading('btn-convert', false);
     currentConvertJobId = res.job_id;
+    if (!currentConvertJobId) {
+      toast('서버에서 작업 ID를 받지 못했습니다', 'error');
+      _submitting = false;
+      updateConvertBtn();
+      return;
+    }
     _convertStartTime = Date.now();
     _convertPaused = false;        // 이전 작업 일시정지 상태 초기화
     _convertPollErrors = 0;        // 이전 작업 오류 카운트 초기화
@@ -6557,6 +6573,7 @@ async function pollConvertStatus() {
       return;
     }
     if (job.status === 'cancelled') {
+      if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
       document.getElementById('convert-ring').classList.remove('running');
       document.getElementById('convert-cancel-area').style.display = 'none';
       currentConvertJobId = null;
@@ -6782,6 +6799,7 @@ async function startBatchConversion() {
     } catch(e) {
       batchResults[i].status = 'failed';
       batchResults[i].error = e.message;
+      toast('배치 ' + (i+1) + '/' + batchResults.length + ' 제출 실패: ' + (e.message || ''), 'error');
     }
     renderBatchProgress();
     if (_batchCancelled) break;
@@ -7029,7 +7047,8 @@ async function cancelConversion() {
 }
 
 async function pauseConversion() {
-  if (!currentConvertJobId) return;
+  if (!currentConvertJobId || _pauseResumeInProgress) return;
+  _pauseResumeInProgress = true;
   if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
   setButtonLoading('btn-pause-convert', true);
   try {
@@ -7044,11 +7063,12 @@ async function pauseConversion() {
   } catch(e) {
     setButtonLoading('btn-pause-convert', false);
     toast('일시정지 실패: ' + (e.message || ''), 'error');
-  }
+  } finally { _pauseResumeInProgress = false; }
 }
 
 async function resumeConversion() {
-  if (!currentConvertJobId) return;
+  if (!currentConvertJobId || _pauseResumeInProgress) return;
+  _pauseResumeInProgress = true;
   setButtonLoading('btn-resume-convert', true);
   // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
   if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
@@ -7069,7 +7089,7 @@ async function resumeConversion() {
   } catch(e) {
     setButtonLoading('btn-resume-convert', false);
     toast('재개 실패: ' + (e.message || ''), 'error');
-  }
+  } finally { _pauseResumeInProgress = false; }
 }
 
 async function loadConversionHistory() {
