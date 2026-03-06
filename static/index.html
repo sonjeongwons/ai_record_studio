@@ -2515,6 +2515,161 @@ input.input-error   { border-color: var(--red) !important; animation: inputError
   75%     { transform: translateX(4px); }
 }
 
+/* ════════════════════════════════════════════════════
+   COMPREHENSIVE UI/UX POLISH — ROUND 2
+   ════════════════════════════════════════════════════ */
+
+/* ─── 텍스트 선택 스타일 ─── */
+::selection { background: rgba(139,92,246,0.35); color: var(--text); }
+::-moz-selection { background: rgba(139,92,246,0.35); color: var(--text); }
+
+/* ─── 전역 placeholder 스타일 ─── */
+input::placeholder, textarea::placeholder { color: var(--text3); opacity: 1; }
+
+/* ─── 브라우저 자동완성 스타일 오버라이드 ─── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: inset 0 0 0 999px var(--bg2) !important;
+  -webkit-text-fill-color: var(--text) !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* ─── Firefox range 썸 스타일 ─── */
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--violet);
+  cursor: pointer;
+  border: 1.5px solid var(--bg);
+  box-shadow: 0 0 8px rgba(139,92,246,0.45);
+}
+input[type="range"]:focus::-moz-range-thumb {
+  box-shadow: 0 0 0 4px rgba(139,92,246,0.22), 0 0 14px rgba(139,92,246,0.55);
+}
+input[type="range"]::-moz-range-track {
+  background: var(--bg3);
+  height: 4px;
+  border-radius: 4px;
+}
+
+/* ─── skeleton 속도 개선 (1.6s → 1.2s) ─── */
+.skeleton { animation-duration: 1.2s !important; }
+
+/* ─── 배치/다운로드 프로그레스 바 너비 트랜지션 ─── */
+.batch-progress-fill, .download-progress-fill {
+  transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ─── 오디오 시크바 호버 ─── */
+.audio-seekbar:hover { background: rgba(139,92,246,0.18) !important; }
+.result-seekbar:hover { background: rgba(139,92,246,0.18) !important; }
+
+/* ─── Live cost bar 호버 ─── */
+.live-cost-bar {
+  transition: background var(--transition), border-color var(--transition);
+}
+.live-cost-bar:hover {
+  background: rgba(139,92,246,0.1);
+  border-color: rgba(139,92,246,0.28);
+}
+
+/* ─── Empty state 아이콘 베이스 트랜지션 ─── */
+.empty-state-enhanced .empty-icon,
+.empty-state .empty-icon {
+  transition: background var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition-slow);
+}
+
+/* ─── adv-toggle-header 키보드 포커스 ─── */
+.adv-toggle-header:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ─── page-btn 포커스 ─── */
+.page-btn:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
+
+/* ─── filter-btn 포커스 ─── */
+.filter-btn:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
+
+/* ─── scroll-top-btn 포커스 ─── */
+.scroll-top-btn:focus-visible {
+  outline: 2px solid rgba(255,255,255,0.7);
+  outline-offset: 3px;
+}
+
+/* ─── sub-tab 포커스 ─── */
+.sub-tab:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
+
+/* ─── 토글 버튼 active 상태 ─── */
+#toggle-mix:active, #toggle-vocal:active { transform: scale(0.95); }
+.btn-pause:disabled, .btn-resume:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ─── 모델 카드 선택 트랜지션 ─── */
+.model-card { transition: border-color var(--transition), background var(--transition), box-shadow var(--transition), transform var(--transition); }
+
+/* ─── alert 색상 CSS variable 사용 ─── */
+.alert-warn .alert-text  { color: var(--amber); }
+.alert-success .alert-text { color: var(--emerald); }
+
+/* ─── 검색 입력 포커스 시 아이콘 색상 트랜지션 ─── */
+.search-input-wrap svg { transition: color var(--transition); }
+.search-input:focus + svg,
+.search-input-wrap:focus-within svg { color: var(--violet); }
+
+/* ─── confirm dialog 백드롭 블러 강화 + 다이얼로그 timing 통일 ─── */
+.confirm-overlay { backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important; }
+.confirm-overlay { animation-duration: 0.22s !important; }
+.confirm-dialog { animation-duration: 0.22s !important; }
+
+/* ─── 일시정지 영역 gentle pulse ─── */
+@keyframes gentlePulseAmber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.35); }
+  50%       { box-shadow: 0 0 0 6px rgba(245,158,11,0); }
+}
+.badge-paused { animation: gentlePulseAmber 2.2s ease-in-out infinite; }
+
+/* ─── 파일/배치 행 삭제 버튼 트랜지션 보장 ─── */
+.batch-remove, .file-delete {
+  transition: opacity var(--transition), color var(--transition), background var(--transition) !important;
+}
+
+/* ─── 변환 액션 영역 트랜지션 보장 ─── */
+.conv-actions { transition: opacity var(--transition) !important; }
+
+/* ─── 모션 감소 선호 사용자를 위한 접근성 ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton { animation: none !important; background: rgba(255,255,255,0.06) !important; }
+}
+
+/* ─── 고대비 선호 사용자를 위한 접근성 ─── */
+@media (prefers-contrast: more) {
+  .btn { border: 1px solid currentColor !important; }
+  input, select, textarea {
+    border: 1.5px solid rgba(255,255,255,0.4) !important;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--violet) !important;
+    outline: 2px solid var(--violet) !important;
+  }
+  .card { border-color: rgba(255,255,255,0.15) !important; }
+}
 
 </style>
 </head>
@@ -3387,8 +3542,8 @@ input.input-error   { border-color: var(--red) !important; animation: inputError
       <div id="convert-result-toggle" class="mt-16" style="display:none">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="display:inline-flex;gap:4px;background:var(--bg3);padding:3px;border-radius:10px">
-            <button class="btn" id="toggle-mix" onclick="switchResultAudio('mix')" title="변환된 보컬과 원곡 반주를 합친 완성본">🎵 최종 믹스</button>
-            <button class="btn" id="toggle-vocal" onclick="switchResultAudio('vocal')" title="반주 없이 변환된 목소리만 들을 수 있습니다">🎤 변환 보컬만</button>
+            <button class="btn" id="toggle-mix" onclick="switchResultAudio('mix')" title="변환된 보컬과 원곡 반주를 합친 완성본" aria-pressed="true">🎵 최종 믹스</button>
+            <button class="btn" id="toggle-vocal" onclick="switchResultAudio('vocal')" title="반주 없이 변환된 목소리만 들을 수 있습니다" aria-pressed="false">🎤 변환 보컬만</button>
           </div>
           <span style="font-size:11px;color:var(--text3)">최종 믹스 = 변환 보컬 + 반주 / 변환 보컬만 = 목소리만</span>
         </div>
@@ -4228,25 +4383,51 @@ function escapeHtml(str) {
 function showConfirm(title, message, onConfirm) {
   var overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
-  overlay.innerHTML = '<div class="confirm-dialog">' +
-    '<h3>' + escapeHtml(title) + '</h3>' +
-    '<p>' + escapeHtml(message) + '</p>' +
+  var titleId = 'confirm-title-' + Math.random().toString(36).substr(2, 6);
+  var msgId   = 'confirm-msg-'   + Math.random().toString(36).substr(2, 6);
+  overlay.innerHTML = '<div class="confirm-dialog" role="alertdialog" aria-modal="true"' +
+    ' aria-labelledby="' + titleId + '" aria-describedby="' + msgId + '">' +
+    '<h3 id="' + titleId + '">' + escapeHtml(title) + '</h3>' +
+    '<p id="' + msgId + '">' + escapeHtml(message) + '</p>' +
     '<div class="confirm-actions">' +
     '<button class="btn btn-secondary" id="confirm-cancel-btn">취소</button>' +
     '<button class="btn btn-danger-solid" id="confirm-ok-btn">확인</button>' +
     '</div></div>';
   document.body.appendChild(overlay);
 
+  // 포커스 트랩: 다이얼로그 내 첫 버튼에 포커스 이동
+  var prevFocus = document.activeElement;
+  setTimeout(function() {
+    var okBtn = document.getElementById('confirm-ok-btn');
+    if (okBtn) okBtn.focus();
+  }, 50);
+
   function closeOverlay() {
     if (!overlay.parentNode) return;
     overlay.remove();
-    document.removeEventListener('keydown', escHandler);
+    document.removeEventListener('keydown', trapHandler);
+    // 이전 포커스 복원
+    if (prevFocus && prevFocus.focus) prevFocus.focus();
   }
+
+  // Tab 포커스 트랩
+  function trapHandler(e) {
+    if (e.key === 'Escape') { closeOverlay(); return; }
+    if (e.key !== 'Tab') return;
+    var focusable = overlay.querySelectorAll('button');
+    if (!focusable.length) return;
+    var first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+    }
+  }
+
   document.getElementById('confirm-ok-btn').onclick = function() { closeOverlay(); onConfirm(); };
   document.getElementById('confirm-cancel-btn').onclick = closeOverlay;
   overlay.onclick = function(e) { if (e.target === overlay) closeOverlay(); };
-  var escHandler = function(e) { if (e.key === 'Escape') closeOverlay(); };
-  document.addEventListener('keydown', escHandler);
+  document.addEventListener('keydown', trapHandler);
 }
 
 function formatSize(bytes) {
@@ -5025,7 +5206,7 @@ function renderFileList() {
     // 체크박스 상태 복원 (이전에 체크 해제했으면 유지)
     var isChecked = (f.id in prevChecked) ? prevChecked[f.id] : true;
 
-    return '<div class="file-item" style="flex-wrap:wrap">' +
+    return '<div class="file-item" data-file-id="' + f.id + '" style="flex-wrap:wrap">' +
       '<label style="display:flex;align-items:center;cursor:pointer;margin-right:4px" title="학습에 포함">' +
         '<input type="checkbox" class="train-file-cb" data-file-id="' + f.id + '" ' +
           (isChecked ? 'checked ' : '') +
@@ -5092,15 +5273,35 @@ function toggleSelectAll(checked) {
   updateTrainSelection();
 }
 
+function _fadeRemoveEl(el, cb) {
+  if (!el) { if (cb) cb(); return; }
+  el.style.transition = 'opacity 0.22s ease, transform 0.22s ease, max-height 0.25s ease';
+  el.style.overflow = 'hidden';
+  el.style.opacity = '0';
+  el.style.transform = 'translateX(-8px)';
+  el.style.maxHeight = el.offsetHeight + 'px';
+  setTimeout(function() {
+    el.style.maxHeight = '0';
+    el.style.marginBottom = '0';
+    el.style.padding = '0';
+  }, 50);
+  setTimeout(function() { if (cb) cb(); }, 280);
+}
+
 function deleteFile(id) {
   var file = uploadedFiles.find(function(f) { return f.id === id; });
   var name = file ? file.original_name || file.filename : '파일';
   showConfirm('파일 삭제', '"' + name + '" 파일을 삭제하시겠습니까?', function() {
-    api('/files/' + id, { method: 'DELETE' }).then(function() {
-      uploadedFiles = uploadedFiles.filter(function(f) { return f.id !== id; });
-      renderFileList();
-    }).catch(function(e) {
-      toast('파일 삭제 실패: ' + e.message, 'error');
+    // 즉시 UI에서 페이드아웃
+    var row = document.querySelector('.file-item[data-file-id="' + id + '"]');
+    _fadeRemoveEl(row, function() {
+      api('/files/' + id, { method: 'DELETE' }).then(function() {
+        uploadedFiles = uploadedFiles.filter(function(f) { return f.id !== id; });
+        renderFileList();
+      }).catch(function(e) {
+        toast('파일 삭제 실패: ' + e.message, 'error');
+        renderFileList(); // 실패 시 목록 복원
+      });
     });
   });
 }
@@ -5174,6 +5375,11 @@ async function startPreprocess() {
     }
     preprocessJobId = res.job_id;
     _preprocessStartTime = Date.now();
+    // 전처리 진행 상태로 스크롤
+    setTimeout(function() {
+      var el = document.getElementById('preprocess-running');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
     pollPreprocessStatus();
   } catch(e) {
     setButtonLoading('btn-start-preprocess', false);
@@ -5361,6 +5567,8 @@ async function pausePreprocess() {
 async function resumePreprocess() {
   if (!preprocessJobId) return;
   setButtonLoading('btn-resume-preprocess', true);
+  // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
+  if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
   try {
     var res = await api('/jobs/' + preprocessJobId + '/resume', { method: 'POST' });
     if (res.job_id) {
@@ -5368,7 +5576,7 @@ async function resumePreprocess() {
     }
     _preprocessPaused = false;
     _preprocessPollErrors = 0;
-    _preprocessStartTime = Date.now();
+    // _preprocessStartTime 보존 — 재개 시 누적 경과 시간 ETA 유지
     document.getElementById('preprocess-paused').style.display = 'none';
     document.getElementById('preprocess-running').style.display = 'block';
     setButtonLoading('btn-resume-preprocess', false);
@@ -5546,27 +5754,30 @@ async function startTraining() {
   try { await _doStartTraining(); } finally { _submitting = false; }
 }
 async function _doStartTraining() {
-  var modelName = document.getElementById('model-name').value.trim();
+  var modelNameEl = document.getElementById('model-name');
+  var modelName = modelNameEl ? modelNameEl.value.trim() : '';
+  function markNameError() {
+    if (modelNameEl) { modelNameEl.classList.add('input-error'); modelNameEl.focus(); }
+  }
   if (!modelName) {
     toast('모델 이름을 입력해 주세요.', 'error');
-    document.getElementById('model-name').focus();
-    return;
+    markNameError(); return;
   }
   if (modelName.length > 100) {
     toast('모델 이름은 100자 이하여야 합니다.', 'error');
-    return;
+    markNameError(); return;
   }
   if (/[\/\\:*?"<>|]/.test(modelName)) {
     toast('모델 이름에 사용할 수 없는 문자가 포함되어 있습니다: / \\ : * ? " < > |', 'error');
-    return;
+    markNameError(); return;
   }
   if (models.length > 0 && models.find(function(m) {
     return (m.name || '').toLowerCase() === modelName.toLowerCase();
   })) {
     toast('"' + modelName + '" 이름의 모델이 이미 존재합니다. 다른 이름을 입력하세요.', 'error');
-    document.getElementById('model-name').focus();
-    return;
+    markNameError(); return;
   }
+  if (modelNameEl) modelNameEl.classList.remove('input-error');
   var epochs = document.getElementById('train-epochs').value;
   var sr = document.getElementById('train-sr').value;
   var selectedIds = getSelectedFileIds();
@@ -5608,6 +5819,11 @@ async function _doStartTraining() {
     document.getElementById('train-info-status').textContent = '진행 중';
 
     toast('학습이 시작되었습니다', 'info');
+    // 학습 진행 상태로 스크롤
+    setTimeout(function() {
+      var el = document.getElementById('train-progress');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
     pollTrainingStatus();
   } catch(e) {
     document.body.classList.remove('busy');
@@ -5664,6 +5880,11 @@ async function pollTrainingStatus() {
           ? '모델 "' + job.result.model_name + '" 이 준비되었습니다'
           : '학습이 완료되었습니다';
       toast('학습 완료!', 'success');
+      // 학습 완료 결과로 스크롤
+      setTimeout(function() {
+        var donEl = document.getElementById('train-done');
+        if (donEl) donEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 200);
       updateNavBadges();
       return;
     }
@@ -5816,6 +6037,8 @@ async function pauseTraining() {
 async function resumeTraining() {
   if (!currentTrainJobId) return;
   setButtonLoading('btn-resume-train', true);
+  // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
+  if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
   try {
     var res = await api('/jobs/' + currentTrainJobId + '/resume', { method: 'POST' });
     if (res.job_id) {
@@ -5823,7 +6046,7 @@ async function resumeTraining() {
     }
     _trainPaused = false;
     _trainPollErrors = 0;
-    _trainStartTime = Date.now();
+    // _trainStartTime 보존 — 재개 시 누적 경과 시간 ETA 유지
     document.getElementById('train-paused-area').style.display = 'none';
     document.getElementById('train-cancel-area').style.display = 'block';
     document.getElementById('train-info-status').textContent = '실행 중';
@@ -6032,7 +6255,7 @@ async function loadModels() {
           '</div>' +
         '</div>';
       }
-      return '<div class="model-card ' + (m.id === selectedModelId ? 'selected' : '') + '" onclick="selectModel(' + m.id + ', this)">' +
+      return '<div class="model-card ' + (m.id === selectedModelId ? 'selected' : '') + '" data-model-id="' + m.id + '" onclick="selectModel(' + m.id + ', this)">' +
         '<div class="model-icon">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>' +
         '</div>' +
@@ -6065,12 +6288,16 @@ function selectModel(id, el) {
 
 function deleteModel(id, name) {
   showConfirm('모델 삭제', '"' + name + '" 모델을 영구 삭제하시겠습니까? 삭제된 모델은 복구할 수 없습니다.', function() {
-    api('/models/' + id, { method: 'DELETE' }).then(function() {
-      if (selectedModelId === id) selectedModelId = null;
-      toast('"' + name + '" 모델이 삭제되었습니다', 'info');
-      loadModels();
-    }).catch(function(e) {
-      toast('모델 삭제 실패: ' + e.message, 'error');
+    var card = document.querySelector('.model-card[data-model-id="' + id + '"]');
+    _fadeRemoveEl(card, function() {
+      api('/models/' + id, { method: 'DELETE' }).then(function() {
+        if (selectedModelId === id) selectedModelId = null;
+        toast('"' + name + '" 모델이 삭제되었습니다', 'info');
+        loadModels();
+      }).catch(function(e) {
+        toast('모델 삭제 실패: ' + e.message, 'error');
+        loadModels(); // 실패 시 목록 복원
+      });
     });
   });
 }
@@ -6138,6 +6365,11 @@ async function startConversion() {
     document.getElementById('convert-progress').style.display = 'block';
 
     toast('변환이 시작되었습니다', 'info');
+    // 변환 진행 상태로 스크롤
+    setTimeout(function() {
+      var el = document.getElementById('convert-progress');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 100);
     updateNavBadges();
     pollConvertStatus();
   } catch(e) {
@@ -6214,8 +6446,8 @@ async function pollConvertStatus() {
             // 믹스가 기본 재생 → 믹스 버튼 active 초기화
             var tMix = document.getElementById('toggle-mix');
             var tVocal = document.getElementById('toggle-vocal');
-            if (tMix) tMix.classList.add('active');
-            if (tVocal) tVocal.classList.remove('active');
+            if (tMix) { tMix.classList.add('active'); tMix.setAttribute('aria-pressed', 'true'); }
+            if (tVocal) { tVocal.classList.remove('active'); tVocal.setAttribute('aria-pressed', 'false'); }
           }
         } else {
           if (mixedBtn) mixedBtn.style.display = 'none';
@@ -6276,6 +6508,11 @@ async function pollConvertStatus() {
         }
       }
       toast('변환이 완료되었습니다', 'success');
+      // 변환 결과로 스크롤
+      setTimeout(function() {
+        var done = document.getElementById('convert-done');
+        if (done) done.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 300);
       updateNavBadges();
       loadConversionHistory();
       return;
@@ -6418,11 +6655,13 @@ function switchResultAudio(mode) {
   var mixBtn = document.getElementById('toggle-mix');
   var vocalBtn = document.getElementById('toggle-vocal');
   if (mode === 'mix') {
-    mixBtn.classList.add('active');
-    vocalBtn.classList.remove('active');
+    mixBtn.classList.add('active');   vocalBtn.classList.remove('active');
+    mixBtn.setAttribute('aria-pressed', 'true');
+    vocalBtn.setAttribute('aria-pressed', 'false');
   } else {
-    vocalBtn.classList.add('active');
-    mixBtn.classList.remove('active');
+    vocalBtn.classList.add('active'); mixBtn.classList.remove('active');
+    vocalBtn.setAttribute('aria-pressed', 'true');
+    mixBtn.setAttribute('aria-pressed', 'false');
   }
 }
 
@@ -6462,6 +6701,11 @@ async function startBatchConversion() {
   renderBatchProgress();
 
   toast(batchFiles.length + '개 파일 일괄 변환 시작', 'info');
+  // 배치 진행 상태로 스크롤
+  setTimeout(function() {
+    var el = document.getElementById('batch-progress');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 100);
 
   for (var i = 0; i < batchResults.length; i++) {
     batchResults[i].status = 'processing';
@@ -6766,6 +7010,8 @@ async function pauseConversion() {
 async function resumeConversion() {
   if (!currentConvertJobId) return;
   setButtonLoading('btn-resume-convert', true);
+  // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
+  if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
   try {
     var res = await api('/jobs/' + currentConvertJobId + '/resume', { method: 'POST' });
     if (res.job_id) {
@@ -6773,7 +7019,7 @@ async function resumeConversion() {
     }
     _convertPaused = false;
     _convertPollErrors = 0;
-    _convertStartTime = Date.now();
+    // _convertStartTime 보존 — 재개 시 누적 경과 시간 ETA 유지
     document.getElementById('convert-paused-area').style.display = 'none';
     document.getElementById('convert-cancel-area').style.display = 'block';
     document.getElementById('convert-status-msg').textContent = 'GPU 변환 중...';
@@ -7566,6 +7812,26 @@ document.addEventListener('DOMContentLoaded', function() {
   }, 200);
   // Initialize all slider fills
   updateAllSliderFills();
+
+  // adv-toggle-header 키보드 접근성: tabindex + Enter/Space 지원
+  document.querySelectorAll('.adv-toggle-header').forEach(function(header) {
+    if (!header.getAttribute('tabindex')) header.setAttribute('tabindex', '0');
+    if (!header.getAttribute('role')) header.setAttribute('role', 'button');
+    header.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleAdvSettings(header);
+      }
+    });
+  });
+
+  // 프로그레스 링 SVG에 접근성 레이블 추가
+  document.querySelectorAll('.progress-ring').forEach(function(ring) {
+    if (!ring.getAttribute('role')) {
+      ring.setAttribute('role', 'img');
+      ring.setAttribute('aria-label', '진행 중');
+    }
+  });
 });
 
 window.addEventListener('beforeunload', function(e) {
@@ -7583,6 +7849,9 @@ window.addEventListener('beforeunload', function(e) {
 });
 window.addEventListener('unload', function() {
   if (connectionTimer) { clearInterval(connectionTimer); connectionTimer = null; }
+  if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
+  if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
+  if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
