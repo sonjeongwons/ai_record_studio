@@ -200,7 +200,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         runpod.serverless.progress_update(job, "Decoding input files... (1/6)")
         raw_paths: list[Path] = []
         for i, fobj in enumerate(audio_files):
-            fname = fobj.get("filename", f"input_{i}.wav")
+            fname = Path(fobj.get("filename", f"input_{i}.wav")).name  # path traversal 방지
             dest = raw_dir / fname
             decode_b64_file(fobj["data_base64"], dest)
             raw_paths.append(dest)
@@ -510,6 +510,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
             device=device,
             shifts=5,       # 5 random time shifts → average = dramatically better SDR
             overlap=0.6,    # 60% overlap between segments = smoother transitions, fewer artifacts
+            seed=0,         # 재현성 보장 — 동일 입력 = 동일 분리 결과 (non-deterministic 방지)
         )
 
         vocal_paths: list[Path] = []
@@ -867,7 +868,9 @@ def _detect_silence_splits(
         result = subprocess.run(
             [
                 "ffmpeg", "-i", audio_path,
-                "-af", "silencedetect=noise=-35dB:d=0.3",
+                "-af", "silencedetect=noise=-45dB:d=0.4",
+                # -45dB: 부드러운 가성/여린 노래에서 오탐지 방지 (-35dB는 너무 공격적)
+                # d=0.4: 짧은 강세 사이 숨소리를 무음으로 오해하지 않도록
                 "-f", "null", "-",
             ],
             capture_output=True, text=True, timeout=120,
@@ -1313,21 +1316,16 @@ def _rvc_preprocess(
                     str(gt_path),
                 ])
 
-                # Peak normalize to -1 dBFS — preserves natural dynamics
-                # unlike loudnorm which compresses LRA to 7 LU
+                # 조용한 세그먼트 필터링만 수행 — per-slice 정규화는 하지 않음
+                # (글로벌 정규화는 루프 종료 후 일괄 적용 → 슬라이스 간 상대적 다이나믹스 보존)
                 import soundfile as _sf
                 _audio, _sr = _sf.read(str(gt_path))
-                _peak = np.max(np.abs(_audio))
-                if _peak > 0:
-                    _rms_db = 20 * np.log10(np.sqrt(np.mean(_audio ** 2)) + 1e-10)
-                    if _rms_db < -50:
-                        # 매우 조용한 세그먼트 (거의 무음) → 학습 데이터에서 제외
-                        # -50dBFS 이하만 스킵 — 약한 가성/부드러운 노래(-40~-50dBFS)는 보존
-                        gt_path.unlink(missing_ok=True)
-                        log.info(f"Skipped quiet segment ({_rms_db:.1f}dB): {padded}")
-                        continue
-                    _audio = _audio * (10.0 ** (-1 / 20) / _peak)  # 정확한 -1 dBFS = 0.89125
-                    _sf.write(str(gt_path), _audio, samplerate=_sr, subtype="PCM_16")
+                _rms_db = 20 * np.log10(np.sqrt(np.mean(_audio ** 2)) + 1e-10)
+                if _rms_db < -50:
+                    # 거의 무음 세그먼트만 제외 — 가성/여린 노래(-40~-50dBFS)는 보존
+                    gt_path.unlink(missing_ok=True)
+                    log.info(f"Skipped quiet segment ({_rms_db:.1f}dB): {padded}")
+                    continue
 
                 # Save at 16kHz for F0 & feature extraction
                 sr16k_path = sr16k_dir / f"{padded}.wav"
@@ -1342,13 +1340,6 @@ def _rvc_preprocess(
                     str(sr16k_path),
                 ])
 
-                # Peak normalize 16kHz version too
-                _audio16, _sr16 = _sf.read(str(sr16k_path))
-                _peak16 = np.max(np.abs(_audio16))
-                if _peak16 > 0:
-                    _audio16 = _audio16 * (10.0 ** (-1 / 20) / _peak16)  # 정확한 -1 dBFS
-                    _sf.write(str(sr16k_path), _audio16, samplerate=_sr16, subtype="PCM_16")
-
                 idx += 1
 
         except Exception as e:
@@ -1360,6 +1351,47 @@ def _rvc_preprocess(
 
     if idx == 0:
         raise RuntimeError("전처리에 성공한 오디오 파일이 없습니다")
+
+    # ── 글로벌 정규화 ──────────────────────────────────────────────────────────
+    # per-slice 정규화(각 슬라이스를 독립적으로 -1dBFS)는 슬라이스 간 상대 다이나믹스를 파괴함:
+    #   • 조용한 숨소리 → -1dBFS로 과증폭 → 모델이 비정상적 숨소리 레벨 학습
+    #   • 크고 작은 슬라이스가 모두 같은 레벨 → 다이나믹스 없는 AI스러운 출력
+    # 글로벌 정규화: 전체 학습셋의 최대 피크 기준으로 모든 슬라이스에 동일 계수 적용
+    #   → 슬라이스 간 상대적 볼륨 관계 보존 → 자연스러운 다이나믹스 학습
+    import soundfile as _sf_g
+    _gt_files = sorted(gt_dir.glob("*.wav"))
+    if _gt_files:
+        _global_peak = 0.0
+        for _gf in _gt_files:
+            try:
+                _a, _ = _sf_g.read(str(_gf))
+                _p = float(np.max(np.abs(_a)))
+                if _p > _global_peak:
+                    _global_peak = _p
+            except Exception:
+                continue
+        if _global_peak > 0:
+            _TARGET = 10.0 ** (-1 / 20)  # -1 dBFS = 0.89125
+            _norm_factor = _TARGET / _global_peak
+            log.info(
+                f"Global normalization: peak={_global_peak:.4f}, "
+                f"factor={_norm_factor:.4f} ({len(_gt_files)} slices)"
+            )
+            # GT 슬라이스 정규화
+            for _gf in _gt_files:
+                try:
+                    _a, _sr_g = _sf_g.read(str(_gf))
+                    _sf_g.write(str(_gf), _a * _norm_factor, samplerate=_sr_g, subtype="PCM_16")
+                except Exception as _ne:
+                    log.warning(f"Normalization failed for {_gf.name}: {_ne}")
+            # 16kHz 버전도 동일 팩터 적용 (F0 추출기 레벨 민감도 대응)
+            for _gf16 in sorted(sr16k_dir.glob("*.wav")):
+                try:
+                    _a16, _sr16_g = _sf_g.read(str(_gf16))
+                    _sf_g.write(str(_gf16), _a16 * _norm_factor, samplerate=_sr16_g, subtype="PCM_16")
+                except Exception as _ne16:
+                    log.warning(f"Normalization failed for 16k {_gf16.name}: {_ne16}")
+    # ──────────────────────────────────────────────────────────────────────────
 
     log.info(f"RVC preprocess completed: {idx} sliced segments → {gt_dir} + {sr16k_dir}")
 
@@ -2184,15 +2216,21 @@ def task_convert(job_input: dict, job: dict) -> dict:
             rvc_input = input_wav
 
         # --- Step 2b: Pre-RVC fricative de-esser ---
-        # HiFi-GAN 보코더는 mel-spectrogram에서 4-9kHz 치찰음을 과합성(hallucinate)함.
-        # RVC 입력 단계에서 미리 제거해 HiFi-GAN이 재합성할 여지를 줄임.
+        # HiFi-GAN 보코더는 mel-spectrogram에서 치찰음(ㅅ,ㅊ,ㅈ)을 과합성(hallucinate)함.
+        # RVC 입력 단계에서 좁은 대역(Q=3)으로 타겟팅 → HiFi-GAN 과합성 여지를 최소화.
+        #
+        # 기존 방식 (width_type=o:width=0.8~1.0) 문제:
+        #   4.5kHz에서 width=0.8옥타브 → 2.7kHz~7.5kHz를 -1dB 깎음 → 중역대 모음/자음 왜곡
+        #   8kHz에서 width=1.0옥타브 → 4kHz~16kHz를 -1.5dB 깎음 → 전체 고역 손실 → 발음 뭉개짐
+        #
+        # 개선: width_type=q (Q팩터) 사용 → 좁은 대역만 타겟
+        #   7kHz Q=3 → 5.8kHz~8.2kHz만 -2dB 감쇠 → 모음/자음 발음 보존, 치찰음만 제거
         pre_rvc_deessed = work / "pre_rvc_deessed.wav"
         try:
             run_ffmpeg([
                 "-i", str(rvc_input),
                 "-af", (
-                    "equalizer=f=4500:width_type=o:width=0.8:g=-1.0,"  # 4.5kHz pre-reduction
-                    "equalizer=f=8000:width_type=o:width=1.0:g=-1.5"   # 8kHz main sibilance target
+                    "equalizer=f=7000:width_type=q:width=3:g=-2.0"  # 7kHz Q=3 치찰음 좁은 대역 타겟
                 ),
                 "-acodec", "pcm_s16le",
                 "-ar", "44100",
@@ -2200,7 +2238,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
             ])
             if pre_rvc_deessed.exists() and pre_rvc_deessed.stat().st_size > 1000:
                 rvc_input = pre_rvc_deessed
-                log.info("Pre-RVC de-esser applied to reduce HiFi-GAN sibilance over-synthesis")
+                log.info("Pre-RVC de-esser applied (7kHz Q=3 -2dB) to reduce HiFi-GAN sibilance")
         except Exception as de_err:
             log.warning(f"Pre-RVC de-esser failed, using original: {de_err}")
 

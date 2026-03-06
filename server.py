@@ -65,6 +65,7 @@ _chunk_lock = threading.Lock()  # 청크 업로드 동시성 보호
 
 # 전처리 작업별 원본 파일 ID 추적 (완료 시 preprocessed=1 마킹용)
 preprocess_file_map: dict[str, list[int]] = {}
+_preprocess_lock = threading.Lock()  # preprocess_file_map 동시성 보호
 
 # RunPod 폴링 에러 카운터 (job_id별 추적)
 _poll_error_counts: dict[str, int] = {}
@@ -1971,7 +1972,8 @@ async def start_preprocess(
     skip_msg = f" ({skipped}개 파일은 이미 전처리됨)" if skipped else ""
 
     job_id = uuid.uuid4().hex[:12]
-    preprocess_file_map[job_id] = preprocess_file_ids
+    with _preprocess_lock:
+        preprocess_file_map[job_id] = preprocess_file_ids
     # 재개용 상태 저장
     _active_job_states[job_id] = {
         "type": "preprocess",
@@ -2022,7 +2024,8 @@ async def start_preprocess(
     except Exception as e:
         error_msg = classify_runpod_error(e)
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
-        preprocess_file_map.pop(job_id, None)
+        with _preprocess_lock:
+            preprocess_file_map.pop(job_id, None)
         _active_job_states.pop(job_id, None)
 
     return {"job_id": job_id, "segments": total_segments, "batches": len(batches),
@@ -2519,6 +2522,8 @@ async def resume_job(job_id: str):
         raise HTTPException(400, "RunPod API 설정이 필요합니다. 설정 페이지에서 확인하세요.")
 
     job_type = row["job_type"]
+    if job_type not in ("preprocess", "train", "convert"):
+        raise HTTPException(400, f"지원하지 않는 작업 유형입니다: {job_type}")
 
     try:
         if job_type == "preprocess":
@@ -2550,7 +2555,8 @@ async def resume_job(job_id: str):
             file_paths = [str(UPLOAD_DIR / r["filename"]) for r in existing_unprocessed]
             batches = prepare_files_for_runpod(file_paths)
 
-            preprocess_file_map[job_id] = [r["id"] for r in existing_unprocessed]
+            with _preprocess_lock:
+                preprocess_file_map[job_id] = [r["id"] for r in existing_unprocessed]
             _active_job_states[job_id] = pause_state.copy()
 
             update_job(job_id, status="running", progress=3,
@@ -2828,6 +2834,10 @@ async def resume_job(job_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        # 실패 시 메모리 맵 정리 (누수 방지)
+        with _preprocess_lock:
+            preprocess_file_map.pop(job_id, None)
+        _training_file_map.pop(job_id, None)
         update_job(job_id, status="failed", message=f"재개 실패: {e}")
         raise HTTPException(500, f"재개 실패: {e}")
 

@@ -1952,8 +1952,11 @@ input[type="range"].has-fill {
   position: fixed;
   z-index: 99999;
   pointer-events: none;
-  max-width: 320px;
+  max-width: 340px;
   min-width: 180px;
+  max-height: min(72vh, 460px);
+  overflow-y: auto;
+  overflow-x: hidden;
   background: #111128;
   color: #ddddf0;
   border: 1px solid rgba(139,92,246,0.35);
@@ -1971,10 +1974,16 @@ input[type="range"].has-fill {
   transition: opacity 0.16s ease, visibility 0.16s ease;
   word-break: keep-all;
   overflow-wrap: break-word;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139,92,246,0.4) transparent;
 }
+#global-tooltip::-webkit-scrollbar { width: 4px; }
+#global-tooltip::-webkit-scrollbar-track { background: transparent; }
+#global-tooltip::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.4); border-radius: 2px; }
 #global-tooltip.visible {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto;
 }
 /* 화살표 */
 #global-tooltip::after {
@@ -5517,6 +5526,7 @@ async function pollPreprocessStatus() {
   } catch(e) {
     _preprocessPollErrors++;
     if (_preprocessPollErrors >= 20) {
+      if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
       document.getElementById('preprocess-msg').textContent = '서버 연결 실패';
       toast('서버 연결 실패 - 전처리가 일시정지됩니다', 'error');
       _preprocessPaused = true;
@@ -5949,6 +5959,7 @@ async function pollTrainingStatus() {
     _trainPollErrors++;
     if (_trainPollErrors >= 20) {
       // 20 consecutive failures (~3 min) — auto-pause to stop billing
+      if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
       _trainPaused = true;
       _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
       document.getElementById('train-status-msg').textContent = '서버 연결 실패';
@@ -6581,6 +6592,7 @@ async function pollConvertStatus() {
     _convertPollErrors++;
     if (_convertPollErrors >= 20) {
       // auto-pause to stop billing
+      if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
       _convertPaused = true;
       _showPausedCost('convert-paused-cost-info', 'convert-paused-cost-val', _convertStartTime);
       document.getElementById('convert-status-msg').textContent = '서버 연결 실패';
@@ -7772,6 +7784,7 @@ function _enhanceToasts() {
 (function() {
   var tip = null;         // #global-tooltip 엘리먼트
   var hideTimer = null;
+  var HIDE_DELAY = 180;   // trigger mouseleave → 이 시간 후 숨김 (툴팁 위로 이동하면 취소)
 
   function getTooltip() {
     if (!tip) tip = document.getElementById('global-tooltip');
@@ -7796,18 +7809,19 @@ function _enhanceToasts() {
     var r = el.getBoundingClientRect();
     var vw = window.innerWidth;
     var vh = window.innerHeight;
-    var GAP = 10;          // 요소와 툴팁 사이 간격
-    var ARROW = 12;        // 화살표 높이
-    var tipW = 320;        // max-width
-    var tipH = 300;        // 최대 높이 예상 (렌더 전)
+    var GAP = 10;
+    var ARROW = 12;
+    var tipW = 340;
 
-    // 임시로 화면 밖에 표시해 실제 높이 측정
+    // max-height 적용 후 실제 높이 측정
+    var maxH = Math.min(vh * 0.72, 460);
+    box.style.maxHeight = maxH + 'px';
     box.style.left   = '-9999px';
     box.style.top    = '-9999px';
     box.style.visibility = 'hidden';
     box.style.opacity = '0';
     box.style.display = 'block';
-    var actualH = box.offsetHeight || tipH;
+    var actualH = Math.min(box.offsetHeight || maxH, maxH);
     var actualW = Math.min(box.offsetWidth || tipW, tipW);
 
     // ── 수직 위치 결정 ──
@@ -7838,11 +7852,17 @@ function _enhanceToasts() {
     box.style.cssText =
       'left:' + leftPx + 'px;' +
       'top:' + topPx + 'px;' +
+      'max-height:' + maxH + 'px;' +
       '--arrow-left:' + arrowLeft + 'px;';
     box.classList.add('visible');
   }
 
-  function hideTip() {
+  function hideTip(delay) {
+    clearTimeout(hideTimer);
+    if (delay) {
+      hideTimer = setTimeout(function() { hideTip(0); }, delay);
+      return;
+    }
     var box = getTooltip();
     if (!box) return;
     box.classList.remove('visible');
@@ -7853,9 +7873,14 @@ function _enhanceToasts() {
     }, 200);
   }
 
-  // 이벤트 위임: document 전체에서 .tip 감지
+  // 툴팁 자체에 마우스가 올라오면 hide 취소 (스크롤 가능하도록)
   document.addEventListener('mouseenter', function(e) {
     var el = e.target;
+    var box = getTooltip();
+    if (box && (el === box || box.contains(el))) {
+      clearTimeout(hideTimer);
+      return;
+    }
     if (el && el.classList && el.classList.contains('tip') && el.getAttribute('data-tip')) {
       showTip(el);
     }
@@ -7863,30 +7888,43 @@ function _enhanceToasts() {
 
   document.addEventListener('mouseleave', function(e) {
     var el = e.target;
+    var box = getTooltip();
+    // 툴팁 자체에서 벗어나면 바로 숨김
+    if (box && (el === box || box.contains(el))) {
+      hideTip(0);
+      return;
+    }
+    // 트리거 요소에서 벗어나면 딜레이 후 숨김 (툴팁 위로 이동 가능성)
     if (el && el.classList && el.classList.contains('tip')) {
-      hideTip();
+      hideTip(HIDE_DELAY);
     }
   }, true);
 
   // 터치 디바이스: tap으로 토글
   document.addEventListener('click', function(e) {
     var el = e.target;
+    var box = getTooltip();
+    // 툴팁 내부 클릭 시 닫지 않음
+    if (box && box.contains(el)) return;
     if (el && el.classList && el.classList.contains('tip') && el.getAttribute('data-tip')) {
-      var box = getTooltip();
       if (box && box.classList.contains('visible')) {
-        hideTip();
+        hideTip(0);
       } else {
         showTip(el);
       }
     } else {
-      // 다른 곳 클릭 시 닫기
-      hideTip();
+      hideTip(0);
     }
   }, true);
 
-  // 스크롤 시 숨김
-  document.addEventListener('scroll', hideTip, true);
-  window.addEventListener('resize', hideTip, false);
+  // 스크롤 시 숨김 (단, 툴팁 내부 스크롤은 제외)
+  document.addEventListener('scroll', function(e) {
+    var box = getTooltip();
+    if (box && box.contains(e.target)) return;
+    hideTip(0);
+  }, true);
+
+  window.addEventListener('resize', function() { hideTip(0); }, false);
 })();
 
 // ─── Model Card Keyboard Navigation ───
