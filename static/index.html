@@ -1943,46 +1943,63 @@ input[type="range"].has-fill {
   text-decoration: none;
 }
 .tip:hover { background: rgba(139,92,246,0.38); }
-/* 툴팁 말풍선 */
-.tip::before {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #13132b;
-  color: #ccccdf;
-  border: 1px solid rgba(139,92,246,0.28);
+/* 기존 CSS pseudo-element 툴팁 비활성화 (JS 전역 툴팁으로 대체) */
+.tip::before { content: none !important; display: none !important; }
+.tip::after  { content: none !important; display: none !important; }
+
+/* ─── 전역 Floating Tooltip (position:fixed — 화면 잘림 없음) ─── */
+#global-tooltip {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  max-width: 320px;
+  min-width: 180px;
+  background: #111128;
+  color: #ddddf0;
+  border: 1px solid rgba(139,92,246,0.35);
   border-radius: 10px;
   padding: 12px 15px;
   font-size: 12px;
-  line-height: 1.65;
+  line-height: 1.7;
   font-weight: 400;
-  width: 285px;
+  font-family: inherit;
   text-align: left;
-  pointer-events: none;
-  opacity: 0;
-  z-index: 9999;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.75);
-  transition: opacity 0.15s;
   white-space: pre-line;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.8), 0 2px 8px rgba(139,92,246,0.15);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s ease, visibility 0.16s ease;
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
-.tip::after {
+#global-tooltip.visible {
+  opacity: 1;
+  visibility: visible;
+}
+/* 화살표 */
+#global-tooltip::after {
   content: '';
   position: absolute;
-  bottom: calc(100% + 2px);
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: rgba(139,92,246,0.28);
-  opacity: 0;
+  width: 0; height: 0;
+  border: 6px solid transparent;
   pointer-events: none;
-  transition: opacity 0.15s;
 }
-.tip:hover::before, .tip:hover::after { opacity: 1; }
-/* 우측 끝에 있는 툴팁은 왼쪽 정렬 */
-.tip.tip-left::before { left: auto; right: 0; transform: none; }
-.tip.tip-left::after  { left: auto; right: 4px; transform: none; }
+/* 화살표 — 아래 방향 (툴팁이 위에 있을 때) */
+#global-tooltip.arrow-down::after {
+  border-top-color: rgba(139,92,246,0.35);
+  top: 100%; left: var(--arrow-left, 50%);
+  transform: translateX(-50%);
+}
+/* 화살표 — 위 방향 (툴팁이 아래에 있을 때) */
+#global-tooltip.arrow-up::after {
+  border-bottom-color: rgba(139,92,246,0.35);
+  bottom: 100%; left: var(--arrow-left, 50%);
+  transform: translateX(-50%);
+}
+
+/* 우측 끝에 있는 툴팁 클래스는 유지 (JS에서 사용하지 않으므로 무해) */
+.tip.tip-left::before { content: none !important; }
+.tip.tip-left::after  { content: none !important; }
 /* 섹션 설명 박스 */
 .section-desc {
   font-size: 12px;
@@ -2109,12 +2126,12 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 .page-btn.active { transform: scale(1.04); }
 .page-btn.active:hover { transform: scale(1.06) translateY(-1px); }
 
-/* ─── Tooltip Appear Animation ─── */
+/* ─── Tooltip Appear Animation (전역 툴팁용) ─── */
 @keyframes tipFadeIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.tip:hover::before { animation: tipFadeIn 0.18s ease forwards; }
+#global-tooltip.visible { animation: tipFadeIn 0.16s ease forwards; }
 
 /* ─── Job Item Active State ─── */
 .job-item:active { transform: translateX(3px) scale(0.99); }
@@ -2686,6 +2703,9 @@ input[type="range"]::-moz-range-track {
 </svg>
 
 <!-- Toast Container -->
+<!-- 전역 Floating Tooltip -->
+<div id="global-tooltip" role="tooltip" aria-hidden="true"></div>
+
 <div class="toast-container" id="toast-container" role="status" aria-live="polite"></div>
 <div class="download-panel" id="download-panel"></div>
 
@@ -6310,6 +6330,13 @@ function updateConvertBtn() {
 async function startConversion() {
   if (_submitting) return;
   if (!selectedModelId) return;
+  // 변환 직전 selectedModelId 유효성 재확인 (모델 목록 갱신으로 삭제된 경우 방지)
+  if (!models.find(function(m) { return m.id === selectedModelId; })) {
+    toast('선택된 모델을 찾을 수 없습니다. 다시 선택해 주세요.', 'error');
+    selectedModelId = models.length ? models[0].id : null;
+    updateConvertBtn();
+    return;
+  }
 
   if (batchFiles.length > 1) {
     _submitting = true;
@@ -7736,6 +7763,131 @@ function _enhanceToasts() {
   });
   observer.observe(container, { childList: true });
 }
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 전역 Floating Tooltip 엔진
+// CSS ::before 대신 position:fixed div를 사용하여
+// overflow:hidden/scroll 컨테이너에서도 잘리지 않음
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+(function() {
+  var tip = null;         // #global-tooltip 엘리먼트
+  var hideTimer = null;
+
+  function getTooltip() {
+    if (!tip) tip = document.getElementById('global-tooltip');
+    return tip;
+  }
+
+  function showTip(el) {
+    var text = el.getAttribute('data-tip');
+    if (!text) return;
+    var box = getTooltip();
+    if (!box) return;
+
+    clearTimeout(hideTimer);
+
+    // 내용 설정
+    box.textContent = text;
+    box.classList.remove('arrow-up', 'arrow-down');
+    box.classList.remove('visible');
+    box.setAttribute('aria-hidden', 'false');
+
+    // 요소의 뷰포트 기준 위치
+    var r = el.getBoundingClientRect();
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var GAP = 10;          // 요소와 툴팁 사이 간격
+    var ARROW = 12;        // 화살표 높이
+    var tipW = 320;        // max-width
+    var tipH = 300;        // 최대 높이 예상 (렌더 전)
+
+    // 임시로 화면 밖에 표시해 실제 높이 측정
+    box.style.left   = '-9999px';
+    box.style.top    = '-9999px';
+    box.style.visibility = 'hidden';
+    box.style.opacity = '0';
+    box.style.display = 'block';
+    var actualH = box.offsetHeight || tipH;
+    var actualW = Math.min(box.offsetWidth || tipW, tipW);
+
+    // ── 수직 위치 결정 ──
+    var spaceAbove = r.top - GAP - ARROW;
+    var spaceBelow = vh - r.bottom - GAP - ARROW;
+    var placeAbove = spaceAbove >= actualH || spaceAbove >= spaceBelow;
+
+    var topPx;
+    if (placeAbove) {
+      topPx = r.top - actualH - GAP - ARROW;
+      if (topPx < 4) topPx = 4;
+      box.classList.add('arrow-down');
+    } else {
+      topPx = r.bottom + GAP + ARROW;
+      if (topPx + actualH > vh - 4) topPx = vh - actualH - 4;
+      if (topPx < 4) topPx = 4;
+      box.classList.add('arrow-up');
+    }
+
+    // ── 수평 위치 결정 (가운데 정렬, 화면 밖으로 나가면 보정) ──
+    var centerX = r.left + r.width / 2;
+    var leftPx  = centerX - actualW / 2;
+    leftPx = Math.max(8, Math.min(leftPx, vw - actualW - 8));
+
+    // ── 화살표 위치: 요소 중심 기준 ──
+    var arrowLeft = Math.max(16, Math.min(centerX - leftPx, actualW - 16));
+
+    box.style.cssText =
+      'left:' + leftPx + 'px;' +
+      'top:' + topPx + 'px;' +
+      '--arrow-left:' + arrowLeft + 'px;';
+    box.classList.add('visible');
+  }
+
+  function hideTip() {
+    var box = getTooltip();
+    if (!box) return;
+    box.classList.remove('visible');
+    box.setAttribute('aria-hidden', 'true');
+    hideTimer = setTimeout(function() {
+      box.style.left = '-9999px';
+      box.style.top  = '-9999px';
+    }, 200);
+  }
+
+  // 이벤트 위임: document 전체에서 .tip 감지
+  document.addEventListener('mouseenter', function(e) {
+    var el = e.target;
+    if (el && el.classList && el.classList.contains('tip') && el.getAttribute('data-tip')) {
+      showTip(el);
+    }
+  }, true);
+
+  document.addEventListener('mouseleave', function(e) {
+    var el = e.target;
+    if (el && el.classList && el.classList.contains('tip')) {
+      hideTip();
+    }
+  }, true);
+
+  // 터치 디바이스: tap으로 토글
+  document.addEventListener('click', function(e) {
+    var el = e.target;
+    if (el && el.classList && el.classList.contains('tip') && el.getAttribute('data-tip')) {
+      var box = getTooltip();
+      if (box && box.classList.contains('visible')) {
+        hideTip();
+      } else {
+        showTip(el);
+      }
+    } else {
+      // 다른 곳 클릭 시 닫기
+      hideTip();
+    }
+  }, true);
+
+  // 스크롤 시 숨김
+  document.addEventListener('scroll', hideTip, true);
+  window.addEventListener('resize', hideTip, false);
+})();
 
 // ─── Model Card Keyboard Navigation ───
 function _initModelCardKeys() {
