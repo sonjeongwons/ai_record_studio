@@ -2780,23 +2780,23 @@ input[type="range"]::-moz-range-track {
 </button>
 
 <!-- Sidebar -->
-<nav class="sidebar">
+<nav class="sidebar" role="tablist" aria-label="메인 내비게이션" aria-orientation="vertical">
   <div class="logo">
     <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="white" stroke-width="2"/></svg>
   </div>
-  <button class="nav-btn active" onclick="showPage('home')" data-page="home" aria-label="홈 대시보드 (Ctrl+1)">
+  <button class="nav-btn active" id="nav-home" role="tab" aria-selected="true" aria-controls="page-home" onclick="showPage('home')" data-page="home" aria-label="홈 대시보드 (Ctrl+1)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
     <span class="tooltip">홈 <span class="kbd-hint">Ctrl+1</span></span>
   </button>
-  <button class="nav-btn" onclick="showPage('train')" data-page="train" aria-label="학습 (Ctrl+2)">
+  <button class="nav-btn" id="nav-train" role="tab" aria-selected="false" aria-controls="page-train" onclick="showPage('train')" data-page="train" aria-label="학습 (Ctrl+2)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
     <span class="tooltip">학습 <span class="kbd-hint">Ctrl+2</span></span>
   </button>
-  <button class="nav-btn" onclick="showPage('convert')" data-page="convert" aria-label="변환 (Ctrl+3)">
+  <button class="nav-btn" id="nav-convert" role="tab" aria-selected="false" aria-controls="page-convert" onclick="showPage('convert')" data-page="convert" aria-label="변환 (Ctrl+3)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
     <span class="tooltip">변환 <span class="kbd-hint">Ctrl+3</span></span>
   </button>
-  <button class="nav-btn" onclick="showPage('settings')" data-page="settings" aria-label="설정 (Ctrl+4)">
+  <button class="nav-btn" id="nav-settings" role="tab" aria-selected="false" aria-controls="page-settings" onclick="showPage('settings')" data-page="settings" aria-label="설정 (Ctrl+4)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
     <span class="tooltip">설정 <span class="kbd-hint">Ctrl+4</span></span>
   </button>
@@ -2814,7 +2814,7 @@ input[type="range"]::-moz-range-track {
 <div class="main-inner">
 
 <!-- ═══════════════════════ HOME ═══════════════════════ -->
-<div id="page-home" class="page active">
+<div id="page-home" class="page active" role="tabpanel" aria-labelledby="nav-home">
   <h1>AI Voice Studio</h1>
   <p class="subtitle">음원을 업로드하고, AI 보이스 모델을 학습시키고, 새로운 음원을 만드세요</p>
   <p class="section-desc" style="margin-top:0;margin-bottom:20px">사용 순서: <strong>① 학습</strong> — 원하는 목소리의 녹음 파일을 올려서 AI 목소리를 만듭니다 → <strong>② 변환</strong> — 만든 AI 목소리로 노래를 변환합니다 → <strong>③ 다운로드</strong> — 완성된 음원을 저장합니다. 처음이시라면 왼쪽 메뉴의 <strong>학습</strong> 탭부터 시작하세요!</p>
@@ -2871,7 +2871,7 @@ input[type="range"]::-moz-range-track {
 </div>
 
 <!-- ═══════════════════════ TRAIN ═══════════════════════ -->
-<div id="page-train" class="page">
+<div id="page-train" class="page" role="tabpanel" aria-labelledby="nav-train">
   <h1>AI 보이스 모델 학습</h1>
   <p class="subtitle">녹음 파일이나 영상 파일을 업로드하면 AI가 목소리를 학습합니다</p>
   <p class="section-desc" style="margin-top:0;margin-bottom:20px">① <strong>파일 업로드</strong> — AI에게 가르칠 목소리 녹음 파일을 올립니다 → ② <strong>전처리</strong> — 파일을 학습에 맞게 자동 정리합니다 → ③ <strong>학습 설정</strong> — 옵션을 선택합니다 (기본값도 충분!) → ④ <strong>학습 시작</strong> — AI가 목소리를 배웁니다 (시간 소요). 학습이 끝나면 '변환' 탭에서 해당 목소리로 노래를 변환할 수 있습니다!</p>
@@ -3281,18 +3281,18 @@ input[type="range"]::-moz-range-track {
 </div>
 
 <!-- ═══════════════════════ CONVERT ═══════════════════════ -->
-<div id="page-convert" class="page">
+<div id="page-convert" class="page" role="tabpanel" aria-labelledby="nav-convert">
   <h1>음원 변환</h1>
   <p class="subtitle">학습된 AI 보이스 모델로 새로운 음원을 만들어보세요</p>
   <p class="section-desc" style="margin-top:0;margin-bottom:20px">① <strong>모델 선택</strong> — 사용할 AI 목소리를 고릅니다 → ② <strong>원곡 업로드</strong> — 변환하고 싶은 노래 파일을 올립니다 → ③ <strong>설정 조정</strong> — 키(음높이) 등을 조절합니다 (선택사항) → ④ <strong>변환 시작</strong> — AI가 노래를 변환합니다 (보통 1~3분). 완료 후 바로 들어보고 다운로드할 수 있습니다!</p>
 
   <!-- 서브탭: 변환 / 기록 -->
-  <div class="sub-tab-bar">
-    <button class="sub-tab active" id="sub-tab-convert" onclick="switchConvertSubTab('convert')">변환</button>
-    <button class="sub-tab" id="sub-tab-history" onclick="switchConvertSubTab('history')">기록</button>
+  <div class="sub-tab-bar" role="tablist" aria-label="변환 서브탭">
+    <button class="sub-tab active" id="sub-tab-convert" role="tab" aria-selected="true" aria-controls="convert-sub-convert" onclick="switchConvertSubTab('convert')">변환</button>
+    <button class="sub-tab" id="sub-tab-history" role="tab" aria-selected="false" aria-controls="convert-sub-history" onclick="switchConvertSubTab('history')">기록</button>
   </div>
 
-  <div id="convert-sub-convert">
+  <div id="convert-sub-convert" role="tabpanel" aria-labelledby="sub-tab-convert">
   <div id="convert-no-models" class="card" style="display:none">
     <div class="empty-state-enhanced">
       <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></div>
@@ -3399,10 +3399,10 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">노이즈 제거 <i class="tip" data-tip="변환된 결과물에서 '쉬익' 하는 기계음이나 잡음을 자동으로 제거합니다.\n\n📖 비유: 사진의 '노이즈 제거' 필터와 같습니다.\n\n🔢 언제 켜야 하나요?\n• OFF (기본) = 변환 결과가 깨끗하면 그대로 두세요\n• ON = 변환 후 기계음·잡음이 들릴 때 켜세요\n\n⚠️ 주의: 이미 깨끗한 결과에 켜면 오히려 목소리가 뭉개져 들릴 수 있습니다. '잡음이 있을 때만' 켜세요.\n\n💰 비용 영향: ON으로 켜면 변환 시간이 약 10~20% 더 걸립니다 (비용도 그만큼 증가).">ⓘ</i></span>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                <input type="checkbox" id="clean-audio-cb" style="accent-color:var(--violet)" onchange="document.getElementById('clean-audio-val').textContent=this.checked?'ON':'OFF';document.getElementById('clean-strength-row').style.display=this.checked?'':'none';estimateConversionCost()">
+              <span style="display:flex;align-items:center;gap:6px">
+                <label class="toggle-switch"><input type="checkbox" id="clean-audio-cb" onchange="document.getElementById('clean-audio-val').textContent=this.checked?'ON':'OFF';document.getElementById('clean-strength-row').style.display=this.checked?'':'none';estimateConversionCost()"><span class="toggle-track"></span></label>
                 <span class="slider-value" id="clean-audio-val">OFF</span>
-              </label>
+              </span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">변환 결과에 기계음·잡음이 들릴 때 켜세요</div>
             <div id="clean-strength-row" style="display:none;margin-top:8px">
@@ -3451,10 +3451,10 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">공간감 (리버브) <i class="tip" data-tip="변환된 목소리에 작은 방에 있는 듯한 자연스러운 공간감을 추가합니다.\n\n📖 왜 필요한가요?\nRVC 변환 결과는 완전히 건조(Dry)한 느낌으로 녹음되어 AI스러운 느낌이 납니다. 미세한 공간감을 추가하면 훨씬 자연스럽게 들립니다.\n\n🔢 설정 가이드:\n• ON (기본) = 미세한 공간감 추가\n• 강도 0.05~0.10 = 아주 작은 스튜디오 느낌\n• 강도 0.15~0.25 = 중간 크기 홀 느낌\n\n💡 처음엔 기본값(0.10)으로 사용하세요.">ⓘ</i></span>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                <input type="checkbox" id="post-reverb-cb" checked style="accent-color:var(--violet)" onchange="document.getElementById('post-reverb-val').textContent=this.checked?'ON':'OFF';document.getElementById('post-reverb-strength-row').style.display=this.checked?'':'none'">
+              <span style="display:flex;align-items:center;gap:6px">
+                <label class="toggle-switch"><input type="checkbox" id="post-reverb-cb" checked onchange="document.getElementById('post-reverb-val').textContent=this.checked?'ON':'OFF';document.getElementById('post-reverb-strength-row').style.display=this.checked?'':'none'"><span class="toggle-track"></span></label>
                 <span class="slider-value" id="post-reverb-val">ON</span>
-              </label>
+              </span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">AI 특유의 건조한 느낌을 제거하는 미세한 공간감 추가</div>
             <div id="post-reverb-strength-row" style="margin-top:8px">
@@ -3471,10 +3471,10 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">배음 강화 <i class="tip" data-tip="변환된 목소리의 음색에 자연스러운 배음(Harmonics)을 추가하여 AI 금속성 질감을 줄입니다.\n\n📖 왜 필요한가요?\nRVC 변환 결과는 디지털 특유의 차갑고 금속적인 느낌이 날 수 있습니다. 배음 강화는 실제 목소리에서 나오는 따뜻한 배음 성분을 부드럽게 추가합니다 (튜브 앰프와 비슷한 원리).\n\n💡 대부분의 경우 ON으로 두는 것이 권장됩니다.">ⓘ</i></span>
-              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-                <input type="checkbox" id="harmonic-enhance-cb" checked style="accent-color:var(--violet)" onchange="document.getElementById('harmonic-enhance-val').textContent=this.checked?'ON':'OFF'">
+              <span style="display:flex;align-items:center;gap:6px">
+                <label class="toggle-switch"><input type="checkbox" id="harmonic-enhance-cb" checked onchange="document.getElementById('harmonic-enhance-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
                 <span class="slider-value" id="harmonic-enhance-val">ON</span>
-              </label>
+              </span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">부드러운 배음 추가로 AI 금속성·차가운 질감 제거 (대부분 ON 권장)</div>
           </div>
@@ -3711,7 +3711,7 @@ input[type="range"]::-moz-range-track {
   </div><!-- /convert-sub-convert -->
 
   <!-- 변환 기록 서브탭 -->
-  <div id="convert-sub-history" style="display:none">
+  <div id="convert-sub-history" role="tabpanel" aria-labelledby="sub-tab-history" style="display:none">
     <div id="conversion-history" class="card">
       <div class="flex-between mb-16">
         <label class="label" style="margin:0">변환 기록</label>
@@ -3728,7 +3728,7 @@ input[type="range"]::-moz-range-track {
 </div>
 
 <!-- ═══════════════════════ SETTINGS ═══════════════════════ -->
-<div id="page-settings" class="page">
+<div id="page-settings" class="page" role="tabpanel" aria-labelledby="nav-settings">
   <h1>설정</h1>
   <p class="subtitle">RunPod GPU API 연결 설정</p>
 
@@ -4285,9 +4285,9 @@ function showPage(page) {
     if (mainEl2) _saveScrollPos(currentPage.id.replace('page-', ''), mainEl2.scrollTop);
   }
 
-  document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b) { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
   var navBtn = document.querySelector('[data-page="' + page + '"]');
-  if (navBtn) navBtn.classList.add('active');
+  if (navBtn) { navBtn.classList.add('active'); navBtn.setAttribute('aria-selected', 'true'); }
 
   // Fade out current page with animation
   if (currentPage) {
@@ -7481,12 +7481,16 @@ function switchConvertSubTab(tab) {
     showEl(historyDiv);
     tabConvert.classList.remove('active');
     tabHistory.classList.add('active');
+    tabConvert.setAttribute('aria-selected', 'false');
+    tabHistory.setAttribute('aria-selected', 'true');
     loadConversionHistory();
   } else {
     hideEl(historyDiv);
     showEl(convertDiv);
     tabConvert.classList.add('active');
     tabHistory.classList.remove('active');
+    tabConvert.setAttribute('aria-selected', 'true');
+    tabHistory.setAttribute('aria-selected', 'false');
   }
 }
 
@@ -8101,6 +8105,38 @@ document.addEventListener('DOMContentLoaded', function() {
       ring.setAttribute('aria-label', '진행 중');
     }
   });
+
+  // 사이드바 Arrow Key 네비게이션
+  document.querySelector('.sidebar').addEventListener('keydown', function(e) {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    var btns = Array.from(document.querySelectorAll('.nav-btn'));
+    var idx = btns.indexOf(document.activeElement);
+    if (idx < 0) return;
+    e.preventDefault();
+    var next = e.key === 'ArrowDown' ? (idx + 1) % btns.length : (idx - 1 + btns.length) % btns.length;
+    btns[next].focus();
+  });
+
+  // 서브탭 Arrow Key 네비게이션
+  document.querySelectorAll('.sub-tab-bar').forEach(function(bar) {
+    bar.addEventListener('keydown', function(e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      var tabs = Array.from(bar.querySelectorAll('.sub-tab'));
+      var idx = tabs.indexOf(document.activeElement);
+      if (idx < 0) return;
+      e.preventDefault();
+      var next = e.key === 'ArrowRight' ? (idx + 1) % tabs.length : (idx - 1 + tabs.length) % tabs.length;
+      tabs[next].focus();
+      tabs[next].click();
+    });
+  });
+
+  // Number input 마우스 휠 방지 (실수로 값이 변경되는 것 방지)
+  document.addEventListener('wheel', function(e) {
+    if (document.activeElement && document.activeElement.type === 'number') {
+      document.activeElement.blur();
+    }
+  }, { passive: true });
 });
 
 window.addEventListener('beforeunload', function(e) {
