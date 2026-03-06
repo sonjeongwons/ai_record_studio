@@ -1088,7 +1088,7 @@ input[type="range"].has-fill {
   opacity: 0;
 }
 .adv-panel.open {
-  max-height: 600px;
+  max-height: 2500px;
   opacity: 1;
 }
 .preprocess-progress {
@@ -3394,7 +3394,7 @@ input[type="range"]::-moz-range-track {
             <div style="font-size:11px;color:var(--text3);margin-top:2px">AI 특유의 건조한 느낌을 제거하는 미세한 공간감 추가</div>
             <div id="post-reverb-strength-row" style="margin-top:8px">
               <div class="slider-header">
-                <span class="slider-label" style="font-size:12px;color:var(--text2)">리버브 강도</span>
+                <span class="slider-label" style="font-size:12px;color:var(--text2)">리버브 강도 <i class="tip" data-tip="공간감(리버브)의 세기를 조절합니다.\n\n🔢 설정 가이드:\n• 0.05~0.10 = 작은 스튜디오 느낌 (추천)\n• 0.10~0.20 = 중간 홀 느낌\n• 0.20~0.30 = 큰 공연장 느낌\n\n⚠️ 0.20 이상은 울림이 강해 부자연스러울 수 있습니다.\n💡 처음엔 기본값 0.10 그대로 사용하세요.">ⓘ</i></span>
                 <span class="slider-value" id="post-reverb-strength-val">0.10</span>
               </div>
               <input type="range" id="post-reverb-slider" min="0" max="30" value="10" oninput="document.getElementById('post-reverb-strength-val').textContent=(this.value/100).toFixed(2)">
