@@ -396,15 +396,24 @@ def cleanup_stale_jobs_on_startup():
                     runpod_client.cancel_runpod_job(row["runpod_job_id"])
                 except Exception:
                     pass
+        now_iso = datetime.now().isoformat()
         active = db.execute("""
             UPDATE jobs
             SET status='failed',
                 message='서버 재시작으로 인한 자동 정리',
                 updated_at=?
             WHERE status IN ('running', 'submitting')
-        """, (datetime.now().isoformat(),))
+        """, (now_iso,))
         if active.rowcount > 0:
             print(f"  정리된 진행 중 작업: {active.rowcount}개")
+        # conversions 테이블도 동기화 — orphan 'processing' 레코드 정리
+        db.execute("""
+            UPDATE conversions SET status='failed'
+            WHERE status='processing'
+            AND job_id NOT IN (
+                SELECT id FROM jobs WHERE status NOT IN ('failed', 'cancelled', 'paused')
+            )
+        """)
 
 
 def restore_paused_jobs_state():
@@ -2181,6 +2190,7 @@ async def start_conversion(
     hop_length: int = Form(64),
     post_reverb: float = Form(0.10),
     harmonic_enhance: bool = Form(True),
+    separate_vocals: bool = Form(True),
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2247,6 +2257,7 @@ async def start_conversion(
         "hop_length": hop_length,
         "post_reverb": post_reverb,
         "harmonic_enhance": harmonic_enhance,
+        "separate_vocals": separate_vocals,
     }
     with get_db() as db:
         db.execute("""
@@ -2274,7 +2285,7 @@ async def start_conversion(
             "rms_mix_rate": rms_mix_rate,
             "filter_radius": filter_radius,
             "hop_length": hop_length,
-            "separate_vocals": True,
+            "separate_vocals": separate_vocals,
             "vocal_volume": vocal_volume,
             "mr_volume": mr_volume,
             "post_reverb": post_reverb,
@@ -2723,7 +2734,7 @@ async def resume_job(job_id: str):
                 "rms_mix_rate": pause_state.get("rms_mix_rate", 0.15),
                 "filter_radius": pause_state.get("filter_radius", 3),
                 "hop_length": pause_state.get("hop_length", 64),
-                "separate_vocals": True,
+                "separate_vocals": pause_state.get("separate_vocals", True),
                 "vocal_volume": pause_state.get("vocal_volume", 1.0),
                 "mr_volume": pause_state.get("mr_volume", 1.0),
                 "post_reverb": pause_state.get("post_reverb", 0.10),
@@ -2990,12 +3001,15 @@ _AUDIO_MIME = {
 async def download_file(filename: str):
     # Path traversal 방지
     safe_name = Path(filename).name
+    # 허용된 오디오 확장자만 서빙 (임의 파일 노출 방지)
+    ext = Path(safe_name).suffix.lower()
+    if ext not in _AUDIO_MIME:
+        raise HTTPException(400, f"지원하지 않는 파일 형식입니다: {ext}")
     filepath = OUTPUT_DIR / safe_name
     if not filepath.exists():
         raise HTTPException(404, "파일을 찾을 수 없습니다.")
     # 오디오 파일은 적절한 MIME 타입으로 서빙 (audio 태그 인라인 재생 + 다운로드 모두 지원)
-    ext = Path(safe_name).suffix.lower()
-    media_type = _AUDIO_MIME.get(ext, "application/octet-stream")
+    media_type = _AUDIO_MIME[ext]
     return FileResponse(str(filepath), filename=safe_name, media_type=media_type)
 
 

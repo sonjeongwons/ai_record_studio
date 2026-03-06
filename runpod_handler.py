@@ -497,8 +497,8 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
             result = s_stereo if result is None else result + s_stereo
         if result is not None:
             peak = np.abs(result).max()
-            if peak > 0.9:  # normalize only if near clipping
-                result = result * (0.9 / peak)
+            if peak > 0:
+                result = result * (10.0 ** (-1 / 20) / peak)  # 정확한 -1 dBFS = 0.89125
         return result
 
     # --- Try demucs.api first (GitHub v4.1.0a2+) ---
@@ -1320,8 +1320,9 @@ def _rvc_preprocess(
                 _peak = np.max(np.abs(_audio))
                 if _peak > 0:
                     _rms_db = 20 * np.log10(np.sqrt(np.mean(_audio ** 2)) + 1e-10)
-                    if _rms_db < -40:
-                        # 매우 조용한 세그먼트 (숨소리/무음) → 학습 데이터에서 제외
+                    if _rms_db < -50:
+                        # 매우 조용한 세그먼트 (거의 무음) → 학습 데이터에서 제외
+                        # -50dBFS 이하만 스킵 — 약한 가성/부드러운 노래(-40~-50dBFS)는 보존
                         gt_path.unlink(missing_ok=True)
                         log.info(f"Skipped quiet segment ({_rms_db:.1f}dB): {padded}")
                         continue
@@ -1542,6 +1543,10 @@ def _rvc_train(
         batch_size = max(2, gt_count)
         log.warning(f"batch_size {old_bs} > dataset size {gt_count}, "
                     f"reduced to {batch_size}")
+    # 과적합 경고: 데이터셋이 batch_size의 4배 미만이면 일반화 부족 가능성
+    if gt_count < batch_size * 4:
+        log.warning(f"Small dataset ({gt_count} samples) relative to batch_size={batch_size}. "
+                    f"Consider using batch_size={max(2, gt_count // 4)} to avoid overfitting.")
 
     # Also verify filelist.txt exists and has entries
     filelist_txt = logs_dir / "filelist.txt"
@@ -2001,12 +2006,16 @@ def _mix_audio(
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
-        f"[0:a]aresample=resampler=soxr,volume={vocal_volume}[v];"
+        # 보컬: soxr 리샘플링 + 볼륨 + 미묘한 중저역/프레즌스 부스트로 MR 위에 안착
+        # MR: soxr 리샘플링 + 볼륨 + 보컬 주파수 공간 확보 (완화된 EQ — 지나친 착색 방지)
+        f"[0:a]aresample=resampler=soxr,volume={vocal_volume},"
+        f"equalizer=f=200:width_type=o:width=0.8:g=0.5,"   # 보컬 온기 +0.5dB
+        f"equalizer=f=3000:width_type=o:width=0.8:g=0.3[v];"   # 보컬 프레즌스 +0.3dB
         f"[1:a]aresample=resampler=soxr,volume={mr_volume},"
-        f"equalizer=f=800:width_type=o:width=1.5:g=-2.0,"
-        f"equalizer=f=2500:width_type=o:width=1.0:g=-1.5[m];"
+        f"equalizer=f=800:width_type=o:width=1.5:g=-1.0,"   # MR 중저역 -1dB (기존 -2dB)
+        f"equalizer=f=2500:width_type=o:width=1.0:g=-0.8[m];"  # MR 프레즌스 -0.8dB (기존 -1.5dB)
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.95:attack=25:release=300:level=disabled",
+        f"alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1",
         "-acodec", "pcm_s24le",  # 24-bit for maximum dynamic range
         "-ar", "44100",
         str(output_path),
@@ -2134,9 +2143,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
         log.info(f"Audio file ready: {raw_input.stat().st_size / 1024:.1f} KB")
 
         # Normalize to WAV for processing (keep STEREO for Demucs quality)
+        # soxr precision=28: 최고품질 리샘플링 — 원음 주파수 특성 최대 보존
         input_stereo = work / "input_stereo.wav"
         run_ffmpeg([
             "-i", str(raw_input),
+            "-af", "aresample=resampler=soxr:precision=28:osr=44100",
             "-acodec", "pcm_s16le",
             "-ar", "44100",
             str(input_stereo),  # preserve original channel count (stereo if source is stereo)
@@ -2145,6 +2156,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
         input_wav = work / "input_normalized.wav"
         run_ffmpeg([
             "-i", str(raw_input),
+            "-af", "aresample=resampler=soxr:precision=28:osr=44100",
             "-acodec", "pcm_s16le",
             "-ar", "44100",
             "-ac", "1",
@@ -2194,6 +2206,18 @@ def task_convert(job_input: dict, job: dict) -> dict:
 
         # --- Step 3: RVC voice conversion on vocals ---
         runpod.serverless.progress_update(job, "Running voice conversion (RVC)... (3/4)")
+
+        # 오디오 길이 검증 (너무 짧으면 RVC가 빈 출력이나 오류 반환)
+        import soundfile as _sf_check
+        _rvc_info = _sf_check.info(str(rvc_input))
+        _rvc_duration = _rvc_info.frames / _rvc_info.samplerate
+        if _rvc_duration < 0.3:
+            raise RuntimeError(
+                f"입력 오디오가 너무 짧습니다 ({_rvc_duration:.2f}초). "
+                "최소 0.3초 이상의 오디오가 필요합니다."
+            )
+        if _rvc_duration > 300:
+            log.warning(f"긴 오디오 입력 ({_rvc_duration:.0f}초). 변환에 시간이 오래 걸릴 수 있습니다.")
 
         converted_vocals_path = work / f"converted_vocals.{export_format}"
         _rvc_infer(
