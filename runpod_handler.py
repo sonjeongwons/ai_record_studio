@@ -437,8 +437,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         }
 
         # Final payload size safety check
-        import json as _json
-        result_json = _json.dumps(result)
+        result_json = json.dumps(result)
         result_size = len(result_json)
         log.info(f"Final result payload size: {result_size / 1e6:.2f} MB")
 
@@ -608,7 +607,8 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                 log.warning(f"No 'vocals' source in model for {audio_path.name}, using original")
                 vocal_paths.append(audio_path)
         except Exception as e:
-            log.error(f"Demucs fallback failed for {audio_path.name}: {e}")
+            log.error(f"Demucs fallback failed for {audio_path.name}: {e}", exc_info=True)
+            cleanup_gpu()  # OOM 등 발생 시 GPU 메모리 즉시 해제
             vocal_paths.append(audio_path)
 
     cleanup_gpu()
@@ -1425,7 +1425,6 @@ def _rvc_preprocess(
     config_src = APPLIO_ROOT / "rvc" / "configs" / f"{sample_rate}.json"
     config_dst = logs_dir / "config.json"
     if config_src.exists() and not config_dst.exists():
-        import shutil
         shutil.copyfile(str(config_src), str(config_dst))
         log.info(f"Created config.json from {config_src.name}")
     elif not config_src.exists():
@@ -1535,7 +1534,6 @@ def _rvc_extract(
         log.warning("extract.py did not create config.json, creating from template")
         config_src = APPLIO_ROOT / "rvc" / "configs" / f"{sample_rate}.json"
         if config_src.exists():
-            import shutil
             shutil.copyfile(str(config_src), str(config_json))
     if not filelist_txt.exists():
         log.warning("extract.py did not create filelist.txt — training may fail")
@@ -2604,6 +2602,10 @@ def _rvc_infer(
         tgt_sr = config[-1] if config and len(config) >= 1 else 40000
         if not tgt_sr or tgt_sr <= 1:
             tgt_sr = 40000
+        # tgt_sr이 정상 샘플레이트 범위를 벗어나면 기본값 사용
+        if tgt_sr not in (16000, 22050, 32000, 40000, 44100, 48000):
+            log.warning(f"Suspicious tgt_sr={tgt_sr} from model config, defaulting to 40000")
+            tgt_sr = 40000
 
         if "weight" in cpt and "emb_g.weight" in cpt["weight"] and len(config) >= 3:
             config[-3] = cpt["weight"]["emb_g.weight"].shape[0]
@@ -2688,6 +2690,14 @@ def _rvc_infer(
         log.warning(f"Low-level pipeline failed: {e}", exc_info=True)
     finally:
         os.chdir(original_cwd)
+        # Strategy 3 GPU 모델 정리 (Strategy 4를 위해 VRAM 확보)
+        try:
+            for _obj in [locals().get('net_g'), locals().get('hubert_model'), locals().get('pipeline')]:
+                if _obj is not None:
+                    del _obj
+        except Exception:
+            pass
+        cleanup_gpu()
 
     # --- Strategy 4: CLI fallback (last resort) ---
     cmd = [
@@ -2757,7 +2767,6 @@ def _rvc_infer(
                     log.info(f"Found in {search_dir}: {[f.name for f in applio_files]}")
                     # 가장 최근 파일을 사용
                     newest = max(applio_files, key=lambda f: f.stat().st_mtime)
-                    import shutil
                     shutil.copy2(str(newest), str(output_path))
                     log.info(f"Copied {newest} → {output_path}")
                     break

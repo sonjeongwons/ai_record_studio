@@ -3980,6 +3980,8 @@ var currentConvertJobId = null;
 var preprocessJobId = null;
 var preprocessDone = false;
 var _preprocessPollErrors = 0;
+var _trainPollErrors = 0;
+var _convertPollErrors = 0;
 var _preprocessPaused = false;
 var _trainPaused = false;
 var _convertPaused = false;
@@ -5704,7 +5706,10 @@ async function resetPreprocess() {
       form.append('file_ids', selectedIds.join(','));
       await api('/preprocess/reset', { method: 'POST', body: form });
     }
-  } catch(e) { /* ignore */ }
+  } catch(e) {
+    toast('전처리 초기화 실패: ' + (e.message || e), 'error');
+    return;
+  }
 
   preprocessDone = false;
   preprocessJobId = null;
@@ -5929,8 +5934,6 @@ async function _doStartTraining() {
   }
 }
 
-var _trainPollErrors = 0;
-
 var _trainPolling = false;
 async function pollTrainingStatus() {
   if (!currentTrainJobId || _trainPaused) return;
@@ -6066,7 +6069,8 @@ function resetTraining() {
   document.getElementById('train-error-area').style.display = 'none';
   document.getElementById('train-paused-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
-  document.getElementById('btn-start-train').disabled = false;
+  // btn-start-train 상태는 checkPreprocessStatus → renderFileList에서 설정
+  // (preprocessDone이 true일 때만 활성화되어야 함)
 
   // 진행률 초기화
   document.getElementById('train-pct').textContent = '0%';
@@ -6207,7 +6211,7 @@ convertDropzone.addEventListener('drop', function(e) {
   convertDropzone.classList.remove('drag-over');
   handleConvertFiles(e.dataTransfer.files);
 });
-convertFileInput.addEventListener('change', function(e) { handleConvertFiles(e.target.files); });
+convertFileInput.addEventListener('change', function(e) { handleConvertFiles(e.target.files); convertFileInput.value = ''; });
 
 function handleConvertFiles(fileList) {
   if (currentConvertJobId) {
@@ -6220,7 +6224,8 @@ function handleConvertFiles(fileList) {
     setConvertFile(fileList[0]);
   } else {
     for (var i = 0; i < fileList.length; i++) {
-      batchFiles.push(fileList[i]);
+      var dup = batchFiles.some(function(f) { return f.name === fileList[i].name && f.size === fileList[i].size; });
+      if (!dup) batchFiles.push(fileList[i]);
     }
     if (!convertFile && batchFiles.length > 0) convertFile = batchFiles[0];
     if (wasSingle && batchFiles.length > 1) {
@@ -6496,8 +6501,6 @@ async function startConversion() {
   }
 }
 
-var _convertPollErrors = 0;
-
 var _convertPolling = false;
 async function pollConvertStatus() {
   if (!currentConvertJobId || _convertPaused) return;
@@ -6601,6 +6604,20 @@ async function pollConvertStatus() {
               };
               apRedraw('result_player', 0);
 
+              // 오디오 메타데이터 로드 시 1회만 실행 (duration 세팅 + waveform 그리기)
+              var _resultDurationSet = false;
+              audioEl.onloadedmetadata = function() {
+                if (!_resultDurationSet && audioEl.duration && isFinite(audioEl.duration)) {
+                  _resultDurationSet = true;
+                  var durEl = document.getElementById('result-audio-dur');
+                  if (durEl) {
+                    var dm = Math.floor(audioEl.duration / 60);
+                    var ds = Math.floor(audioEl.duration % 60);
+                    durEl.textContent = dm + ':' + ds.toString().padStart(2, '0');
+                  }
+                  drawStaticWaveform('result-waveform', 'rgba(139,92,246,0.5)');
+                }
+              };
               audioEl.ontimeupdate = function() {
                 var t = audioEl.currentTime;
                 var m = Math.floor(t / 60);
@@ -6610,13 +6627,6 @@ async function pollConvertStatus() {
                 apRedraw('result_player', progress);
                 var fill = document.getElementById('result-seekbar-fill');
                 if (fill) fill.style.width = (progress * 100) + '%';
-                var durEl = document.getElementById('result-audio-dur');
-                if (durEl && audioEl.duration && isFinite(audioEl.duration)) {
-                  var dm = Math.floor(audioEl.duration / 60);
-                  var ds = Math.floor(audioEl.duration % 60);
-                  durEl.textContent = dm + ':' + ds.toString().padStart(2, '0');
-                  drawStaticWaveform('result-waveform', 'rgba(139,92,246,0.5)');
-                }
               };
             }
           }, 100);

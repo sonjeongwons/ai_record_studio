@@ -725,10 +725,17 @@ def update_job(job_id: str, **kwargs):
                 vals.append(datetime.now().isoformat())
             vals.append(datetime.now().isoformat())  # updated_at
             vals.append(job_id)
-            # 터미널 상태(cancelled, failed, completed)는 poll 스레드가 덮어쓰지 않도록 보호
+            # 터미널 상태 우선순위: completed > cancelled > failed
+            # completed는 절대 덮어쓰지 않고, cancelled는 completed에 의해서만 덮어씀
             new_status = kwargs.get("status", "")
-            if new_status in ("cancelled", "failed", "completed"):
+            if new_status == "completed":
+                # completed는 cancelled/failed도 덮어쓸 수 있음 (정상 완료 우선)
                 db.execute(f"UPDATE jobs SET {sets}, updated_at=? WHERE id=?", vals)
+            elif new_status in ("cancelled", "failed"):
+                # cancelled/failed는 completed를 덮어쓰지 않음
+                db.execute(
+                    f"UPDATE jobs SET {sets}, updated_at=? WHERE id=? "
+                    f"AND status != 'completed'", vals)
             else:
                 db.execute(
                     f"UPDATE jobs SET {sets}, updated_at=? WHERE id=? "
@@ -1356,6 +1363,12 @@ def _run_batched_preprocess_inner(job_id: str, batches: list[list[dict]]):
                                message=f"{batch_label} {state_msg} ({elapsed}초)")
 
                 if elapsed > 3600:  # 배치당 1시간 타임아웃
+                    # RunPod 작업도 취소하여 과금 중지
+                    if runpod_job_id and runpod_client.is_configured():
+                        try:
+                            runpod_client.cancel_runpod_job(runpod_job_id)
+                        except Exception:
+                            pass
                     update_job(job_id, status="failed",
                                message=f"{batch_label} 시간 초과 (1시간)")
                     return
@@ -1922,7 +1935,7 @@ async def start_training(
                     print(f"[Train] R2 upload failed for {fp}: {e}")
                     update_job(job_id, status="failed",
                         message=f"학습 데이터 R2 업로드 실패: {e}")
-                    return {"job_id": job_id}
+                    raise HTTPException(500, f"학습 데이터 R2 업로드 실패: {e}")
             print(f"[Train] All {len(audio_urls)} files uploaded to R2")
 
         config = load_config()
@@ -1985,6 +1998,7 @@ async def start_training(
             _training_file_map.pop(job_id, None)
         with _job_states_lock:
             _active_job_states.pop(job_id, None)
+        raise HTTPException(500, f"학습 제출 실패: {error_msg}")
 
     return {"job_id": job_id, "segments": total_segments}
 
@@ -2090,6 +2104,7 @@ async def start_preprocess(
             preprocess_file_map.pop(job_id, None)
         with _job_states_lock:
             _active_job_states.pop(job_id, None)
+        raise HTTPException(500, f"전처리 제출 실패: {error_msg}")
 
     return {"job_id": job_id, "segments": total_segments, "batches": len(batches),
             "skipped": skipped, "processing": len(unprocessed)}
@@ -2332,9 +2347,9 @@ async def start_conversion(
             VALUES (?, 'convert', 'submitting', 0, '작업 제출 중...')
         """, (job_id,))
         db.execute("""
-            INSERT INTO conversions (model_id, input_file, status, job_id)
-            VALUES (?, ?, 'pending', ?)
-        """, (model_id, audio.filename, job_id))
+            INSERT INTO conversions (model_id, input_file, pitch_shift, status, job_id)
+            VALUES (?, ?, ?, 'pending', ?)
+        """, (model_id, audio.filename, pitch_shift, job_id))
 
     try:
         config = load_config()
@@ -2375,7 +2390,7 @@ async def start_conversion(
             if file_size > 7_000_000:  # 7MB 이상이면 base64로도 10MB 초과
                 update_job(job_id, status="failed",
                     message=f"R2 업로드 실패 (파일 {file_size//1_000_000}MB): {e}")
-                return {"job_id": job_id}
+                raise HTTPException(500, f"R2 업로드 실패 (파일 {file_size//1_000_000}MB): {e}")
             # 소용량 파일만 base64 폴백
             with open(temp_path, "rb") as f:
                 audio_b64 = base64.b64encode(f.read()).decode()
@@ -2469,6 +2484,7 @@ async def start_conversion(
                 temp_path.unlink()
         except Exception:
             pass
+        raise HTTPException(500, f"변환 제출 실패: {error_msg}")
 
     return {"job_id": job_id}
 
@@ -2515,6 +2531,7 @@ async def get_job(job_id: str):
 @app.post("/api/jobs/{job_id}/cancel")
 async def cancel_job(job_id: str):
     """실행 중인 작업 취소 — RunPod 작업도 실제로 취소하여 과금 즉시 중지"""
+    # 1) DB 읽기
     with get_db() as db:
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
@@ -2522,13 +2539,16 @@ async def cancel_job(job_id: str):
         if row["status"] in ("completed", "cancelled", "failed"):
             return {"status": "already_done", "current_status": row["status"]}
 
-        # RunPod 작업 실제 취소 (과금 즉시 중지)
-        runpod_job_id = row["runpod_job_id"] if row["runpod_job_id"] else None
-        if runpod_job_id and runpod_client.is_configured():
-            runpod_client.cancel_runpod_job(runpod_job_id)
+    # 2) RunPod 취소 (네트워크 호출은 DB 컨텍스트 밖에서)
+    runpod_job_id = row["runpod_job_id"] if row["runpod_job_id"] else None
+    if runpod_job_id and runpod_client.is_configured():
+        runpod_client.cancel_runpod_job(runpod_job_id)
 
+    # 3) DB 업데이트
+    with get_db() as db:
         db.execute(
-            "UPDATE jobs SET status='cancelled', message='사용자가 취소함', updated_at=? WHERE id=?",
+            "UPDATE jobs SET status='cancelled', message='사용자가 취소함', updated_at=? "
+            "WHERE id=? AND status NOT IN ('completed', 'failed', 'cancelled')",
             (datetime.now().isoformat(), job_id)
         )
 
@@ -2546,6 +2566,7 @@ async def cancel_job(job_id: str):
 @app.post("/api/jobs/{job_id}/pause")
 async def pause_job(job_id: str):
     """실행 중인 작업 일시정지 — RunPod 작업 취소(과금 중지) + 재개 가능한 상태 저장"""
+    # 1) DB 읽기
     with get_db() as db:
         row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
         if not row:
@@ -2553,20 +2574,22 @@ async def pause_job(job_id: str):
         if row["status"] in ("completed", "cancelled", "paused", "failed"):
             return {"status": "already_done", "current_status": row["status"]}
 
-        # RunPod 작업 취소 (과금 중지)
-        runpod_job_id = row["runpod_job_id"] if row["runpod_job_id"] else None
-        cancelled_runpod = False
-        if runpod_job_id and runpod_client.is_configured():
-            cancelled_runpod = runpod_client.cancel_runpod_job(runpod_job_id)
+    # 2) RunPod 취소 (네트워크 호출은 DB 컨텍스트 밖에서)
+    runpod_job_id = row["runpod_job_id"] if row["runpod_job_id"] else None
+    cancelled_runpod = False
+    if runpod_job_id and runpod_client.is_configured():
+        cancelled_runpod = runpod_client.cancel_runpod_job(runpod_job_id)
 
-        # 재개용 상태 저장 (_active_job_states에서 읽기)
-        with _job_states_lock:
-            pause_state = _active_job_states.get(job_id, {}).copy()
-        pause_state_json = json.dumps(pause_state, ensure_ascii=False)
+    # 3) 재개용 상태 저장 + DB 업데이트
+    with _job_states_lock:
+        pause_state = _active_job_states.get(job_id, {}).copy()
+    pause_state_json = json.dumps(pause_state, ensure_ascii=False)
 
+    with get_db() as db:
         db.execute(
             "UPDATE jobs SET status='paused', message='일시정지됨 (RunPod 과금 중지)', "
-            "pause_state_json=?, updated_at=? WHERE id=?",
+            "pause_state_json=?, updated_at=? "
+            "WHERE id=? AND status NOT IN ('completed', 'failed', 'cancelled')",
             (pause_state_json, datetime.now().isoformat(), job_id)
         )
 
@@ -2768,7 +2791,7 @@ async def resume_job(job_id: str):
                         audio_urls.append({"filename": Path(fp).name, "url": url})
                     except Exception as e:
                         update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
-                        return {"job_id": job_id, "status": "failed"}
+                        raise HTTPException(500, f"R2 업로드 실패: {e}")
 
             if audio_urls:
                 payload = {
@@ -2956,9 +2979,17 @@ async def cleanup_all_stuck_jobs():
                 updated_at=?
             WHERE status IN ('running', 'submitting')
         """, (datetime.now().isoformat(),))
-    # 메모리 상태도 정리
+    # 메모리 상태 정리 (paused 작업의 상태는 보존 — 재개 시 필요)
     with _job_states_lock:
+        paused_states = {}
+        with get_db() as _db:
+            _paused = _db.execute("SELECT id FROM jobs WHERE status='paused'").fetchall()
+            paused_ids = {r["id"] for r in _paused}
+        for jid in list(_active_job_states.keys()):
+            if jid in paused_ids:
+                paused_states[jid] = _active_job_states[jid]
         _active_job_states.clear()
+        _active_job_states.update(paused_states)
     with _poll_errors_lock:
         _poll_error_counts.clear()
     with _preprocess_lock:
