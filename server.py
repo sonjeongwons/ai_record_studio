@@ -696,10 +696,12 @@ def upload_to_r2(file_path: Path, key: str) -> str:
 
     try:
         s3.upload_file(str(file_path), bucket, key)
+        # Cloudflare R2 presigned URL 최대 만료: 7일 (604800초)
+        # 이를 초과하면 R2가 400 Bad Request 반환
         presigned_url = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=86400 * 30,  # 30일 (일시정지 후 재개, 장기 보관 지원)
+            ExpiresIn=604800,  # 7일 (R2 최대 허용)
         )
     except Exception as e:
         print(f"[R2 Upload Error] {type(e).__name__}: {e}")
