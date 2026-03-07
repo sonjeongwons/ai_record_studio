@@ -115,9 +115,9 @@ def encode_file_b64(file_path: Path, compress: bool = False) -> str:
 
 def _download_with_retries(
     requests_mod, url: str, dest: Path, label: str = "파일",
-    timeout: int = 120, retries: int = 3
+    timeout: int = 120, retries: int = 5
 ) -> None:
-    """Download a file from URL with retry logic for transient network errors."""
+    """Download a file from URL with retry logic for transient network/HTTP errors."""
     for attempt in range(retries):
         try:
             resp = requests_mod.get(url, timeout=timeout)
@@ -126,9 +126,11 @@ def _download_with_retries(
             with open(dest, "wb") as f:
                 f.write(resp.content)
             return
-        except (requests_mod.exceptions.Timeout, requests_mod.exceptions.ConnectionError) as e:
+        except (requests_mod.exceptions.Timeout, requests_mod.exceptions.ConnectionError,
+                requests_mod.exceptions.HTTPError) as e:
+            # Timeout, 연결 오류, HTTP 오류 (400/500 등 R2 일시적 오류 포함) 모두 재시도
             if attempt < retries - 1:
-                wait = 2 ** attempt
+                wait = min(2 ** attempt, 10)
                 log.warning(f"{label} 다운로드 재시도 {attempt + 1}/{retries} ({wait}초 후): {e}")
                 time.sleep(wait)
             else:
@@ -1022,29 +1024,36 @@ def task_train(job_input: dict, job: dict) -> dict:
         total_files = len(audio_files) + len(audio_urls)
         runpod.serverless.progress_update(job, f"Downloading {total_files} audio files... (1/5)")
 
-        # R2 URL에서 다운로드 (네트워크 오류 시 3회 재시도)
+        # R2 URL에서 다운로드 (네트워크/HTTP 오류 시 최대 5회 재시도)
         import requests as _req
         for i, uobj in enumerate(audio_urls):
             fname = uobj.get("filename", f"audio_{i}.wav")
+            url = uobj["url"]
             dest = dataset_dir / fname
             last_err = None
-            for attempt in range(3):
+            max_retries = 5
+            for attempt in range(max_retries):
                 try:
-                    resp = _req.get(uobj["url"], timeout=120)
+                    resp = _req.get(url, timeout=120)
                     resp.raise_for_status()
                     with open(dest, "wb") as f:
                         f.write(resp.content)
                     log.info(f"Downloaded training file: {fname} ({len(resp.content) / 1024:.1f} KB)")
                     last_err = None
                     break
-                except (_req.exceptions.Timeout, _req.exceptions.ConnectionError) as dl_err:
+                except (_req.exceptions.Timeout, _req.exceptions.ConnectionError,
+                        _req.exceptions.HTTPError) as dl_err:
+                    # Timeout, 연결 오류, HTTP 오류 (400/500 등) 모두 재시도
                     last_err = dl_err
-                    if attempt < 2:
-                        wait = 2 ** attempt  # 1s, 2s
-                        log.warning(f"다운로드 재시도 {attempt + 1}/3 ({fname}), {wait}초 후 재시도: {dl_err}")
+                    if attempt < max_retries - 1:
+                        wait = min(2 ** attempt, 10)  # 1s, 2s, 4s, 8s
+                        log.warning(f"다운로드 재시도 {attempt + 1}/{max_retries} ({fname}), "
+                                    f"{wait}초 후: {dl_err}")
                         time.sleep(wait)
                     else:
-                        raise RuntimeError(f"학습 파일 다운로드 3회 실패 ({fname}): {dl_err}") from dl_err
+                        raise RuntimeError(
+                            f"학습 파일 다운로드 {max_retries}회 실패 ({fname}): {dl_err}"
+                        ) from dl_err
                 except Exception as dl_err:
                     raise RuntimeError(f"학습 파일 다운로드 실패 ({fname}): {dl_err}") from dl_err
             if last_err:

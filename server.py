@@ -687,7 +687,10 @@ def upload_to_r2(file_path: Path, key: str) -> str:
         endpoint_url=endpoint_url,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
-        config=BotoConfig(signature_version="s3v4"),
+        config=BotoConfig(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},  # R2는 path-style 필수
+        ),
         region_name="auto",
     )
 
