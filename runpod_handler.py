@@ -509,12 +509,14 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     try:
         import demucs.api
         log.info("Using demucs.api (v4.1+) for vocal separation (shifts=5, overlap=0.6)")
+        # seed 파라미터는 demucs 일부 버전에서 미지원 — 대신 torch.manual_seed로 재현성 확보
+        import torch
+        torch.manual_seed(0)
         separator = demucs.api.Separator(
             model="htdemucs_ft",
             device=device,
             shifts=5,       # 5 random time shifts → average = dramatically better SDR
             overlap=0.6,    # 60% overlap between segments = smoother transitions, fewer artifacts
-            seed=0,         # 재현성 보장 — 동일 입력 = 동일 분리 결과 (non-deterministic 방지)
         )
 
         vocal_paths: list[Path] = []
