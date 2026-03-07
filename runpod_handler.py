@@ -510,7 +510,6 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
         import demucs.api
         log.info("Using demucs.api (v4.1+) for vocal separation (shifts=5, overlap=0.6)")
         # seed 파라미터는 demucs 일부 버전에서 미지원 — 대신 torch.manual_seed로 재현성 확보
-        import torch
         torch.manual_seed(0)
         separator = demucs.api.Separator(
             model="htdemucs_ft",
@@ -800,7 +799,7 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
         # 원본 파일명에서 처리 접미사들을 모두 제거하여 소스 stem 추출
         # 순서 중요: _diarized → _clean → _vocals (역순으로 붙었으므로)
         source_stem = ap.stem
-        for suffix in ("_diarized", "_clean", "_vocals"):
+        for suffix in ("_speaker", "_clean", "_vocals"):
             if source_stem.endswith(suffix):
                 source_stem = source_stem[:-len(suffix)]
 
@@ -1869,16 +1868,21 @@ def _rvc_create_index(model_name: str, logs_dir: Path) -> None:
         big_npy_path = logs_dir / "total_fea.npy"
         np.save(str(big_npy_path), big_npy)
 
-        # Build IVF index
-        n_ivf = min(int(big_npy.shape[0] ** 0.5), big_npy.shape[0])
-        n_ivf = max(1, n_ivf)
-
+        # Build IVF index (or Flat if too few vectors for IVF)
+        n_vectors = big_npy.shape[0]
         dim = big_npy.shape[1]  # 768 for ContentVec, 256 for HuBERT
-        index = faiss.index_factory(dim, f"IVF{n_ivf},Flat")
 
-        # Train index
-        index.train(big_npy)
-        index.add(big_npy)
+        if n_vectors < 40:
+            # IVF는 최소 n_ivf 개의 학습 벡터가 필요 → 소규모 데이터는 Flat 인덱스 사용
+            log.info(f"Small dataset ({n_vectors} vectors), using Flat index")
+            index = faiss.IndexFlatL2(dim)
+            index.add(big_npy)
+        else:
+            n_ivf = min(int(n_vectors ** 0.5), n_vectors // 2)
+            n_ivf = max(1, n_ivf)
+            index = faiss.index_factory(dim, f"IVF{n_ivf},Flat")
+            index.train(big_npy)
+            index.add(big_npy)
 
         index_path = logs_dir / f"{model_name}.index"
         faiss.write_index(index, str(index_path))
@@ -2346,8 +2350,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
                     log.info("Retrying with split_audio=True...")
                     _retry_path = work / f"converted_vocals_retry.{export_format}"
                     _rvc_infer(
-                        rvc_input, _retry_path, model_path=pth_path,
-                        index_path=index_path, pitch_shift=pitch_shift,
+                        pth_path=pth_path,
+                        index_path=index_path,
+                        input_audio=rvc_input,
+                        output_path=_retry_path,
+                        pitch_shift=pitch_shift,
                         index_rate=index_rate, f0_method=f0_method,
                         filter_radius=filter_radius, rms_mix_rate=rms_mix_rate,
                         protect=protect, hop_length=hop_length,
@@ -2592,7 +2599,7 @@ def _rvc_infer(
         is_half = device.startswith("cuda")
 
         # Load model
-        cpt = torch.load(str(pth_path), map_location="cpu")
+        cpt = torch.load(str(pth_path), map_location="cpu", weights_only=False)
         config = cpt.get("config", [])
         tgt_sr = config[-1] if config and len(config) >= 1 else 40000
         if not tgt_sr or tgt_sr <= 1:
@@ -2648,7 +2655,7 @@ def _rvc_infer(
             net_g,
             sid,
             audio_16k,
-            input_audio,
+            str(input_audio),
             [0, 0, 0],  # times (not used meaningfully)
             pitch_shift,
             f0_method,
