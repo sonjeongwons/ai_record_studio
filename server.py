@@ -2735,8 +2735,6 @@ async def resume_job(job_id: str):
                         model_name = f"{base_name}_{uuid.uuid4().hex[:6]}"
                         break
 
-            update_job(job_id, status="running", progress=3, message="학습 재개 중...")
-
             try:
                 ids = [int(x.strip()) for x in file_ids_str.split(",") if x.strip()] if file_ids_str else []
             except (ValueError, TypeError):
@@ -2783,49 +2781,62 @@ async def resume_job(job_id: str):
 
             config = load_config()
             r2_bucket = config.get("r2_bucket_name", "")
-            audio_urls = []
-            total_size = sum(Path(p).stat().st_size for p in file_paths if Path(p).exists())
 
-            if total_size > 5_000_000:
-                for fp in file_paths:
-                    if not Path(fp).exists():
-                        continue
-                    r2_key = f"train/{job_id}_resume/{Path(fp).name}"
-                    try:
-                        url = upload_to_r2(Path(fp), r2_key)
-                        audio_urls.append({"filename": Path(fp).name, "url": url})
-                    except Exception as e:
-                        update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
-                        raise HTTPException(500, f"R2 업로드 실패: {e}")
+            # 즉시 running 상태로 변경 후 백그라운드에서 R2 업로드 + RunPod 제출
+            update_job(job_id, status="running", progress=3,
+                      message=f"학습 재개 준비 중... (파일 업로드 시작)")
 
-            if audio_urls:
-                payload = {
-                    "task_type": "train", "model_name": model_name,
-                    "audio_urls": audio_urls, "sample_rate": sample_rate,
-                    "epochs": epochs, "batch_size": batch_size,
-                    "f0_method": f0_method, "bucket_name": r2_bucket,
-                }
-            else:
-                batches = prepare_files_for_runpod(file_paths)
-                payload = {
-                    "task_type": "train", "model_name": model_name,
-                    "audio_files": batches[0] if batches else [],
-                    "sample_rate": sample_rate, "epochs": epochs,
-                    "batch_size": batch_size, "f0_method": f0_method,
-                    "bucket_name": r2_bucket,
-                }
+            def _do_resume_train():
+                try:
+                    audio_urls = []
+                    total_size = sum(Path(p).stat().st_size for p in file_paths if Path(p).exists())
+                    if total_size > 5_000_000:
+                        update_job(job_id, progress=5,
+                                  message=f"학습 파일 R2 업로드 중... ({len(file_paths)}개)")
+                        for fp in file_paths:
+                            if not Path(fp).exists():
+                                continue
+                            r2_key = f"train/{job_id}_resume/{Path(fp).name}"
+                            try:
+                                url = upload_to_r2(Path(fp), r2_key)
+                                audio_urls.append({"filename": Path(fp).name, "url": url})
+                            except Exception as e:
+                                update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
+                                return
 
-            runpod_job_id = runpod_client.submit_job(payload)
-            if not runpod_job_id:
-                raise RuntimeError("RunPod 작업 ID를 받지 못했습니다.")
-            update_job(job_id, status="running", progress=5,
-                      message=f"학습 재개 — GPU 작업 제출됨 (모델: {model_name})",
-                      runpod_job_id=runpod_job_id)
-            threading.Thread(
-                target=poll_runpod_job,
-                args=(job_id, runpod_job_id, "train"),
-                daemon=True
-            ).start()
+                    if audio_urls:
+                        payload = {
+                            "task_type": "train", "model_name": model_name,
+                            "audio_urls": audio_urls, "sample_rate": sample_rate,
+                            "epochs": epochs, "batch_size": batch_size,
+                            "f0_method": f0_method, "bucket_name": r2_bucket,
+                        }
+                    else:
+                        batches = prepare_files_for_runpod(file_paths)
+                        payload = {
+                            "task_type": "train", "model_name": model_name,
+                            "audio_files": batches[0] if batches else [],
+                            "sample_rate": sample_rate, "epochs": epochs,
+                            "batch_size": batch_size, "f0_method": f0_method,
+                            "bucket_name": r2_bucket,
+                        }
+
+                    update_job(job_id, progress=8, message="RunPod에 학습 작업 제출 중...")
+                    runpod_job_id = runpod_client.submit_job(payload)
+                    if not runpod_job_id:
+                        update_job(job_id, status="failed", message="RunPod 작업 ID를 받지 못했습니다.")
+                        return
+                    update_job(job_id, status="running", progress=10,
+                              message=f"학습 재개 — GPU 작업 제출됨 (모델: {model_name})",
+                              runpod_job_id=runpod_job_id)
+                    poll_runpod_job(job_id, runpod_job_id, "train")
+                except Exception as e:
+                    error_msg = classify_runpod_error(e)
+                    update_job(job_id, status="failed", message=f"학습 재개 실패: {error_msg}")
+                    with _training_lock:
+                        _training_file_map.pop(job_id, None)
+
+            threading.Thread(target=_do_resume_train, daemon=True).start()
 
         elif job_type == "convert":
             # ─── 변환 재개 ───
@@ -2838,112 +2849,122 @@ async def resume_job(job_id: str):
             if not model:
                 raise HTTPException(404, "모델을 찾을 수 없습니다.")
 
-            update_job(job_id, status="running", progress=3, message="변환 재개 중...")
             with _job_states_lock:
                 _active_job_states[job_id] = pause_state.copy()
 
             config = load_config()
             r2_bucket = config.get("r2_bucket_name", "")
             audio_filename = pause_state.get("audio_filename", "input.wav")
-            payload = {
-                "task_type": "convert",
-                "audio_filename": audio_filename,
-                "pitch_shift": pause_state.get("pitch_shift", 0),
-                "index_rate": pause_state.get("index_rate", 0.65),
-                "f0_method": pause_state.get("f0_method", "rmvpe"),
-                "clean_audio": pause_state.get("clean_audio", False),
-                "clean_strength": pause_state.get("clean_strength", 0.7),
-                "protect": pause_state.get("protect", 0.35),
-                "rms_mix_rate": pause_state.get("rms_mix_rate", 0.15),
-                "filter_radius": pause_state.get("filter_radius", 3),
-                "hop_length": pause_state.get("hop_length", 64),
-                "separate_vocals": pause_state.get("separate_vocals", True),
-                "vocal_volume": pause_state.get("vocal_volume", 1.0),
-                "mr_volume": pause_state.get("mr_volume", 1.0),
-                "post_reverb": pause_state.get("post_reverb", 0.05),
-                "harmonic_enhance": pause_state.get("harmonic_enhance", False),
-                "bucket_name": r2_bucket,
-            }
 
-            # 오디오 소스: R2 URL 우선 (temp 파일은 삭제되었으므로)
-            saved_audio_url = pause_state.get("audio_url")
-            if saved_audio_url:
-                # R2에 이미 업로드된 URL 재사용 (추가 업로드 불필요)
-                payload["audio_url"] = saved_audio_url
-            else:
-                # 폴백: 이전 방식 temp 파일 (하위 호환)
-                input_file = pause_state.get("input_file", "")
-                temp_path_resume = UPLOAD_DIR / input_file if input_file else None
-                if temp_path_resume and temp_path_resume.exists():
-                    audio_r2_key = f"convert/{job_id}_resume/{input_file}"
-                    try:
-                        audio_url = upload_to_r2(temp_path_resume, audio_r2_key)
-                        payload["audio_url"] = audio_url
-                        with _job_states_lock:
-                            if job_id in _active_job_states:
-                                _active_job_states[job_id]["audio_url"] = audio_url
-                    except Exception as e:
-                        file_size = temp_path_resume.stat().st_size
-                        if file_size > 7_000_000:
-                            update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
-                            raise HTTPException(500, f"R2 업로드 실패: {e}")
-                        with open(temp_path_resume, "rb") as f:
-                            payload["audio_data"] = base64.b64encode(f.read()).decode()
-                else:
-                    raise HTTPException(
-                        400,
-                        "변환할 오디오 파일을 찾을 수 없습니다. "
-                        "파일을 다시 업로드하여 변환을 새로 시작해주세요."
-                    )
+            # 즉시 running 상태로 변경 후 백그라운드에서 R2 업로드 + RunPod 제출
+            update_job(job_id, status="running", progress=3, message="변환 재개 준비 중...")
 
-            pth_url = model["pth_url"] if model["pth_url"] else None
-            index_url = model["index_url"] if model["index_url"] else None
-            if pth_url:
-                payload["pth_url"] = pth_url
-            if index_url:
-                payload["index_url"] = index_url
+            # 클로저에 필요한 값들을 미리 캡처 (model 객체는 Row라 직렬화 불가)
+            _model_pth_url = model["pth_url"]
+            _model_index_url = model["index_url"]
+            _model_pth_path = model["pth_path"]
+            _model_index_path = model["index_path"]
+            _pause_state_copy = dict(pause_state)
 
-            # pth_url 없는 모델 → 로컬 파일을 R2에 업로드 (presigned URL 만료 대비)
-            if not pth_url and model["pth_path"]:
-                local_pth = Path(model["pth_path"])
-                if not local_pth.is_absolute():
-                    local_pth = MODEL_DIR / local_pth
-                if local_pth.exists():
-                    try:
-                        pth_r2_key = f"convert/{job_id}_resume/model.pth"
-                        pth_url = upload_to_r2(local_pth, pth_r2_key)
+            def _do_resume_convert():
+                try:
+                    payload = {
+                        "task_type": "convert",
+                        "audio_filename": audio_filename,
+                        "pitch_shift": _pause_state_copy.get("pitch_shift", 0),
+                        "index_rate": _pause_state_copy.get("index_rate", 0.65),
+                        "f0_method": _pause_state_copy.get("f0_method", "rmvpe"),
+                        "clean_audio": _pause_state_copy.get("clean_audio", False),
+                        "clean_strength": _pause_state_copy.get("clean_strength", 0.7),
+                        "protect": _pause_state_copy.get("protect", 0.35),
+                        "rms_mix_rate": _pause_state_copy.get("rms_mix_rate", 0.15),
+                        "filter_radius": _pause_state_copy.get("filter_radius", 3),
+                        "hop_length": _pause_state_copy.get("hop_length", 64),
+                        "separate_vocals": _pause_state_copy.get("separate_vocals", True),
+                        "vocal_volume": _pause_state_copy.get("vocal_volume", 1.0),
+                        "mr_volume": _pause_state_copy.get("mr_volume", 1.0),
+                        "post_reverb": _pause_state_copy.get("post_reverb", 0.05),
+                        "harmonic_enhance": _pause_state_copy.get("harmonic_enhance", False),
+                        "bucket_name": r2_bucket,
+                    }
+
+                    # 오디오 소스: R2 URL 우선 (temp 파일은 삭제되었으므로)
+                    saved_audio_url = _pause_state_copy.get("audio_url")
+                    if saved_audio_url:
+                        payload["audio_url"] = saved_audio_url
+                    else:
+                        # 폴백: 이전 방식 temp 파일 (하위 호환)
+                        input_file = _pause_state_copy.get("input_file", "")
+                        temp_path_resume = UPLOAD_DIR / input_file if input_file else None
+                        if temp_path_resume and temp_path_resume.exists():
+                            audio_r2_key = f"convert/{job_id}_resume/{input_file}"
+                            try:
+                                audio_url = upload_to_r2(temp_path_resume, audio_r2_key)
+                                payload["audio_url"] = audio_url
+                                with _job_states_lock:
+                                    if job_id in _active_job_states:
+                                        _active_job_states[job_id]["audio_url"] = audio_url
+                            except Exception as e:
+                                file_size = temp_path_resume.stat().st_size
+                                if file_size > 7_000_000:
+                                    update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
+                                    return
+                                with open(temp_path_resume, "rb") as f:
+                                    payload["audio_data"] = base64.b64encode(f.read()).decode()
+                        else:
+                            update_job(job_id, status="failed",
+                                      message="변환할 오디오 파일을 찾을 수 없습니다. 파일을 다시 업로드해주세요.")
+                            return
+
+                    pth_url = _model_pth_url or None
+                    index_url = _model_index_url or None
+                    if pth_url:
                         payload["pth_url"] = pth_url
-                    except Exception as e:
-                        update_job(job_id, status="failed", message=f"모델 R2 업로드 실패: {e}")
-                        raise HTTPException(500, f"R2 업로드 실패: {e}")
-
-            if not index_url and model["index_path"]:
-                local_idx = Path(model["index_path"])
-                if not local_idx.is_absolute():
-                    local_idx = MODEL_DIR / local_idx
-                if local_idx.exists():
-                    try:
-                        idx_r2_key = f"convert/{job_id}_resume/model.index"
-                        index_url = upload_to_r2(local_idx, idx_r2_key)
+                    if index_url:
                         payload["index_url"] = index_url
-                    except Exception:
-                        pass  # index는 선택사항
 
-            runpod_job_id = runpod_client.submit_job(payload)
-            if not runpod_job_id:
-                raise RuntimeError("RunPod 작업 ID를 받지 못했습니다.")
-            update_job(job_id, status="running", progress=10,
-                      message="변환 재개 — GPU 작업 제출됨",
-                      runpod_job_id=runpod_job_id)
+                    # pth_url 없는 모델 → 로컬 파일을 R2에 업로드
+                    if not pth_url and _model_pth_path:
+                        local_pth = Path(_model_pth_path)
+                        if not local_pth.is_absolute():
+                            local_pth = MODEL_DIR / local_pth
+                        if local_pth.exists():
+                            try:
+                                pth_r2_key = f"convert/{job_id}_resume/model.pth"
+                                pth_url = upload_to_r2(local_pth, pth_r2_key)
+                                payload["pth_url"] = pth_url
+                            except Exception as e:
+                                update_job(job_id, status="failed", message=f"모델 R2 업로드 실패: {e}")
+                                return
 
-            with get_db() as db:
-                db.execute("UPDATE conversions SET status='processing' WHERE job_id=?", (job_id,))
+                    if not index_url and _model_index_path:
+                        local_idx = Path(_model_index_path)
+                        if not local_idx.is_absolute():
+                            local_idx = MODEL_DIR / local_idx
+                        if local_idx.exists():
+                            try:
+                                idx_r2_key = f"convert/{job_id}_resume/model.index"
+                                index_url = upload_to_r2(local_idx, idx_r2_key)
+                                payload["index_url"] = index_url
+                            except Exception:
+                                pass  # index는 선택사항
 
-            threading.Thread(
-                target=poll_runpod_job,
-                args=(job_id, runpod_job_id, "convert"),
-                daemon=True
-            ).start()
+                    update_job(job_id, progress=8, message="RunPod에 변환 작업 제출 중...")
+                    runpod_job_id = runpod_client.submit_job(payload)
+                    if not runpod_job_id:
+                        update_job(job_id, status="failed", message="RunPod 작업 ID를 받지 못했습니다.")
+                        return
+                    update_job(job_id, status="running", progress=10,
+                              message="변환 재개 — GPU 작업 제출됨",
+                              runpod_job_id=runpod_job_id)
+                    with get_db() as db:
+                        db.execute("UPDATE conversions SET status='processing' WHERE job_id=?", (job_id,))
+                    poll_runpod_job(job_id, runpod_job_id, "convert")
+                except Exception as e:
+                    error_msg = classify_runpod_error(e)
+                    update_job(job_id, status="failed", message=f"변환 재개 실패: {error_msg}")
+
+            threading.Thread(target=_do_resume_convert, daemon=True).start()
 
         else:
             raise HTTPException(400, f"지원하지 않는 작업 유형: {job_type}")

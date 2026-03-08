@@ -5669,7 +5669,7 @@ async function resumePreprocess() {
   // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
   if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
   try {
-    var res = await api('/jobs/' + preprocessJobId + '/resume', { method: 'POST' });
+    var res = await api('/jobs/' + preprocessJobId + '/resume', { method: 'POST', noTimeout: true });
     if (res.job_id) {
       preprocessJobId = res.job_id;
     }
@@ -6145,7 +6145,7 @@ async function resumeTraining() {
   // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
   if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
   try {
-    var res = await api('/jobs/' + currentTrainJobId + '/resume', { method: 'POST' });
+    var res = await api('/jobs/' + currentTrainJobId + '/resume', { method: 'POST', noTimeout: true });
     if (res.job_id) {
       currentTrainJobId = res.job_id;
     }
@@ -7151,7 +7151,7 @@ async function resumeConversion() {
   // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
   if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
   try {
-    var res = await api('/jobs/' + currentConvertJobId + '/resume', { method: 'POST' });
+    var res = await api('/jobs/' + currentConvertJobId + '/resume', { method: 'POST', noTimeout: true });
     if (res.job_id) {
       currentConvertJobId = res.job_id;
     }
