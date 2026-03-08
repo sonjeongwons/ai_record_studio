@@ -1693,8 +1693,6 @@ input[type="range"].has-fill {
     animation: progressPulse 2s ease-in-out infinite;
 }
 
-/* ─── Pause / Resume Styles ─── */
-.badge-paused { background: rgba(245,158,11,0.12); color: var(--amber); border: 1px solid rgba(245,158,11,0.25); }
 /* ─── Cost Estimate Panel ─── */
 .cost-panel {
   background: rgba(139,92,246,0.05);
@@ -1750,57 +1748,6 @@ input[type="range"].has-fill {
 .filter-btn { padding:4px 14px; border-radius:20px; font-size:12px; background:var(--bg3); border:1px solid var(--border); color:var(--text2); cursor:pointer; transition:background 0.15s, color 0.15s, border-color 0.15s; }
 .filter-btn:hover { border-color:var(--violet); color:var(--violet); }
 .filter-btn.active { background:var(--violet); border-color:var(--violet); color:#fff; }
-.btn-pause {
-  background: rgba(245,158,11,0.1);
-  color: var(--amber);
-  border: 1px solid rgba(245,158,11,0.25);
-}
-.btn-pause:not(:disabled):hover {
-  background: rgba(245,158,11,0.2);
-  border-color: rgba(245,158,11,0.4);
-  transform: translateY(-1px);
-}
-.btn-resume {
-  background: rgba(16,185,129,0.1);
-  color: var(--emerald);
-  border: 1px solid rgba(16,185,129,0.25);
-}
-.btn-resume:not(:disabled):hover {
-  background: rgba(16,185,129,0.2);
-  border-color: rgba(16,185,129,0.4);
-  transform: translateY(-1px);
-}
-/* 일시정지됨 상태 링 색상 (진행 원형) */
-.paused-ring { stroke: var(--amber) !important; }
-@keyframes pausedPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-.paused-ring { animation: pausedPulse 1.5s ease-in-out infinite; }
-/* 일시정지/재개 컨트롤 영역 */
-.job-paused-area {
-  padding: 16px 20px;
-  border-radius: 12px;
-  background: rgba(245,158,11,0.06);
-  border: 1px solid rgba(245,158,11,0.2);
-  margin-top: 16px;
-  text-align: center;
-}
-.job-paused-icon {
-  width: 48px; height: 48px;
-  border-radius: 50%;
-  background: rgba(245,158,11,0.12);
-  display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 10px;
-  color: var(--amber);
-}
-.job-paused-title {
-  font-size: 14px; font-weight: 600; color: var(--amber);
-  margin-bottom: 4px;
-}
-.job-paused-desc {
-  font-size: 12px; color: var(--text3); margin-bottom: 16px;
-}
 /* 네트워크 에러 배너 */
 .net-error-banner {
   padding: 10px 14px;
@@ -2349,13 +2296,6 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 .badge { transition: transform var(--transition-fast), box-shadow var(--transition-fast); }
 .badge:not(.badge-amber):hover { transform: scale(1.06); box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
 
-/* ─── Job Paused Area Hover ─── */
-.job-paused-area { transition: box-shadow var(--transition), border-color var(--transition); }
-.job-paused-area:hover {
-  box-shadow: 0 4px 20px rgba(245,158,11,0.12);
-  border-color: rgba(245,158,11,0.4);
-}
-
 /* ─── Connection Status Focus-Visible ─── */
 .connection-status:focus-visible {
   outline: 2px solid var(--violet);
@@ -2500,27 +2440,6 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 .live-cost-bar .live-note { font-size: 10px; color: var(--text3); }
 
 /* ─── Pause Button with Icon ─── */
-.btn-pause-icon { display: inline-flex; align-items: center; gap: 6px; }
-
-/* ─── Paused area accumulated cost ─── */
-.paused-cost-info {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 6px;
-  background: rgba(245,158,11,0.08);
-  border: 1px solid rgba(245,158,11,0.2);
-  font-size: 12px;
-  color: var(--text2);
-  margin-bottom: 12px;
-}
-.paused-cost-info .paused-cost-val {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 600;
-  color: var(--amber);
-}
-
 /* ─── Firefox 스크롤바 ─── */
 * { scrollbar-width: thin; scrollbar-color: rgba(139,92,246,0.35) transparent; }
 
@@ -2695,7 +2614,6 @@ input[type="range"]::-moz-range-track {
 
 /* ─── 토글 버튼 active 상태 ─── */
 #toggle-mix:active, #toggle-vocal:active { transform: scale(0.95); }
-.btn-pause:disabled, .btn-resume:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ─── 모델 카드 선택 트랜지션 ─── */
 .model-card { transition: border-color var(--transition), background var(--transition), box-shadow var(--transition), transform var(--transition); }
@@ -2713,13 +2631,6 @@ input[type="range"]::-moz-range-track {
 .confirm-overlay { backdrop-filter: blur(8px) !important; -webkit-backdrop-filter: blur(8px) !important; }
 .confirm-overlay { animation-duration: 0.22s !important; }
 .confirm-dialog { animation-duration: 0.22s !important; }
-
-/* ─── 일시정지 영역 gentle pulse ─── */
-@keyframes gentlePulseAmber {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.35); }
-  50%       { box-shadow: 0 0 0 6px rgba(245,158,11,0); }
-}
-.badge-paused { animation: gentlePulseAmber 2.2s ease-in-out infinite; }
 
 /* ─── 파일/배치 행 삭제 버튼 트랜지션 보장 ─── */
 .batch-remove, .file-delete {
@@ -3003,30 +2914,6 @@ input[type="range"]::-moz-range-track {
               <span class="live-note">RTX 4090 기준 추정값</span>
             </div>
             <div class="flex gap-8" style="margin-top:12px;justify-content:center">
-              <button class="btn btn-pause btn-pause-icon" id="btn-pause-preprocess" data-loading-label="정지 중..." onclick="pausePreprocess()" title="일시정지하면 RunPod 과금이 즉시 중단됩니다. 나중에 재개할 수 있습니다.">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                일시정지 · 과금 중단
-              </button>
-              <button class="skip-link" onclick="cancelPreprocess()">취소하고 건너뛰기</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Preprocess: paused -->
-        <div id="preprocess-paused" style="display:none">
-          <div class="job-paused-area">
-            <div class="job-paused-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-            </div>
-            <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">전처리 일시정지됨</div>
-            <div class="paused-cost-info" id="preprocess-paused-cost-info" style="display:none">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              이 세션 누적 비용:&nbsp;<span class="paused-cost-val" id="preprocess-paused-cost-val">~$0.000</span>
-              <span style="color:var(--text3);font-size:10px">(과금 중단됨)</span>
-            </div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod 사용이 중단되어 과금이 멈췄습니다. 재개하면 중단된 부분부터 이어서 전처리합니다.</div>
-            <div class="flex gap-8" style="justify-content:center">
-              <button class="btn btn-resume" id="btn-resume-preprocess" data-loading-label="재개 중..." onclick="resumePreprocess()">재개</button>
               <button class="skip-link" onclick="cancelPreprocess()">취소하고 건너뛰기</button>
             </div>
           </div>
@@ -3221,34 +3108,10 @@ input[type="range"]::-moz-range-track {
       </div>
     </div>
 
-    <!-- 실행 중: 일시정지/취소 버튼 -->
+    <!-- 실행 중: 취소 버튼 -->
     <div id="train-cancel-area" class="flex" style="justify-content:center;margin-top:16px;gap:8px">
-      <button class="btn btn-pause btn-pause-icon" id="btn-pause-train" data-loading-label="정지 중..." onclick="pauseTraining()" title="일시정지하면 RunPod GPU 과금이 즉시 중단됩니다. 재개 시 처음부터 다시 학습합니다.">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-        일시정지 · 과금 중단
-      </button>
       <button class="btn btn-secondary" id="btn-cancel-train" data-loading-label="취소 중..." onclick="cancelTraining()">학습 취소</button>
       <button class="btn btn-secondary" onclick="resetTraining()" style="opacity:0.6;font-size:12px">처음으로</button>
-    </div>
-
-    <!-- 일시정지됨 -->
-    <div id="train-paused-area" style="display:none;margin-top:16px">
-      <div class="job-paused-area">
-        <div class="job-paused-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-        </div>
-        <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">학습 일시정지됨</div>
-        <div class="paused-cost-info" id="train-paused-cost-info" style="display:none">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          이 세션 누적 비용:&nbsp;<span class="paused-cost-val" id="train-paused-cost-val">~$0.000</span>
-          <span style="color:var(--text3);font-size:10px">(과금 중단됨)</span>
-        </div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod GPU 사용이 중단되었습니다. 재개하면 처음부터 다시 학습합니다.</div>
-        <div class="flex gap-8" style="justify-content:center">
-          <button class="btn btn-resume" id="btn-resume-train" data-loading-label="재개 중..." onclick="resumeTraining()">학습 재개</button>
-          <button class="btn btn-secondary" onclick="cancelTraining()">취소</button>
-        </div>
-      </div>
     </div>
 
     <!-- 실패 시: 에러 + 복구 버튼 -->
@@ -3569,33 +3432,9 @@ input[type="range"]::-moz-range-track {
       </div>
     </div>
 
-    <!-- 실행 중: 일시정지/취소 버튼 -->
+    <!-- 실행 중: 취소 버튼 -->
     <div id="convert-cancel-area" class="flex" style="justify-content:center;margin-top:16px;gap:8px">
-      <button class="btn btn-pause btn-pause-icon" id="btn-pause-convert" data-loading-label="정지 중..." onclick="pauseConversion()" title="일시정지하면 RunPod GPU 과금이 즉시 중단됩니다. 재개 시 동일 설정으로 다시 변환합니다.">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-        일시정지 · 과금 중단
-      </button>
       <button class="btn btn-secondary" id="btn-cancel-convert" data-loading-label="취소 중..." onclick="cancelConversion()">변환 취소</button>
-    </div>
-
-    <!-- 일시정지됨 -->
-    <div id="convert-paused-area" style="display:none;margin-top:16px">
-      <div class="job-paused-area">
-        <div class="job-paused-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-        </div>
-        <div style="font-size:14px;font-weight:600;color:#f59e0b;margin-bottom:4px">변환 일시정지됨</div>
-        <div class="paused-cost-info" id="convert-paused-cost-info" style="display:none">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          이 세션 누적 비용:&nbsp;<span class="paused-cost-val" id="convert-paused-cost-val">~$0.000</span>
-          <span style="color:var(--text3);font-size:10px">(과금 중단됨)</span>
-        </div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:16px">RunPod GPU 사용이 중단되었습니다. 재개하면 동일 설정으로 다시 변환합니다.</div>
-        <div class="flex gap-8" style="justify-content:center">
-          <button class="btn btn-resume" id="btn-resume-convert" data-loading-label="재개 중..." onclick="resumeConversion()">변환 재개</button>
-          <button class="btn btn-secondary" onclick="cancelConversion()">취소</button>
-        </div>
-      </div>
     </div>
 
     <!-- 실패 시: 에러 + 복구 버튼 -->
@@ -3979,12 +3818,8 @@ var currentTrainJobId = null;
 var currentConvertJobId = null;
 var preprocessJobId = null;
 var preprocessDone = false;
-var _preprocessPollErrors = 0;
 var _trainPollErrors = 0;
 var _convertPollErrors = 0;
-var _preprocessPaused = false;
-var _trainPaused = false;
-var _convertPaused = false;
 var _preprocessPollTimer = null;
 var _trainPollTimer = null;
 var _convertPollTimer = null;
@@ -3993,11 +3828,6 @@ var _convertPollTimer = null;
 var _preprocessStartTime = null;
 var _trainStartTime = null;
 var _convertStartTime = null;
-
-// Accumulated cost at pause time (for paused area display)
-var _preprocessPausedCostSec = 0;
-var _trainPausedCostSec = 0;
-var _convertPausedCostSec = 0;
 
 // Batch conversion state
 var batchFiles = [];
@@ -4559,18 +4389,6 @@ function _updateLiveCostBar(elapsedId, costId, startTime) {
   var costEl = document.getElementById(costId);
   if (elEl) elEl.textContent = timeStr;
   if (costEl) costEl.textContent = costStr;
-}
-
-// ─── 일시정지 시 누적 비용 저장 + 표시 ───
-function _showPausedCost(infoId, valId, startTime) {
-  var infoEl = document.getElementById(infoId);
-  var valEl  = document.getElementById(valId);
-  if (!infoEl || !valEl) return;
-  var sec = startTime ? (Date.now() - startTime) / 1000 : 0;
-  var cost = sec * COST_PER_SEC;
-  var costStr = cost < 0.001 ? '~$0.001' : '~$' + cost.toFixed(3);
-  valEl.textContent = costStr;
-  infoEl.style.display = 'inline-flex';
 }
 
 // 동적 경고 표시 헬퍼: level = ok|info|warn|danger
@@ -5143,7 +4961,6 @@ function renderJobsPage() {
   var statusBadge = function(s) {
     if (s === 'completed') return '<span class="badge badge-green">완료</span>';
     if (s === 'failed') return '<span class="badge badge-red">실패</span>';
-    if (s === 'paused') return '<span class="badge badge-paused">일시정지</span>';
     if (s === 'cancelled') return '<span class="badge badge-red">취소됨</span>';
     return '<span class="badge badge-amber">진행중</span>';
   };
@@ -5429,7 +5246,6 @@ function deleteSelectedFiles() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function startPreprocess() {
   if (preprocessJobId) { toast('이미 전처리가 진행 중입니다.', 'warning'); return; }
-  if (_preprocessPaused) { toast('일시정지된 전처리가 있습니다. 재개하거나 취소하세요.', 'warning'); return; }
   var selectedIds = getSelectedFileIds();
   if (selectedIds.length === 0) {
     toast('전처리할 파일을 선택해 주세요', 'warning');
@@ -5482,14 +5298,13 @@ async function startPreprocess() {
 
 var _preprocessPolling = false;
 async function pollPreprocessStatus() {
-  if (!preprocessJobId || _preprocessPaused) return;
+  if (!preprocessJobId) return;
   if (_preprocessPolling) return;
   _preprocessPolling = true;
   if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
   document.getElementById('preprocess-ring').classList.add('running');
   try {
     var job = await api('/jobs/' + preprocessJobId, { noTimeout: true });
-    _preprocessPollErrors = 0; // reset on success
     var pct = job.progress || 0;
     var circ = 2 * Math.PI * 42;
     var offset = circ - (pct / 100) * circ;
@@ -5559,19 +5374,8 @@ async function pollPreprocessStatus() {
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-idle').style.display = 'block';
       preprocessJobId = null;
-      _preprocessPaused = false;
       document.title = 'AI Voice Studio';
       toast('전처리가 외부에서 취소되었습니다', 'warning');
-      return;
-    }
-    if (job.status === 'paused') {
-      _preprocessPaused = true;
-      _showPausedCost('preprocess-paused-cost-info', 'preprocess-paused-cost-val', _preprocessStartTime);
-      document.getElementById('preprocess-ring').classList.remove('running');
-      document.getElementById('preprocess-running').style.display = 'none';
-      document.getElementById('preprocess-paused').style.display = 'block';
-      document.title = 'AI Voice Studio';
-      toast('전처리가 일시정지되었습니다', 'info');
       return;
     }
     if (job.status === 'failed') {
@@ -5590,17 +5394,6 @@ async function pollPreprocessStatus() {
 
     _preprocessPollTimer = setTimeout(pollPreprocessStatus, 3000);
   } catch(e) {
-    _preprocessPollErrors++;
-    if (_preprocessPollErrors >= 20) {
-      if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
-      document.getElementById('preprocess-msg').textContent = '서버 연결 실패';
-      toast('서버 연결 실패 - 전처리가 일시정지됩니다', 'error');
-      _preprocessPaused = true;
-      _showPausedCost('preprocess-paused-cost-info', 'preprocess-paused-cost-val', _preprocessStartTime);
-      document.getElementById('preprocess-running').style.display = 'none';
-      document.getElementById('preprocess-paused').style.display = 'block';
-      return;
-    }
     _preprocessPollTimer = setTimeout(pollPreprocessStatus, 5000);
   } finally {
     _preprocessPolling = false;
@@ -5611,8 +5404,6 @@ function skipPreprocess() {
   if (preprocessJobId) {
     api('/jobs/' + preprocessJobId + '/cancel', { method: 'POST' }).catch(function(){});
   }
-  _preprocessPaused = false;
-  _preprocessPollErrors = 0;
   preprocessDone = true;
   preprocessJobId = null;
   document.getElementById('preprocess-idle').style.display = 'none';
@@ -5630,61 +5421,13 @@ function cancelPreprocess() {
   var jobId = preprocessJobId;
   preprocessJobId = null;
   preprocessDone = false;
-  _preprocessPaused = false;
-  _preprocessPollErrors = 0;
   document.getElementById('preprocess-running').style.display = 'none';
-  document.getElementById('preprocess-paused').style.display = 'none';
   document.getElementById('preprocess-idle').style.display = 'block';
   document.getElementById('btn-start-train').disabled = true;
   if (jobId) {
     api('/jobs/' + jobId + '/cancel', { method: 'POST' }).catch(function() {});
   }
   toast('전처리를 취소했습니다. 다시 시작하거나 건너뛸 수 있습니다.', 'info');
-}
-
-var _pauseResumeInProgress = false;  // 모든 pause/resume 공용 debounce 플래그
-async function pausePreprocess() {
-  if (!preprocessJobId || _pauseResumeInProgress) return;
-  _pauseResumeInProgress = true;
-  if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
-  setButtonLoading('btn-pause-preprocess', true);
-  try {
-    await api('/jobs/' + preprocessJobId + '/pause', { method: 'POST' });
-    _preprocessPaused = true;
-    _showPausedCost('preprocess-paused-cost-info', 'preprocess-paused-cost-val', _preprocessStartTime);
-    document.getElementById('preprocess-running').style.display = 'none';
-    document.getElementById('preprocess-paused').style.display = 'block';
-    setButtonLoading('btn-pause-preprocess', false);
-    toast('전처리를 일시정지했습니다. RunPod 과금이 중단됩니다.', 'info');
-  } catch(e) {
-    setButtonLoading('btn-pause-preprocess', false);
-    toast('일시정지 실패: ' + (e.message || ''), 'error');
-  } finally { _pauseResumeInProgress = false; }
-}
-
-async function resumePreprocess() {
-  if (!preprocessJobId || _pauseResumeInProgress) return;
-  _pauseResumeInProgress = true;
-  setButtonLoading('btn-resume-preprocess', true);
-  // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
-  if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
-  try {
-    var res = await api('/jobs/' + preprocessJobId + '/resume', { method: 'POST', noTimeout: true });
-    if (res.job_id) {
-      preprocessJobId = res.job_id;
-    }
-    _preprocessPaused = false;
-    _preprocessPollErrors = 0;
-    // _preprocessStartTime 보존 — 재개 시 누적 경과 시간 ETA 유지
-    document.getElementById('preprocess-paused').style.display = 'none';
-    document.getElementById('preprocess-running').style.display = 'block';
-    setButtonLoading('btn-resume-preprocess', false);
-    toast('전처리를 재개합니다', 'info');
-    pollPreprocessStatus();
-  } catch(e) {
-    setButtonLoading('btn-resume-preprocess', false);
-    toast('재개 실패: ' + (e.message || ''), 'error');
-  } finally { _pauseResumeInProgress = false; }
 }
 
 async function resetPreprocess() {
@@ -5826,20 +5569,13 @@ async function cleanupStuckJobs() {
     // UI 상태도 초기화
     preprocessJobId = null;
     preprocessDone = false;
-    _preprocessPaused = false;
-    _preprocessPollErrors = 0;
     currentTrainJobId = null;
-    _trainPaused = false;
     _trainPollErrors = 0;
     currentConvertJobId = null;
-    _convertPaused = false;
     _convertPollErrors = 0;
     document.getElementById('preprocess-running').style.display = 'none';
-    document.getElementById('preprocess-paused').style.display = 'none';
     document.getElementById('preprocess-idle').style.display = 'block';
     document.getElementById('preprocess-done').style.display = 'none';
-    document.getElementById('train-paused-area').style.display = 'none';
-    document.getElementById('convert-paused-area').style.display = 'none';
   } catch(e) {
     setButtonLoading('btn-cleanup-jobs', false);
     toast('정리 실패: ' + e.message, 'error');
@@ -5908,7 +5644,6 @@ async function _doStartTraining() {
     setButtonLoading('btn-start-train', false);
     currentTrainJobId = res.job_id;
     _trainStartTime = Date.now();
-    _trainPaused = false;          // 이전 작업 일시정지 상태 초기화
     _trainPollErrors = 0;          // 이전 작업 오류 카운트 초기화
     updateNavBadges();
 
@@ -5936,7 +5671,7 @@ async function _doStartTraining() {
 
 var _trainPolling = false;
 async function pollTrainingStatus() {
-  if (!currentTrainJobId || _trainPaused) return;
+  if (!currentTrainJobId) return;
   if (_trainPolling) return;
   _trainPolling = true;
   if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
@@ -5995,20 +5730,8 @@ async function pollTrainingStatus() {
       document.getElementById('train-cancel-area').style.display = 'none';
       document.getElementById('train-running').style.display = 'none';
       currentTrainJobId = null;
-      _trainPaused = false;
       document.title = 'AI Voice Studio';
       toast('학습이 외부에서 취소되었습니다', 'warning');
-      return;
-    }
-    if (job.status === 'paused') {
-      _trainPaused = true;
-      _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
-      document.getElementById('train-ring').classList.remove('running');
-      document.getElementById('train-info-status').textContent = '일시정지';
-      document.getElementById('train-cancel-area').style.display = 'none';
-      document.getElementById('train-paused-area').style.display = 'block';
-      document.title = 'AI Voice Studio';
-      toast('학습이 일시정지되었습니다', 'info');
       return;
     }
     if (job.status === 'failed') {
@@ -6028,18 +5751,6 @@ async function pollTrainingStatus() {
     _trainPollTimer = setTimeout(pollTrainingStatus, 5000);
   } catch(e) {
     _trainPollErrors++;
-    if (_trainPollErrors >= 20) {
-      // 20 consecutive failures (~3 min) — auto-pause to stop billing
-      if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
-      _trainPaused = true;
-      _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
-      document.getElementById('train-status-msg').textContent = '서버 연결 실패';
-      document.getElementById('train-info-status').textContent = '연결 오류';
-      document.getElementById('train-cancel-area').style.display = 'none';
-      document.getElementById('train-paused-area').style.display = 'block';
-      toast('서버 연결 실패 - 학습이 일시정지됩니다', 'error');
-      return;
-    }
     _trainPollTimer = setTimeout(pollTrainingStatus, 10000);
   } finally {
     _trainPolling = false;
@@ -6055,7 +5766,6 @@ function resetTraining() {
   }
   currentTrainJobId = null;
   _trainPollErrors = 0;
-  _trainPaused = false;
 
   // 버튼 비활성화 + 로딩 표시
   var backBtn = document.getElementById('btn-train-back');
@@ -6067,7 +5777,6 @@ function resetTraining() {
   document.getElementById('train-progress').style.display = 'none';
   document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
-  document.getElementById('train-paused-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
   // btn-start-train 상태는 checkPreprocessStatus → renderFileList에서 설정
   // (preprocessDone이 true일 때만 활성화되어야 함)
@@ -6101,12 +5810,10 @@ async function cancelTraining() {
   setButtonLoading('btn-cancel-train', false);
   currentTrainJobId = null;
   _trainPollErrors = 0;
-  _trainPaused = false;
   document.getElementById('train-upload').style.display = 'block';
   document.getElementById('train-progress').style.display = 'none';
   document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
-  document.getElementById('train-paused-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
   toast('학습을 취소했습니다', 'info');
   updateNavBadges();
@@ -6118,58 +5825,10 @@ async function cancelTraining() {
   }).catch(function() {});
 }
 
-async function pauseTraining() {
-  if (!currentTrainJobId || _pauseResumeInProgress) return;
-  _pauseResumeInProgress = true;
-  if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
-  setButtonLoading('btn-pause-train', true);
-  try {
-    await api('/jobs/' + currentTrainJobId + '/pause', { method: 'POST' });
-    _trainPaused = true;
-    _showPausedCost('train-paused-cost-info', 'train-paused-cost-val', _trainStartTime);
-    document.getElementById('train-cancel-area').style.display = 'none';
-    document.getElementById('train-paused-area').style.display = 'block';
-    document.getElementById('train-info-status').textContent = '일시정지';
-    setButtonLoading('btn-pause-train', false);
-    toast('학습을 일시정지했습니다. RunPod GPU 과금이 중단됩니다.', 'info');
-  } catch(e) {
-    setButtonLoading('btn-pause-train', false);
-    toast('일시정지 실패: ' + (e.message || ''), 'error');
-  } finally { _pauseResumeInProgress = false; }
-}
-
-async function resumeTraining() {
-  if (!currentTrainJobId || _pauseResumeInProgress) return;
-  _pauseResumeInProgress = true;
-  setButtonLoading('btn-resume-train', true);
-  // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
-  if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }
-  try {
-    var res = await api('/jobs/' + currentTrainJobId + '/resume', { method: 'POST', noTimeout: true });
-    if (res.job_id) {
-      currentTrainJobId = res.job_id;
-    }
-    _trainPaused = false;
-    _trainPollErrors = 0;
-    // _trainStartTime 보존 — 재개 시 누적 경과 시간 ETA 유지
-    document.getElementById('train-paused-area').style.display = 'none';
-    document.getElementById('train-cancel-area').style.display = 'block';
-    document.getElementById('train-info-status').textContent = '실행 중';
-    setButtonLoading('btn-resume-train', false);
-    toast('학습을 재개합니다', 'info');
-    pollTrainingStatus();
-  } catch(e) {
-    setButtonLoading('btn-resume-train', false);
-    toast('재개 실패: ' + (e.message || ''), 'error');
-  } finally { _pauseResumeInProgress = false; }
-}
-
 async function retryTraining() {
   currentTrainJobId = null;
-  _trainPaused = false;
   _trainPollErrors = 0;
   _trainStartTime = null;
-  document.getElementById('train-paused-area').style.display = 'none';
   document.getElementById('train-cancel-area').style.display = 'block';
   // 버튼 비활성화 + 로딩 표시
   var btn = document.getElementById('btn-train-retry');
@@ -6478,7 +6137,6 @@ async function startConversion() {
       return;
     }
     _convertStartTime = Date.now();
-    _convertPaused = false;        // 이전 작업 일시정지 상태 초기화
     _convertPollErrors = 0;        // 이전 작업 오류 카운트 초기화
 
     document.getElementById('convert-main').style.display = 'none';
@@ -6503,7 +6161,7 @@ async function startConversion() {
 
 var _convertPolling = false;
 async function pollConvertStatus() {
-  if (!currentConvertJobId || _convertPaused) return;
+  if (!currentConvertJobId) return;
   if (_convertPolling) return;
   _convertPolling = true;
   if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
@@ -6647,21 +6305,9 @@ async function pollConvertStatus() {
       document.getElementById('convert-ring').classList.remove('running');
       document.getElementById('convert-cancel-area').style.display = 'none';
       currentConvertJobId = null;
-      _convertPaused = false;
       document.title = 'AI Voice Studio';
       resetConversion();
       toast('변환이 외부에서 취소되었습니다', 'warning');
-      return;
-    }
-    if (job.status === 'paused') {
-      _convertPaused = true;
-      _showPausedCost('convert-paused-cost-info', 'convert-paused-cost-val', _convertStartTime);
-      document.getElementById('convert-ring').classList.remove('running');
-      document.getElementById('convert-status-msg').textContent = '일시정지됨';
-      document.getElementById('convert-cancel-area').style.display = 'none';
-      document.getElementById('convert-paused-area').style.display = 'block';
-      document.title = 'AI Voice Studio';
-      toast('변환이 일시정지되었습니다', 'info');
       return;
     }
     if (job.status === 'failed') {
@@ -6678,17 +6324,6 @@ async function pollConvertStatus() {
     _convertPollTimer = setTimeout(pollConvertStatus, 3000);
   } catch(e) {
     _convertPollErrors++;
-    if (_convertPollErrors >= 20) {
-      // auto-pause to stop billing
-      if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
-      _convertPaused = true;
-      _showPausedCost('convert-paused-cost-info', 'convert-paused-cost-val', _convertStartTime);
-      document.getElementById('convert-status-msg').textContent = '서버 연결 실패';
-      document.getElementById('convert-cancel-area').style.display = 'none';
-      document.getElementById('convert-paused-area').style.display = 'block';
-      toast('서버 연결 끊김 - 변환이 일시정지됩니다', 'error');
-      return;
-    }
     _convertPollTimer = setTimeout(pollConvertStatus, 5000);
   } finally {
     _convertPolling = false;
@@ -6817,7 +6452,6 @@ async function startBatchConversion() {
   document.body.classList.add('busy');
   batchProcessing = true;
   _batchCancelled = false;
-  _convertPaused = false;          // 이전 일시정지 상태 초기화
   _convertPollErrors = 0;
   batchResults = batchFiles.map(function(f) {
     return { file: f, jobId: null, status: 'pending', resultUrl: null, mixedUrl: null, error: null };
@@ -6945,9 +6579,9 @@ function pollBatchItem(index) {
           resolve();
           return;
         }
-        if (job.status === 'paused' || job.status === 'cancelled') {
+        if (job.status === 'cancelled') {
           r.status = 'failed';
-          r.error = job.status === 'paused' ? '일시정지됨' : '취소됨';
+          r.error = '취소됨';
           renderBatchProgress();
           resolve();
           return;
@@ -7027,14 +6661,12 @@ function resetConversion() {
   batchFiles = [];
   batchResults = [];
   batchProcessing = false;
-  _convertPaused = false;
   _convertPollErrors = 0;
   document.body.classList.remove('busy');
   document.getElementById('convert-main').style.display = 'block';
   document.getElementById('convert-progress').style.display = 'none';
   document.getElementById('convert-done').style.display = 'none';
   document.getElementById('convert-error-area').style.display = 'none';
-  document.getElementById('convert-paused-area').style.display = 'none';
   document.getElementById('convert-cancel-area').style.display = 'block';
   document.getElementById('batch-progress').style.display = 'none';
   document.getElementById('batch-done').style.display = 'none';
@@ -7067,14 +6699,12 @@ function reuseFileForConvert() {
   if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
   _convertStartTime = null;
   currentConvertJobId = null;
-  _convertPaused = false;
   _convertPollErrors = 0;
   document.body.classList.remove('busy');
   document.getElementById('convert-ring').classList.remove('running');
   document.getElementById('convert-done').style.display = 'none';
   document.getElementById('convert-progress').style.display = 'none';
   document.getElementById('convert-error-area').style.display = 'none';
-  document.getElementById('convert-paused-area').style.display = 'none';
   document.getElementById('convert-cancel-area').style.display = 'block';
   document.getElementById('convert-result-player').style.display = 'none';
   var toggleEl = document.getElementById('convert-result-toggle');
@@ -7116,58 +6746,10 @@ async function cancelConversion() {
     }
   }
   setButtonLoading('btn-cancel-convert', false);
-  _convertPaused = false;
   _convertPollErrors = 0;
-  document.getElementById('convert-paused-area').style.display = 'none';
   resetConversion();
   toast('변환을 취소했습니다', 'info');
   updateNavBadges();
-}
-
-async function pauseConversion() {
-  if (!currentConvertJobId || _pauseResumeInProgress) return;
-  _pauseResumeInProgress = true;
-  if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
-  setButtonLoading('btn-pause-convert', true);
-  try {
-    await api('/jobs/' + currentConvertJobId + '/pause', { method: 'POST' });
-    _convertPaused = true;
-    _showPausedCost('convert-paused-cost-info', 'convert-paused-cost-val', _convertStartTime);
-    document.getElementById('convert-cancel-area').style.display = 'none';
-    document.getElementById('convert-paused-area').style.display = 'block';
-    document.getElementById('convert-status-msg').textContent = '일시정지됨';
-    setButtonLoading('btn-pause-convert', false);
-    toast('변환을 일시정지했습니다. RunPod GPU 과금이 중단됩니다.', 'info');
-  } catch(e) {
-    setButtonLoading('btn-pause-convert', false);
-    toast('일시정지 실패: ' + (e.message || ''), 'error');
-  } finally { _pauseResumeInProgress = false; }
-}
-
-async function resumeConversion() {
-  if (!currentConvertJobId || _pauseResumeInProgress) return;
-  _pauseResumeInProgress = true;
-  setButtonLoading('btn-resume-convert', true);
-  // 이전 폴링 타이머 정리 (재개 시 중복 폴링 방지)
-  if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
-  try {
-    var res = await api('/jobs/' + currentConvertJobId + '/resume', { method: 'POST', noTimeout: true });
-    if (res.job_id) {
-      currentConvertJobId = res.job_id;
-    }
-    _convertPaused = false;
-    _convertPollErrors = 0;
-    // _convertStartTime 보존 — 재개 시 누적 경과 시간 ETA 유지
-    document.getElementById('convert-paused-area').style.display = 'none';
-    document.getElementById('convert-cancel-area').style.display = 'block';
-    document.getElementById('convert-status-msg').textContent = 'GPU 변환 중...';
-    setButtonLoading('btn-resume-convert', false);
-    toast('변환을 재개합니다', 'info');
-    pollConvertStatus();
-  } catch(e) {
-    setButtonLoading('btn-resume-convert', false);
-    toast('재개 실패: ' + (e.message || ''), 'error');
-  } finally { _pauseResumeInProgress = false; }
 }
 
 async function loadConversionHistory() {
@@ -7220,8 +6802,6 @@ function renderConvHistoryPage() {
       statusBadgeHtml = '<span class="badge badge-red">실패</span>';
     } else if (c.status === 'cancelled') {
       statusBadgeHtml = '<span class="badge badge-red">취소됨</span>';
-    } else if (c.status === 'paused') {
-      statusBadgeHtml = '<span class="badge badge-paused">일시정지</span>';
     } else if (c.status === 'running' || c.status === 'submitting') {
       statusBadgeHtml = '<span class="badge badge-amber">진행중</span>';
     } else {
@@ -7281,9 +6861,7 @@ function deleteConversion(id) {
 }
 
 async function retryConversion() {
-  _convertPaused = false;
   _convertPollErrors = 0;
-  document.getElementById('convert-paused-area').style.display = 'none';
   var btn = document.getElementById('btn-convert-retry');
   var backBtn = document.getElementById('btn-convert-back');
   if (btn) { btn.disabled = true; btn.textContent = '재시작 중...'; }
@@ -7687,76 +7265,40 @@ async function restoreActiveJobs() {
       if (job.job_type === 'preprocess') {
         if (job.status === 'running' || job.status === 'submitting') {
           preprocessJobId = job.id;
-          _preprocessPaused = false;
-          _preprocessPollErrors = 0;
           // started_at 있으면 실제 시작 시간 사용 (경과 시간 정확도 개선)
           _preprocessStartTime = job.started_at ? new Date(job.started_at).getTime() : Date.now();
           document.getElementById('preprocess-idle').style.display = 'none';
           document.getElementById('preprocess-running').style.display = 'block';
-          document.getElementById('preprocess-paused').style.display = 'none';
           document.getElementById('preprocess-done').style.display = 'none';
           pollPreprocessStatus();
-        } else if (job.status === 'paused') {
-          preprocessJobId = job.id;
-          _preprocessPaused = true;
-          document.getElementById('preprocess-idle').style.display = 'none';
-          document.getElementById('preprocess-running').style.display = 'none';
-          document.getElementById('preprocess-done').style.display = 'none';
-          document.getElementById('preprocess-paused').style.display = 'block';
-          document.getElementById('preprocess-msg').textContent = '일시정지됨 — 재개 버튼을 눌러 계속하세요';
         }
       } else if (job.job_type === 'train') {
         if (job.status === 'running' || job.status === 'submitting') {
           currentTrainJobId = job.id;
-          _trainPaused = false;
           _trainPollErrors = 0;
           _trainStartTime = job.started_at ? new Date(job.started_at).getTime() : Date.now();
           document.getElementById('train-upload').style.display = 'none';
           document.getElementById('train-progress').style.display = 'block';
           document.getElementById('train-done').style.display = 'none';
           document.getElementById('train-error-area').style.display = 'none';
-          document.getElementById('train-paused-area').style.display = 'none';
           document.getElementById('train-cancel-area').style.display = 'block';
           document.getElementById('train-status-msg').textContent = job.message || '학습 중...';
           updateNavBadges();
           pollTrainingStatus();
-        } else if (job.status === 'paused') {
-          currentTrainJobId = job.id;
-          _trainPaused = true;
-          document.getElementById('train-upload').style.display = 'none';
-          document.getElementById('train-progress').style.display = 'block';
-          document.getElementById('train-done').style.display = 'none';
-          document.getElementById('train-error-area').style.display = 'none';
-          document.getElementById('train-cancel-area').style.display = 'none';
-          document.getElementById('train-paused-area').style.display = 'block';
-          document.getElementById('train-info-status').textContent = '일시정지';
-          document.getElementById('train-status-msg').textContent = '일시정지됨 — 재개 버튼을 눌러 계속하세요';
         }
       } else if (job.job_type === 'convert') {
         if (job.status === 'running' || job.status === 'submitting') {
           currentConvertJobId = job.id;
-          _convertPaused = false;
           _convertPollErrors = 0;
           _convertStartTime = job.started_at ? new Date(job.started_at).getTime() : Date.now();
           document.getElementById('convert-main').style.display = 'none';
           document.getElementById('convert-progress').style.display = 'block';
           document.getElementById('convert-done').style.display = 'none';
           document.getElementById('convert-error-area').style.display = 'none';
-          document.getElementById('convert-paused-area').style.display = 'none';
           document.getElementById('convert-cancel-area').style.display = 'block';
           document.getElementById('convert-status-msg').textContent = job.message || '변환 중...';
           updateNavBadges();
           pollConvertStatus();
-        } else if (job.status === 'paused') {
-          currentConvertJobId = job.id;
-          _convertPaused = true;
-          document.getElementById('convert-main').style.display = 'none';
-          document.getElementById('convert-progress').style.display = 'block';
-          document.getElementById('convert-done').style.display = 'none';
-          document.getElementById('convert-error-area').style.display = 'none';
-          document.getElementById('convert-cancel-area').style.display = 'none';
-          document.getElementById('convert-paused-area').style.display = 'block';
-          document.getElementById('convert-status-msg').textContent = '일시정지됨 — 재개 버튼을 눌러 계속하세요';
         }
       }
     }
@@ -8161,10 +7703,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 window.addEventListener('beforeunload', function(e) {
   // 타이머 정리는 unload에서 처리 (사용자가 취소하면 타이머가 살아있어야 함)
-  // 일시정지된 작업은 RunPod 과금이 중지됐으므로 경고 불필요
-  var preprocessActive = preprocessJobId && !_preprocessPaused;
-  var trainActive = currentTrainJobId && !_trainPaused;
-  var convertActive = currentConvertJobId && !_convertPaused;
+  var preprocessActive = !!preprocessJobId;
+  var trainActive = !!currentTrainJobId;
+  var convertActive = !!currentConvertJobId;
   if (preprocessActive || trainActive || convertActive) {
     var msg = '진행 중인 작업이 있습니다. 페이지를 나가면 폴링이 중단됩니다.';
     e.preventDefault();
@@ -8187,7 +7728,7 @@ function updateNavBadges() {
   var convertBtn = document.querySelector('[data-page="convert"]');
   if (trainBtn) {
     var badge = trainBtn.querySelector('.nav-badge');
-    if (currentTrainJobId && !_trainPaused) {
+    if (currentTrainJobId) {
       if (!badge) {
         badge = document.createElement('span');
         badge.className = 'nav-badge';
@@ -8197,7 +7738,7 @@ function updateNavBadges() {
   }
   if (convertBtn) {
     var badge2 = convertBtn.querySelector('.nav-badge');
-    if (currentConvertJobId && !_convertPaused) {
+    if (currentConvertJobId) {
       if (!badge2) {
         badge2 = document.createElement('span');
         badge2.className = 'nav-badge';

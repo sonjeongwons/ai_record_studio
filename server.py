@@ -412,30 +412,10 @@ def cleanup_stale_jobs_on_startup():
             UPDATE conversions SET status='failed'
             WHERE status='processing'
             AND job_id NOT IN (
-                SELECT id FROM jobs WHERE status NOT IN ('failed', 'cancelled', 'paused')
+                SELECT id FROM jobs WHERE status NOT IN ('failed', 'cancelled')
             )
         """)
 
-
-def restore_paused_jobs_state():
-    """서버 시작 시 paused 작업의 재개 상태를 메모리에 복원.
-    서버 재시작 후에도 resume이 가능하도록 _active_job_states를 DB에서 채움."""
-    with get_db() as db:
-        rows = db.execute(
-            "SELECT id, pause_state_json FROM jobs WHERE status='paused' AND pause_state_json IS NOT NULL"
-        ).fetchall()
-    count = 0
-    for row in rows:
-        try:
-            state = json.loads(row["pause_state_json"])
-            if state:
-                with _job_states_lock:
-                    _active_job_states[row["id"]] = state
-                count += 1
-        except Exception:
-            pass
-    if count > 0:
-        print(f"  일시정지 작업 상태 복원: {count}개")
 
 
 def cleanup_stale_jobs():
@@ -653,10 +633,6 @@ runpod_client = RunPodClient()
 _training_file_map: dict[str, list[str]] = {}
 _training_lock = threading.Lock()  # _training_file_map 동시성 보호
 
-# 활성 작업 상태 (일시정지/재개용 파라미터 저장, job_id → dict)
-_active_job_states: dict[str, dict] = {}
-_job_states_lock = threading.Lock()  # _active_job_states 동시성 보호
-
 # RunPod 폴링 에러 카운터 동시성 보호
 _poll_errors_lock = threading.Lock()
 
@@ -714,7 +690,7 @@ def upload_to_r2(file_path: Path, key: str) -> str:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 _JOB_UPDATE_COLS = frozenset({"status", "progress", "message", "result_json",
-                               "runpod_job_id", "pause_state_json", "started_at"})
+                               "runpod_job_id", "started_at"})
 
 def update_job(job_id: str, **kwargs):
     invalid = set(kwargs) - _JOB_UPDATE_COLS
@@ -750,11 +726,11 @@ def update_job(job_id: str, **kwargs):
 
 
 def _is_job_cancelled(job_id: str) -> bool:
-    """작업이 취소/실패/일시정지 상태인지 확인 (폴링 루프 종료용)"""
+    """작업이 취소/실패 상태인지 확인 (폴링 루프 종료용)"""
     try:
         with get_db() as db:
             row = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
-            return row and row["status"] in ("failed", "cancelled", "paused")
+            return row and row["status"] in ("failed", "cancelled")
     except Exception:
         return False
 
@@ -789,14 +765,11 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
                             pass
-                    with _job_states_lock:
-                        _active_job_states.pop(job_id, None)
                     with _poll_errors_lock:
                         _poll_error_counts.pop(job_id, None)
                     return
                 try:
                     handle_job_result(job_id, job_type, output)
-                    # handle_job_result의 finally 블록에서 _active_job_states 정리됨
                 except Exception as e:
                     update_job(job_id, status="failed",
                               message=f"결과 처리 실패: {e}")
@@ -806,8 +779,6 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
                             pass
-                    with _job_states_lock:
-                        _active_job_states.pop(job_id, None)
                     with _poll_errors_lock:
                         _poll_error_counts.pop(job_id, None)
                 return
@@ -841,8 +812,6 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                     except Exception:
                         pass
-                with _job_states_lock:
-                    _active_job_states.pop(job_id, None)
                 return
 
             elif status == "IN_QUEUE":
@@ -926,8 +895,6 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             if elapsed > job_timeout:
                 with _poll_errors_lock:
                     _poll_error_counts.pop(job_id, None)
-                with _job_states_lock:
-                    _active_job_states.pop(job_id, None)
                 timeout_label = f"{job_timeout // 3600}시간" if job_timeout >= 3600 else f"{job_timeout // 60}분"
                 update_job(job_id, status="failed", message=f"시간 초과 ({timeout_label})")
                 return
@@ -939,8 +906,6 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             if poll_errors > 60:  # 60회 연속 오류 = ~10분 장애 허용 (일시적 네트워크 불안정 대응)
                 with _poll_errors_lock:
                     _poll_error_counts.pop(job_id, None)
-                with _job_states_lock:
-                    _active_job_states.pop(job_id, None)
                 update_job(job_id, status="failed",
                           message=f"RunPod 상태 확인 반복 실패: {e}")
                 return
@@ -959,8 +924,6 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
         except Exception:
             pass
     finally:
-        with _job_states_lock:
-            _active_job_states.pop(job_id, None)
         with _poll_errors_lock:
             _poll_error_counts.pop(job_id, None)
 
@@ -1279,9 +1242,6 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             except Exception:
                 pass
     finally:
-        # 완료/실패 시 인메모리 재개 상태 정리 (메모리 누수 방지)
-        with _job_states_lock:
-            _active_job_states.pop(job_id, None)
         with _poll_errors_lock:
             _poll_error_counts.pop(job_id, None)
 
@@ -1297,9 +1257,6 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
         traceback.print_exc()
         update_job(job_id, status="failed",
                    message=f"배치 전처리 중 예기치 않은 오류: {e}")
-    finally:
-        with _job_states_lock:
-            _active_job_states.pop(job_id, None)
 
 def _run_batched_preprocess_inner(job_id: str, batches: list[list[dict]]):
     total_batches = len(batches)
@@ -1434,7 +1391,6 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 async def startup():
     init_db()
     cleanup_stale_jobs_on_startup()
-    restore_paused_jobs_state()
     # 30분마다 오래된 청크 업로드 세션 자동 정리
     def _chunk_cleanup_loop():
         while True:
@@ -1906,17 +1862,6 @@ async def start_training(
     job_id = uuid.uuid4().hex[:12]
     with _training_lock:
         _training_file_map[job_id] = training_file_names
-    # 재개용 상태 저장 (일시정지/재개 시 사용)
-    with _job_states_lock:
-        _active_job_states[job_id] = {
-            "type": "train",
-            "model_name": model_name,
-            "epochs": epochs,
-            "sample_rate": sample_rate,
-            "batch_size": batch_size,
-            "f0_method": f0_method,
-            "file_ids": file_ids,
-        }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -2001,8 +1946,6 @@ async def start_training(
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
         with _training_lock:
             _training_file_map.pop(job_id, None)
-        with _job_states_lock:
-            _active_job_states.pop(job_id, None)
         raise HTTPException(500, f"학습 제출 실패: {error_msg}")
 
     return {"job_id": job_id, "segments": total_segments}
@@ -2054,12 +1997,6 @@ async def start_preprocess(
     job_id = uuid.uuid4().hex[:12]
     with _preprocess_lock:
         preprocess_file_map[job_id] = preprocess_file_ids
-    # 재개용 상태 저장
-    with _job_states_lock:
-        _active_job_states[job_id] = {
-            "type": "preprocess",
-            "file_ids": preprocess_file_ids,
-        }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -2107,8 +2044,6 @@ async def start_preprocess(
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
         with _preprocess_lock:
             preprocess_file_map.pop(job_id, None)
-        with _job_states_lock:
-            _active_job_states.pop(job_id, None)
         raise HTTPException(500, f"전처리 제출 실패: {error_msg}")
 
     return {"job_id": job_id, "segments": total_segments, "batches": len(batches),
@@ -2325,27 +2260,6 @@ async def start_conversion(
 
     # Job + 변환 기록 동시 생성 (원자성: RunPod 제출 전에 모든 DB 레코드 삽입)
     job_id = uuid.uuid4().hex[:12]
-    # 재개용 상태 기반 설정 (audio_url은 R2 업로드 후 업데이트)
-    with _job_states_lock:
-        _active_job_states[job_id] = {
-            "type": "convert",
-            "model_id": model_id,
-            "audio_filename": audio.filename,
-            "pitch_shift": pitch_shift,
-            "index_rate": index_rate,
-            "f0_method": f0_method,
-            "vocal_volume": vocal_volume,
-            "mr_volume": mr_volume,
-            "clean_audio": clean_audio,
-            "clean_strength": clean_strength,
-            "protect": protect,
-            "rms_mix_rate": rms_mix_rate,
-            "filter_radius": filter_radius,
-            "hop_length": hop_length,
-            "post_reverb": post_reverb,
-            "harmonic_enhance": harmonic_enhance,
-            "separate_vocals": separate_vocals,
-        }
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -2385,10 +2299,6 @@ async def start_conversion(
         try:
             audio_url = upload_to_r2(temp_path, audio_r2_key)
             payload["audio_url"] = audio_url
-            # 재개용 상태에 R2 URL 저장 (temp 파일 삭제 후에도 재개 가능)
-            with _job_states_lock:
-                if job_id in _active_job_states:
-                    _active_job_states[job_id]["audio_url"] = audio_url
         except Exception as e:
             print(f"[Convert] R2 audio upload failed: {e}")
             file_size = temp_path.stat().st_size
@@ -2481,8 +2391,6 @@ async def start_conversion(
                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
         except Exception:
             pass
-        with _job_states_lock:
-            _active_job_states.pop(job_id, None)
         # 임시 입력 파일 정리 (실패 시에도 누수 방지)
         try:
             if temp_path.exists():
@@ -2499,12 +2407,12 @@ async def start_conversion(
 @app.get("/api/jobs/active")
 async def get_active_jobs():
     """페이지 로드 시 프론트엔드 상태 복원용.
-    running/submitting/paused 상태의 최신 작업을 job_type별 1개씩 반환."""
+    running/submitting 상태의 최신 작업을 job_type별 1개씩 반환."""
     with get_db() as db:
         rows = db.execute("""
             SELECT id, job_type, status, progress, message, created_at, started_at
             FROM jobs
-            WHERE status IN ('running', 'submitting', 'paused')
+            WHERE status IN ('running', 'submitting')
             ORDER BY created_at DESC
         """).fetchall()
     # job_type별 최신 1개만 반환 (중복 제거)
@@ -2558,8 +2466,6 @@ async def cancel_job(job_id: str):
         )
 
     # 활성 상태 정리
-    with _job_states_lock:
-        _active_job_states.pop(job_id, None)
     with _poll_errors_lock:
         _poll_error_counts.pop(job_id, None)
     with _preprocess_lock:
@@ -2570,417 +2476,14 @@ async def cancel_job(job_id: str):
 
 @app.post("/api/jobs/{job_id}/pause")
 async def pause_job(job_id: str):
-    """실행 중인 작업 일시정지 — RunPod 작업 취소(과금 중지) + 재개 가능한 상태 저장"""
-    # 1) DB 읽기
-    with get_db() as db:
-        row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, "작업을 찾을 수 없습니다.")
-        if row["status"] in ("completed", "cancelled", "paused", "failed"):
-            return {"status": "already_done", "current_status": row["status"]}
-
-    # 2) RunPod 취소 (네트워크 호출은 DB 컨텍스트 밖에서)
-    runpod_job_id = row["runpod_job_id"] if row["runpod_job_id"] else None
-    cancelled_runpod = False
-    if runpod_job_id and runpod_client.is_configured():
-        cancelled_runpod = runpod_client.cancel_runpod_job(runpod_job_id)
-
-    # 3) 재개용 상태 저장 + DB 업데이트
-    with _job_states_lock:
-        pause_state = _active_job_states.get(job_id, {}).copy()
-    pause_state_json = json.dumps(pause_state, ensure_ascii=False)
-
-    with get_db() as db:
-        db.execute(
-            "UPDATE jobs SET status='paused', message='일시정지됨 (RunPod 과금 중지)', "
-            "pause_state_json=?, updated_at=? "
-            "WHERE id=? AND status NOT IN ('completed', 'failed', 'cancelled')",
-            (pause_state_json, datetime.now().isoformat(), job_id)
-        )
-
-    with _poll_errors_lock:
-        _poll_error_counts.pop(job_id, None)
-    # _active_job_states는 보존 (재개 시 필요)
-
-    return {
-        "status": "paused",
-        "runpod_cancelled": cancelled_runpod,
-        "can_resume": bool(pause_state)
-    }
+    """[제거됨] 일시정지 기능은 제거되었습니다. 취소(cancel)를 사용하세요."""
+    raise HTTPException(410, "일시정지 기능이 제거되었습니다. 취소를 사용하세요.")
 
 
 @app.post("/api/jobs/{job_id}/resume")
 async def resume_job(job_id: str):
-    """일시정지된 작업 재개 — 저장된 파라미터로 RunPod에 재제출"""
-    with get_db() as db:
-        row = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
-        if not row:
-            raise HTTPException(404, "작업을 찾을 수 없습니다.")
-        if row["status"] != "paused":
-            raise HTTPException(400, f"일시정지된 작업이 아닙니다. 현재 상태: {row['status']}")
-
-        # pause_state 읽기
-        pause_state_str = row["pause_state_json"] or ""
-        pause_state: dict = {}
-        if pause_state_str:
-            try:
-                pause_state = json.loads(pause_state_str)
-            except Exception:
-                pass
-
-    if not pause_state:
-        raise HTTPException(400, "재개 상태 정보가 없습니다. 처음부터 다시 시작해주세요.")
-
-    if not runpod_client.is_configured():
-        raise HTTPException(400, "RunPod API 설정이 필요합니다. 설정 페이지에서 확인하세요.")
-
-    job_type = row["job_type"]
-    if job_type not in ("preprocess", "train", "convert"):
-        raise HTTPException(400, f"지원하지 않는 작업 유형입니다: {job_type}")
-
-    try:
-        if job_type == "preprocess":
-            # ─── 전처리 재개 ───
-            # DB에서 아직 전처리되지 않은 파일만 다시 처리
-            file_ids = pause_state.get("file_ids", [])
-            if not file_ids:
-                raise HTTPException(400, "재개할 파일 정보가 없습니다.")
-
-            with get_db() as db:
-                placeholders = ",".join("?" * len(file_ids))
-                rows = db.execute(
-                    f"SELECT * FROM training_files WHERE id IN ({placeholders}) AND deleted=0", file_ids
-                ).fetchall()
-
-            unprocessed = [r for r in rows if not r["preprocessed"]]
-            if not unprocessed:
-                # 모든 파일 이미 완료
-                update_job(job_id, status="completed", progress=100,
-                          message="전처리 완료 (모든 파일 이미 처리됨)")
-                return {"status": "already_completed"}
-
-            # 파일 존재 여부 확인 (삭제된 파일 제외)
-            existing_unprocessed = [r for r in unprocessed if (UPLOAD_DIR / r["filename"]).exists()]
-            if not existing_unprocessed:
-                update_job(job_id, status="failed",
-                          message="재개할 파일이 없습니다. 원본 파일이 삭제된 것 같습니다.")
-                return {"status": "failed"}
-            file_paths = [str(UPLOAD_DIR / r["filename"]) for r in existing_unprocessed]
-            batches = prepare_files_for_runpod(file_paths)
-
-            with _preprocess_lock:
-                preprocess_file_map[job_id] = [r["id"] for r in existing_unprocessed]
-            with _job_states_lock:
-                _active_job_states[job_id] = pause_state.copy()
-
-            update_job(job_id, status="running", progress=3,
-                      message=f"전처리 재개 중... ({len(unprocessed)}개 파일)")
-
-            config = load_config()
-            if len(batches) == 1:
-                runpod_job_id = runpod_client.submit_job({
-                    "task_type": "preprocess",
-                    "audio_files": batches[0],
-                    "bucket_name": config.get("r2_bucket_name", ""),
-                })
-                if not runpod_job_id:
-                    raise RuntimeError("RunPod 작업 ID를 받지 못했습니다.")
-                update_job(job_id, status="running", progress=8,
-                          message="전처리 재개 — GPU 작업 제출됨",
-                          runpod_job_id=runpod_job_id)
-                threading.Thread(
-                    target=poll_runpod_job,
-                    args=(job_id, runpod_job_id, "preprocess"),
-                    daemon=True
-                ).start()
-            else:
-                update_job(job_id, status="running", progress=2,
-                          message=f"전처리 재개 ({len(batches)}개 배치)")
-                threading.Thread(
-                    target=_run_batched_preprocess,
-                    args=(job_id, batches),
-                    daemon=True
-                ).start()
-
-        elif job_type == "train":
-            # ─── 학습 재개 (처음부터 재시작) ───
-            model_name = pause_state.get("model_name", "")
-            epochs = pause_state.get("epochs", 800)
-            sample_rate = pause_state.get("sample_rate", 48000)
-            batch_size = pause_state.get("batch_size", 0)
-            f0_method = pause_state.get("f0_method", "rmvpe")
-            file_ids_str = pause_state.get("file_ids", "")
-
-            if not model_name:
-                raise HTTPException(400, "학습 재개 정보가 없습니다. 처음부터 다시 시작해주세요.")
-
-            # 이름 중복 체크 — 기존 모델이 있으면 suffix 추가 (충돌 없을 때까지 루프)
-            with get_db() as db:
-                existing = db.execute(
-                    "SELECT id FROM voice_models WHERE name=?", (model_name,)
-                ).fetchone()
-            if existing:
-                base_name = model_name
-                suffix = 1
-                while True:
-                    candidate = f"{base_name}_재개{suffix if suffix > 1 else ''}"
-                    with get_db() as db:
-                        if not db.execute(
-                            "SELECT id FROM voice_models WHERE name=?", (candidate,)
-                        ).fetchone():
-                            model_name = candidate
-                            break
-                    suffix += 1
-                    if suffix > 99:  # 무한루프 방지
-                        model_name = f"{base_name}_{uuid.uuid4().hex[:6]}"
-                        break
-
-            try:
-                ids = [int(x.strip()) for x in file_ids_str.split(",") if x.strip()] if file_ids_str else []
-            except (ValueError, TypeError):
-                ids = []
-            with get_db() as db:
-                if ids:
-                    placeholders = ",".join("?" * len(ids))
-                    rows = db.execute(
-                        f"SELECT * FROM training_files WHERE id IN ({placeholders}) AND deleted=0", ids
-                    ).fetchall()
-                else:
-                    rows = db.execute("SELECT * FROM training_files WHERE deleted=0").fetchall()
-
-            all_preprocessed = [f for f in _list_preprocessed_files()
-                                 if not f.name.startswith(("mr_", "vocal_"))]
-
-            # file_ids 기반 세그먼트 필터링 (start_training과 동일 로직)
-            preprocessed_files = all_preprocessed
-            if all_preprocessed and ids:
-                meta_path = PREPROCESSED_DIR / "_metadata.json"
-                seg_map = {}
-                if meta_path.exists():
-                    try:
-                        seg_map = json.loads(meta_path.read_text(encoding="utf-8")).get("file_segments", {})
-                    except Exception:
-                        pass
-                selected_seg_names = set()
-                for fid in ids:
-                    selected_seg_names.update(seg_map.get(str(fid), []))
-                if selected_seg_names:
-                    preprocessed_files = [
-                        f for f in all_preprocessed if f.name in selected_seg_names
-                    ]
-
-            file_paths = ([str(p) for p in preprocessed_files] if preprocessed_files
-                          else [str(UPLOAD_DIR / r["filename"]) for r in rows])
-
-            training_file_names = [r["original_name"] for r in rows]
-            with _training_lock:
-                _training_file_map[job_id] = training_file_names
-            with _job_states_lock:
-                _active_job_states[job_id] = pause_state.copy()
-                _active_job_states[job_id]["model_name"] = model_name  # 업데이트된 이름
-
-            config = load_config()
-            r2_bucket = config.get("r2_bucket_name", "")
-
-            # 즉시 running 상태로 변경 후 백그라운드에서 R2 업로드 + RunPod 제출
-            update_job(job_id, status="running", progress=3,
-                      message=f"학습 재개 준비 중... (파일 업로드 시작)")
-
-            def _do_resume_train():
-                try:
-                    audio_urls = []
-                    total_size = sum(Path(p).stat().st_size for p in file_paths if Path(p).exists())
-                    if total_size > 5_000_000:
-                        update_job(job_id, progress=5,
-                                  message=f"학습 파일 R2 업로드 중... ({len(file_paths)}개)")
-                        for fp in file_paths:
-                            if not Path(fp).exists():
-                                continue
-                            r2_key = f"train/{job_id}_resume/{Path(fp).name}"
-                            try:
-                                url = upload_to_r2(Path(fp), r2_key)
-                                audio_urls.append({"filename": Path(fp).name, "url": url})
-                            except Exception as e:
-                                update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
-                                return
-
-                    if audio_urls:
-                        payload = {
-                            "task_type": "train", "model_name": model_name,
-                            "audio_urls": audio_urls, "sample_rate": sample_rate,
-                            "epochs": epochs, "batch_size": batch_size,
-                            "f0_method": f0_method, "bucket_name": r2_bucket,
-                        }
-                    else:
-                        batches = prepare_files_for_runpod(file_paths)
-                        payload = {
-                            "task_type": "train", "model_name": model_name,
-                            "audio_files": batches[0] if batches else [],
-                            "sample_rate": sample_rate, "epochs": epochs,
-                            "batch_size": batch_size, "f0_method": f0_method,
-                            "bucket_name": r2_bucket,
-                        }
-
-                    update_job(job_id, progress=8, message="RunPod에 학습 작업 제출 중...")
-                    runpod_job_id = runpod_client.submit_job(payload)
-                    if not runpod_job_id:
-                        update_job(job_id, status="failed", message="RunPod 작업 ID를 받지 못했습니다.")
-                        return
-                    update_job(job_id, status="running", progress=10,
-                              message=f"학습 재개 — GPU 작업 제출됨 (모델: {model_name})",
-                              runpod_job_id=runpod_job_id)
-                    poll_runpod_job(job_id, runpod_job_id, "train")
-                except Exception as e:
-                    error_msg = classify_runpod_error(e)
-                    update_job(job_id, status="failed", message=f"학습 재개 실패: {error_msg}")
-                    with _training_lock:
-                        _training_file_map.pop(job_id, None)
-
-            threading.Thread(target=_do_resume_train, daemon=True).start()
-
-        elif job_type == "convert":
-            # ─── 변환 재개 ───
-            model_id = pause_state.get("model_id")
-            if not model_id:
-                raise HTTPException(400, "변환 재개 정보가 없습니다. 파일을 다시 업로드해주세요.")
-
-            with get_db() as db:
-                model = db.execute("SELECT * FROM voice_models WHERE id=?", (model_id,)).fetchone()
-            if not model:
-                raise HTTPException(404, "모델을 찾을 수 없습니다.")
-
-            with _job_states_lock:
-                _active_job_states[job_id] = pause_state.copy()
-
-            config = load_config()
-            r2_bucket = config.get("r2_bucket_name", "")
-            audio_filename = pause_state.get("audio_filename", "input.wav")
-
-            # 즉시 running 상태로 변경 후 백그라운드에서 R2 업로드 + RunPod 제출
-            update_job(job_id, status="running", progress=3, message="변환 재개 준비 중...")
-
-            # 클로저에 필요한 값들을 미리 캡처 (model 객체는 Row라 직렬화 불가)
-            _model_pth_url = model["pth_url"]
-            _model_index_url = model["index_url"]
-            _model_pth_path = model["pth_path"]
-            _model_index_path = model["index_path"]
-            _pause_state_copy = dict(pause_state)
-
-            def _do_resume_convert():
-                try:
-                    payload = {
-                        "task_type": "convert",
-                        "audio_filename": audio_filename,
-                        "pitch_shift": _pause_state_copy.get("pitch_shift", 0),
-                        "index_rate": _pause_state_copy.get("index_rate", 0.65),
-                        "f0_method": _pause_state_copy.get("f0_method", "rmvpe"),
-                        "clean_audio": _pause_state_copy.get("clean_audio", False),
-                        "clean_strength": _pause_state_copy.get("clean_strength", 0.7),
-                        "protect": _pause_state_copy.get("protect", 0.35),
-                        "rms_mix_rate": _pause_state_copy.get("rms_mix_rate", 0.15),
-                        "filter_radius": _pause_state_copy.get("filter_radius", 3),
-                        "hop_length": _pause_state_copy.get("hop_length", 64),
-                        "separate_vocals": _pause_state_copy.get("separate_vocals", True),
-                        "vocal_volume": _pause_state_copy.get("vocal_volume", 1.0),
-                        "mr_volume": _pause_state_copy.get("mr_volume", 1.0),
-                        "post_reverb": _pause_state_copy.get("post_reverb", 0.05),
-                        "harmonic_enhance": _pause_state_copy.get("harmonic_enhance", False),
-                        "bucket_name": r2_bucket,
-                    }
-
-                    # 오디오 소스: R2 URL 우선 (temp 파일은 삭제되었으므로)
-                    saved_audio_url = _pause_state_copy.get("audio_url")
-                    if saved_audio_url:
-                        payload["audio_url"] = saved_audio_url
-                    else:
-                        # 폴백: 이전 방식 temp 파일 (하위 호환)
-                        input_file = _pause_state_copy.get("input_file", "")
-                        temp_path_resume = UPLOAD_DIR / input_file if input_file else None
-                        if temp_path_resume and temp_path_resume.exists():
-                            audio_r2_key = f"convert/{job_id}_resume/{input_file}"
-                            try:
-                                audio_url = upload_to_r2(temp_path_resume, audio_r2_key)
-                                payload["audio_url"] = audio_url
-                                with _job_states_lock:
-                                    if job_id in _active_job_states:
-                                        _active_job_states[job_id]["audio_url"] = audio_url
-                            except Exception as e:
-                                file_size = temp_path_resume.stat().st_size
-                                if file_size > 7_000_000:
-                                    update_job(job_id, status="failed", message=f"R2 업로드 실패: {e}")
-                                    return
-                                with open(temp_path_resume, "rb") as f:
-                                    payload["audio_data"] = base64.b64encode(f.read()).decode()
-                        else:
-                            update_job(job_id, status="failed",
-                                      message="변환할 오디오 파일을 찾을 수 없습니다. 파일을 다시 업로드해주세요.")
-                            return
-
-                    pth_url = _model_pth_url or None
-                    index_url = _model_index_url or None
-                    if pth_url:
-                        payload["pth_url"] = pth_url
-                    if index_url:
-                        payload["index_url"] = index_url
-
-                    # pth_url 없는 모델 → 로컬 파일을 R2에 업로드
-                    if not pth_url and _model_pth_path:
-                        local_pth = Path(_model_pth_path)
-                        if not local_pth.is_absolute():
-                            local_pth = MODEL_DIR / local_pth
-                        if local_pth.exists():
-                            try:
-                                pth_r2_key = f"convert/{job_id}_resume/model.pth"
-                                pth_url = upload_to_r2(local_pth, pth_r2_key)
-                                payload["pth_url"] = pth_url
-                            except Exception as e:
-                                update_job(job_id, status="failed", message=f"모델 R2 업로드 실패: {e}")
-                                return
-
-                    if not index_url and _model_index_path:
-                        local_idx = Path(_model_index_path)
-                        if not local_idx.is_absolute():
-                            local_idx = MODEL_DIR / local_idx
-                        if local_idx.exists():
-                            try:
-                                idx_r2_key = f"convert/{job_id}_resume/model.index"
-                                index_url = upload_to_r2(local_idx, idx_r2_key)
-                                payload["index_url"] = index_url
-                            except Exception:
-                                pass  # index는 선택사항
-
-                    update_job(job_id, progress=8, message="RunPod에 변환 작업 제출 중...")
-                    runpod_job_id = runpod_client.submit_job(payload)
-                    if not runpod_job_id:
-                        update_job(job_id, status="failed", message="RunPod 작업 ID를 받지 못했습니다.")
-                        return
-                    update_job(job_id, status="running", progress=10,
-                              message="변환 재개 — GPU 작업 제출됨",
-                              runpod_job_id=runpod_job_id)
-                    with get_db() as db:
-                        db.execute("UPDATE conversions SET status='processing' WHERE job_id=?", (job_id,))
-                    poll_runpod_job(job_id, runpod_job_id, "convert")
-                except Exception as e:
-                    error_msg = classify_runpod_error(e)
-                    update_job(job_id, status="failed", message=f"변환 재개 실패: {error_msg}")
-
-            threading.Thread(target=_do_resume_convert, daemon=True).start()
-
-        else:
-            raise HTTPException(400, f"지원하지 않는 작업 유형: {job_type}")
-
-        return {"status": "resumed", "job_id": job_id, "job_type": job_type}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        # 실패 시 메모리 맵 정리 (누수 방지)
-        with _preprocess_lock:
-            preprocess_file_map.pop(job_id, None)
-        with _training_lock:
-            _training_file_map.pop(job_id, None)
-        update_job(job_id, status="failed", message=f"재개 실패: {e}")
-        raise HTTPException(500, f"재개 실패: {e}")
+    """[제거됨] 재개 기능은 제거되었습니다. 처음부터 다시 시작하세요."""
+    raise HTTPException(410, "재개 기능이 제거되었습니다. 처음부터 다시 시작하세요.")
 
 
 @app.post("/api/jobs/cleanup")
@@ -3005,17 +2508,6 @@ async def cleanup_all_stuck_jobs():
                 updated_at=?
             WHERE status IN ('running', 'submitting')
         """, (datetime.now().isoformat(),))
-    # 메모리 상태 정리 (paused 작업의 상태는 보존 — 재개 시 필요)
-    with _job_states_lock:
-        paused_states = {}
-        with get_db() as _db:
-            _paused = _db.execute("SELECT id FROM jobs WHERE status='paused'").fetchall()
-            paused_ids = {r["id"] for r in _paused}
-        for jid in list(_active_job_states.keys()):
-            if jid in paused_ids:
-                paused_states[jid] = _active_job_states[jid]
-        _active_job_states.clear()
-        _active_job_states.update(paused_states)
     with _poll_errors_lock:
         _poll_error_counts.clear()
     with _preprocess_lock:
@@ -3054,9 +2546,9 @@ async def delete_model(model_id: int):
         row = db.execute("SELECT * FROM voice_models WHERE id=?", (model_id,)).fetchone()
         if not row:
             raise HTTPException(404, "모델을 찾을 수 없습니다.")
-        # 실행 중 또는 일시정지된 변환 작업이 있으면 삭제 거부
+        # 실행 중인 변환 작업이 있으면 삭제 거부
         active = db.execute(
-            "SELECT id FROM conversions WHERE model_id=? AND status IN ('pending','processing','paused')",
+            "SELECT id FROM conversions WHERE model_id=? AND status IN ('pending','processing')",
             (model_id,)
         ).fetchall()
         if active:
