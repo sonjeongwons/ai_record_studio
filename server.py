@@ -2215,6 +2215,7 @@ async def start_conversion(
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),
     harmonic_enhance: bool = Form(False),
+    high_note_mode: bool = Form(False),
     separate_vocals: bool = Form(True),
     audio: UploadFile = File(...)
 ):
@@ -2232,7 +2233,7 @@ async def start_conversion(
         raise HTTPException(400, f"RMS Mix는 0.0~1.0 사이여야 합니다. (입력: {rms_mix_rate})")
     if not (0 <= filter_radius <= 7):
         raise HTTPException(400, f"Filter Radius는 0~7 사이여야 합니다. (입력: {filter_radius})")
-    if hop_length not in (64, 128, 256, 512):
+    if hop_length not in (32, 64, 128, 256, 512):
         hop_length = 64  # 잘못된 값은 기본값으로
     if f0_method not in ("rmvpe", "crepe", "crepe-tiny", "harvest", "pm"):
         raise HTTPException(400, f"유효하지 않은 F0 방법입니다: {f0_method}")
@@ -2295,6 +2296,7 @@ async def start_conversion(
             "mr_volume": mr_volume,
             "post_reverb": post_reverb,
             "harmonic_enhance": harmonic_enhance,
+            "high_note_mode": high_note_mode,
             "bucket_name": r2_bucket,
         }
 

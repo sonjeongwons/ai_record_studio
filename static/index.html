@@ -3331,11 +3331,11 @@ input[type="range"]::-moz-range-track {
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">피치 해상도 <i class="tip" data-tip="AI가 음정을 얼마나 세밀하게 감지할지 정합니다. 숫자가 작을수록 정밀합니다.\n\n🔢 설정 가이드:\n• 64 = 가장 정밀 → 가성·비브라토·고음 전환이 많은 노래 (추천!)\n• 128 = 대부분의 노래에 적합\n• 256 = 음질이 안 좋은 원본에서 안정적\n\n⚠️ 잡음이 있는 음원에서 64 설정 시 오히려 불안정해질 수 있습니다.\n💡 잘 모르면 64(기본값)로 두세요.">ⓘ</i></span>
+              <span class="slider-label">피치 해상도 <i class="tip" data-tip="AI가 음정을 얼마나 세밀하게 감지할지 정합니다. 숫자가 작을수록 정밀합니다.\n\n🔢 설정 가이드:\n• 32 = 최대 정밀 → 가성/팔세토/고음 전환이 매우 많은 노래\n• 64 = 정밀 → 비브라토·고음 전환 감지 (기본, 추천)\n• 128 = 대부분의 노래에 적합\n• 256 = 음질이 안 좋은 원본에서 안정적\n\n⚠️ 잡음이 있는 음원에서 32/64 설정 시 오히려 불안정해질 수 있습니다.\n💡 잘 모르면 64(기본값)로 두세요.">ⓘ</i></span>
               <span class="slider-value" id="hop-val">64</span>
             </div>
-            <input type="range" id="hop-slider" min="0" max="2" value="0" class="has-fill" aria-label="피치 해상도 (hop length)" oninput="var hops=[64,128,256];document.getElementById('hop-val').textContent=hops[this.value]; updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">작을수록 정밀한 피치 감지 (기본 64: 섬세한 비브라토/가성 감지, 128: 안정형)</div>
+            <input type="range" id="hop-slider" min="0" max="3" value="1" class="has-fill" aria-label="피치 해상도 (hop length)" oninput="var hops=[32,64,128,256];document.getElementById('hop-val').textContent=hops[this.value]; updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">작을수록 정밀한 피치 감지 (32: 가성/고음 극대화, 64: 기본, 128: 안정형, 256: 저품질 원본)</div>
           </div>
 
           <!-- 공간감 (리버브) -->
@@ -3368,6 +3368,18 @@ input[type="range"]::-moz-range-track {
               </span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">부드러운 배음 추가로 AI 금속성·차가운 질감 제거 (대부분 ON 권장)</div>
+          </div>
+
+          <!-- 고음 최적화 -->
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">고음/가성 최적화 <i class="tip" data-tip="고음이나 가성이 많은 노래에서 AI스러운 기계음을 줄입니다.\n\n📖 원리:\nHiFi-GAN 보코더가 가성 음역(2-6kHz)에서 손실하는 주파수를 보정합니다.\n• 2.5kHz 프레즌스 보강 → 가성이 묻히지 않게\n• 5.5kHz 공기감 복원 → 가성 특유의 breathy 질감\n• 8.5kHz 디에서 완화 → 고음의 자연스러운 치찰음 보존\n\n🎯 사용 시기:\n• 가성/팔세토가 많은 노래\n• 여성 보컬이나 높은 음역대\n• 고음에서 기계적으로 들릴 때\n\n⚠️ 저음 위주 노래에서는 OFF 권장 (불필요한 고역 부스트)">ⓘ</i></span>
+              <span style="display:flex;align-items:center;gap:6px">
+                <label class="toggle-switch"><input type="checkbox" id="high-note-cb" aria-label="고음/가성 최적화 활성화" onchange="document.getElementById('high-note-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
+                <span class="slider-value" id="high-note-val">OFF</span>
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">가성·고음의 AI 기계음 완화 — 프레즌스·공기감 보정 (가성 많은 곡에 ON 권장)</div>
           </div>
         </div>
       </div>
@@ -4722,32 +4734,36 @@ function applyConvertPreset(preset) {
   var presets = {
     default: {
       // Default: 최소 후처리로 자연스러움 극대화
-      f0: 'rmvpe', protect: 35, rms: 15, filter: 3, hop: 0,
+      f0: 'rmvpe', protect: 35, rms: 15, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 65,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
+      highNote: false,
       desc: '기본 설정으로 되돌렸습니다'
     },
     falsetto: {
-      // 가성/고음: Crepe로 높은 피치 정확도
-      // protect=40: 가성 전환 구간 보호 (0.35보다 약간 높게)
-      // rms=10: 가성 다이나믹스(ppp~pp) 최대 보존
-      f0: 'crepe', protect: 40, rms: 10, filter: 2, hop: 0,
-      clean: false, cleanStr: 70, index: 60,
+      // 가성/고음: Crepe + filter=1 + hop=32 → 최대 피치 정밀도
+      // protect=45: 가성 breathy 공기감 최대 보존
+      // highNote ON: 2.5kHz 프레즌스 + 5.5kHz 공기감 EQ 보정
+      f0: 'crepe', protect: 45, rms: 10, filter: 1, hop: 0,
+      clean: false, cleanStr: 70, index: 55,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
-      desc: '가성/고음 최적화 — Crepe, 원곡 다이나믹스 보존'
+      highNote: true,
+      desc: '가성/고음 최적화 — Crepe, 피치정밀↑, 공기감 보정, protect↑'
     },
     natural: {
       // Natural: 최대 자연스러움 — 후처리 거의 없음
-      f0: 'rmvpe', protect: 35, rms: 10, filter: 3, hop: 0,
+      f0: 'rmvpe', protect: 35, rms: 10, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 70,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
+      highNote: false,
       desc: '최대 자연스러움 — 후처리 최소, 원곡 다이나믹스 최대 보존'
     },
     studio: {
       // Studio: 깨끗한 원본 + 미세 리버브
-      f0: 'rmvpe', protect: 35, rms: 15, filter: 3, hop: 0,
+      f0: 'rmvpe', protect: 35, rms: 15, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 65,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
+      highNote: false,
       desc: '스튜디오 품질 — 깨끗한 원본 + 미세한 공간감'
     }
   };
@@ -4766,7 +4782,7 @@ function applyConvertPreset(preset) {
   document.getElementById('filter-val').textContent = p.filter;
   var hopSlider = document.getElementById('hop-slider');
   hopSlider.value = p.hop;
-  var hopVals = [64, 128, 256];
+  var hopVals = [32, 64, 128, 256];
   document.getElementById('hop-val').textContent = hopVals[p.hop];
   document.getElementById('clean-audio-cb').checked = p.clean;
   document.getElementById('clean-audio-val').textContent = p.clean ? 'ON' : 'OFF';
@@ -4792,6 +4808,11 @@ function applyConvertPreset(preset) {
   if (harmonicCb) {
     harmonicCb.checked = p.harmonicEnhance;
     document.getElementById('harmonic-enhance-val').textContent = p.harmonicEnhance ? 'ON' : 'OFF';
+  }
+  var highNoteCb = document.getElementById('high-note-cb');
+  if (highNoteCb) {
+    highNoteCb.checked = !!p.highNote;
+    document.getElementById('high-note-val').textContent = p.highNote ? 'ON' : 'OFF';
   }
   estimateConversionCost();
   toast(p.desc, 'info');
@@ -6151,8 +6172,8 @@ async function startConversion() {
   form.append('protect', (getVal('protect-slider', '35') / 100).toFixed(2));
   form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
   form.append('filter_radius', getVal('filter-slider', '3'));
-  var hopSteps = [64, 128, 256];
-  form.append('hop_length', hopSteps[getVal('hop-slider', '0')] || 64);
+  var hopSteps = [32, 64, 128, 256];
+  form.append('hop_length', hopSteps[getVal('hop-slider', '1')] || 64);
   // Post-processing for naturalness
   var reverbCb = document.getElementById('post-reverb-cb');
   var useReverb = reverbCb ? reverbCb.checked : false;
@@ -6160,6 +6181,8 @@ async function startConversion() {
   form.append('post_reverb', postReverb);
   var harmonicCb = document.getElementById('harmonic-enhance-cb');
   form.append('harmonic_enhance', harmonicCb ? harmonicCb.checked : false);
+  var highNoteCb = document.getElementById('high-note-cb');
+  form.append('high_note_mode', highNoteCb ? highNoteCb.checked : false);
   form.append('audio', convertFile);
 
   try {
@@ -6548,8 +6571,8 @@ async function startBatchConversion() {
       form.append('protect', (getVal('protect-slider', '35') / 100).toFixed(2));
       form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
       form.append('filter_radius', getVal('filter-slider', '3'));
-      var hopSteps2 = [64, 128, 256];
-      form.append('hop_length', hopSteps2[getVal('hop-slider', '0')] || 64);
+      var hopSteps2 = [32, 64, 128, 256];
+      form.append('hop_length', hopSteps2[getVal('hop-slider', '1')] || 64);
       // Post-processing for naturalness
       var batchReverbCb = document.getElementById('post-reverb-cb');
       var batchUseReverb = batchReverbCb ? batchReverbCb.checked : false;
@@ -6557,6 +6580,8 @@ async function startBatchConversion() {
       form.append('post_reverb', batchPostReverb);
       var batchHarmonicCb = document.getElementById('harmonic-enhance-cb');
       form.append('harmonic_enhance', batchHarmonicCb ? batchHarmonicCb.checked : false);
+      var batchHighNoteCb = document.getElementById('high-note-cb');
+      form.append('high_note_mode', batchHighNoteCb ? batchHighNoteCb.checked : false);
       form.append('audio', batchResults[i].file);
 
       var res = await api('/convert', { method: 'POST', body: form, noTimeout: true });

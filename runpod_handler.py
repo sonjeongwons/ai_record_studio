@@ -1992,29 +1992,28 @@ def _post_process_vocal(
     output_path: Path,
     reverb_amount: float = 0.05,
     harmonic_enhance: bool = False,
+    high_note_mode: bool = False,
 ) -> None:
     """Post-process converted vocal — 최소한의 처리로 자연스러움 극대화.
 
     원칙: RVC 출력은 이미 학습된 음색을 갖고 있음. 과처리가 AI스러움의 주요 원인.
-    이전 9단계 체인을 3단계로 축소:
     1. De-essing: 9kHz Q=5 -1.5dB (매우 좁은 대역, 한국어 자음 4-8kHz 보존)
     2. 투명 컴프레션: threshold=-12dBFS, ratio=1.3 (큰 피크만, 다이나믹스 보존)
     3. Air band 미세 복원: 12kHz+ +0.5dB (HiFi-GAN 고역 손실 보상)
-    4. (선택) 소프트 새츄레이션: threshold=0.95 (기본 OFF)
-    5. (선택) 리버브: 8탭 초기 반사 (기본 0.05 → 매우 미세)
+    4. (고음 모드) 2-4kHz 프레즌스 보강 + 6kHz 가성 공기감 복원
+    5. (선택) 소프트 새츄레이션: threshold=0.95 (기본 OFF)
+    6. (선택) 리버브: 8탭 초기 반사 (기본 0.05 → 매우 미세)
     """
     filters = [
         # ─── 최소한의 후처리 (과처리 = AI스러움의 주요 원인) ───
         #
         # 원칙: RVC 출력은 이미 학습된 음색을 갖고 있으므로, 후처리는 최소한으로.
-        # 이전 9단계 체인(디에서+EQ+컴프+EQ+새츄+리버브)이 누적되어
-        # 주파수 밸런스 왜곡 → 기계적 소리의 주요 원인이었음.
         #
         # --- De-essing: 9kHz+ 좁은 대역만 (한국어 자음 4-8kHz 보존) ---
         # Q=5 → 매우 좁은 대역 (8.1-10kHz만) → 자연스러운 치찰음은 통과
         "equalizer=f=9000:width_type=q:width=5:g=-1.5",
         # --- 투명 다이나믹 컴프레션 (RVC 레벨 점프만 완화) ---
-        # threshold=0.25 (-12dBFS): 큰 피크만 압축 (이전 0.1 = -20dBFS 에서 거의 전체 신호 압축)
+        # threshold=0.25 (-12dBFS): 큰 피크만 압축
         # ratio=1.3: 매우 부드러운 압축 → 자연스러운 다이나믹스 보존
         # attack=30ms: 자음 트랜지언트 완전 통과
         # release=200ms: 비브라토 주기(~167ms)보다 약간 길게 → 펌핑 방지
@@ -2022,6 +2021,17 @@ def _post_process_vocal(
         # --- Air band 미세 복원 (HiFi-GAN의 10kHz+ 디테일 손실 보상) ---
         "highshelf=f=12000:width_type=o:width=0.8:g=0.5",
     ]
+
+    if high_note_mode:
+        # ─── 고음/가성 최적화 EQ ───
+        # HiFi-GAN 보코더가 가성 음역에서 손실하는 주파수 대역을 보정
+        # 2.5kHz: 가성의 기본 프레즌스 (존재감) 보강 — 가성이 묻히는 현상 완화
+        filters.append("equalizer=f=2500:width_type=o:width=1.0:g=1.0")
+        # 5.5kHz: 가성 특유의 breathy 공기감 복원 — HiFi-GAN이 가장 많이 손실하는 대역
+        filters.append("equalizer=f=5500:width_type=o:width=1.2:g=1.5")
+        # 디에서 완화: 고음에서는 치찰음 에너지가 자연스럽게 높으므로
+        # 기본 디에서(-1.5dB)를 약간 보상 (+0.5dB at 8.5kHz)
+        filters.append("equalizer=f=8500:width_type=o:width=0.8:g=0.5")
 
     if harmonic_enhance:
         # tanh soft saturation: 매우 높은 피크만 미세 새츄레이션
@@ -2060,7 +2070,7 @@ def _post_process_vocal(
     ])
     log.info(
         f"Vocal post-processed → {output_path.name} "
-        f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance})"
+        f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance}, high_note={high_note_mode})"
     )
 
 
@@ -2150,6 +2160,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     post_reverb: float = float(job_input.get("post_reverb", 0.05))
     harmonic_enhance_raw = job_input.get("harmonic_enhance", False)
     harmonic_enhance: bool = harmonic_enhance_raw not in (False, "false", "0", 0)
+    # 고음/가성 최적화 모드: 후처리 EQ를 가성 친화적으로 조정
+    high_note_mode_raw = job_input.get("high_note_mode", False)
+    high_note_mode: bool = high_note_mode_raw not in (False, "false", "0", 0)
 
     # 파라미터 범위 클램프
     pitch_shift = max(-24, min(24, pitch_shift))
@@ -2391,6 +2404,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 output_path=processed_vocals_path,
                 reverb_amount=post_reverb,
                 harmonic_enhance=harmonic_enhance,
+                high_note_mode=high_note_mode,
             )
             if processed_vocals_path.exists() and processed_vocals_path.stat().st_size > 1000:
                 converted_vocals_path = processed_vocals_path
