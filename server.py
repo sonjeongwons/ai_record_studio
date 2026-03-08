@@ -449,6 +449,7 @@ def cleanup_stale_jobs():
 
 # 주기적 정리 스로틀 (30분 간격)
 _last_cleanup_time: float = 0.0
+_cleanup_lock = threading.Lock()
 
 
 def maybe_cleanup_stale_jobs():
@@ -456,9 +457,12 @@ def maybe_cleanup_stale_jobs():
     1시간 이상 방치된 작업만 정리 — 진행 중인 작업은 건드리지 않음."""
     global _last_cleanup_time
     now = time.time()
-    if now - _last_cleanup_time > 1800:  # 30분
-        _last_cleanup_time = now
-        cleanup_stale_jobs()
+    with _cleanup_lock:
+        if now - _last_cleanup_time > 1800:  # 30분
+            _last_cleanup_time = now
+        else:
+            return
+    cleanup_stale_jobs()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1319,7 +1323,7 @@ def _run_batched_preprocess_inner(job_id: str, batches: list[list[dict]]):
                     return
 
                 elif status in ("IN_QUEUE", "IN_PROGRESS"):
-                    pct = pct_base + min(int(90 / total_batches) - 2, int(elapsed / 3))
+                    pct = pct_base + max(0, min(int(90 / total_batches) - 2, int(elapsed / 3)))
                     state_msg = "GPU 대기 중..." if status == "IN_QUEUE" else "전처리 중..."
                     update_job(job_id, status="running", progress=pct,
                                message=f"{batch_label} {state_msg} ({elapsed}초)")
@@ -2229,7 +2233,7 @@ async def start_conversion(
     if not (0 <= filter_radius <= 7):
         raise HTTPException(400, f"Filter Radius는 0~7 사이여야 합니다. (입력: {filter_radius})")
     if hop_length not in (64, 128, 256, 512):
-        hop_length = 128  # 잘못된 값은 기본값으로
+        hop_length = 64  # 잘못된 값은 기본값으로
     if f0_method not in ("rmvpe", "crepe", "crepe-tiny", "harvest", "pm"):
         raise HTTPException(400, f"유효하지 않은 F0 방법입니다: {f0_method}")
     if not (0.0 <= vocal_volume <= 2.0):
@@ -2295,7 +2299,7 @@ async def start_conversion(
         }
 
         # 오디오 파일을 R2에 업로드 (10 MB 페이로드 한도 회피)
-        audio_r2_key = f"convert/{job_id}/{audio.filename}"
+        audio_r2_key = f"convert/{job_id}/{Path(audio.filename).name}"
         try:
             audio_url = upload_to_r2(temp_path, audio_r2_key)
             payload["audio_url"] = audio_url
@@ -2330,9 +2334,12 @@ async def start_conversion(
                     print(f"[Convert] Uploaded model pth to R2: {pth_r2_key}")
                 except Exception as e:
                     print(f"[Convert] R2 model upload failed: {e}")
+                    # 임시 파일 정리
+                    if temp_path and Path(temp_path).exists():
+                        Path(temp_path).unlink(missing_ok=True)
                     update_job(job_id, status="failed",
                         message=f"모델 R2 업로드 실패: {e}")
-                    return {"job_id": job_id}
+                    raise HTTPException(500, f"모델 R2 업로드 실패: {e}")
 
         if not index_url and model["index_path"]:
             local_idx = Path(model["index_path"])
@@ -2470,6 +2477,8 @@ async def cancel_job(job_id: str):
         _poll_error_counts.pop(job_id, None)
     with _preprocess_lock:
         preprocess_file_map.pop(job_id, None)
+    with _training_lock:
+        _training_file_map.pop(job_id, None)
 
     return {"status": "cancelled"}
 
@@ -2512,6 +2521,8 @@ async def cleanup_all_stuck_jobs():
         _poll_error_counts.clear()
     with _preprocess_lock:
         preprocess_file_map.clear()
+    with _training_lock:
+        _training_file_map.clear()
     return {"cleaned": result.rowcount}
 
 

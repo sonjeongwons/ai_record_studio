@@ -450,7 +450,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 for fobj in flist:
                     if fobj.pop("data_base64", None):
                         fobj["data_stripped"] = True
-            result_json = _json.dumps(result)
+            result_json = json.dumps(result)
             log.info(f"Trimmed payload size: {len(result_json) / 1e6:.2f} MB")
 
         return result
@@ -1258,7 +1258,7 @@ def _rvc_preprocess(
     (core.py → launch_tensorboard → tensorboard, etc.) which frequently breaks.
 
     Steps:
-      1) Slice each audio file into ~1.5s segments (Applio's expected segment size)
+      1) Slice each audio file into ~3.5s segments (optimized for singing voice)
       2) Resample segments to target sample rate → sliced_audios/
       3) Resample segments to 16kHz → sliced_audios_16k/
 

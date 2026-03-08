@@ -3818,6 +3818,7 @@ var currentTrainJobId = null;
 var currentConvertJobId = null;
 var preprocessJobId = null;
 var preprocessDone = false;
+var _preprocessPollErrors = 0;
 var _trainPollErrors = 0;
 var _convertPollErrors = 0;
 var _preprocessPollTimer = null;
@@ -5097,7 +5098,7 @@ function renderFileList() {
 
   var audioExts = ['.wav', '.mp3', '.flac', '.ogg', '.m4a'];
   listEl.innerHTML = uploadedFiles.map(function(f) {
-    var isAudio = audioExts.some(function(ext) { return f.original_name.toLowerCase().endsWith(ext); });
+    var isAudio = audioExts.some(function(ext) { return (f.original_name || '').toLowerCase().endsWith(ext); });
     var playerHtml = (isAudio && f.url) ? createAudioPlayer(f.url, 'fp_' + f.id) : '';
 
     var ppBadge = f.preprocessed
@@ -5282,6 +5283,7 @@ async function startPreprocess() {
       toast(res.skipped + '개 파일은 이미 전처리됨, ' + res.processing + '개 파일 전처리 시작', 'info');
     }
     preprocessJobId = res.job_id;
+    _preprocessPollErrors = 0;
     _preprocessStartTime = Date.now();
     // 전처리 진행 상태로 스크롤
     setTimeout(function() {
@@ -5392,8 +5394,15 @@ async function pollPreprocessStatus() {
       return;
     }
 
+    _preprocessPollErrors = 0;  // 성공 시 리셋
     _preprocessPollTimer = setTimeout(pollPreprocessStatus, 3000);
   } catch(e) {
+    _preprocessPollErrors++;
+    if (_preprocessPollErrors >= 20) {
+      toast('전처리 상태 확인 연속 실패 (20회). 폴링 중단됨.', 'warning');
+      document.getElementById('preprocess-msg').textContent = '연결 끊김 — 새로고침 후 다시 시도하세요';
+      return;
+    }
     _preprocessPollTimer = setTimeout(pollPreprocessStatus, 5000);
   } finally {
     _preprocessPolling = false;
@@ -5728,7 +5737,7 @@ async function pollTrainingStatus() {
       document.getElementById('train-ring').classList.remove('running');
       document.getElementById('train-info-status').textContent = '취소됨';
       document.getElementById('train-cancel-area').style.display = 'none';
-      document.getElementById('train-running').style.display = 'none';
+      document.getElementById('train-progress').style.display = 'none';
       currentTrainJobId = null;
       document.title = 'AI Voice Studio';
       toast('학습이 외부에서 취소되었습니다', 'warning');
@@ -5777,7 +5786,7 @@ function resetTraining() {
   document.getElementById('train-progress').style.display = 'none';
   document.getElementById('train-done').style.display = 'none';
   document.getElementById('train-error-area').style.display = 'none';
-  document.getElementById('train-cancel-area').style.display = 'block';
+  document.getElementById('train-cancel-area').style.display = 'none';
   // btn-start-train 상태는 checkPreprocessStatus → renderFileList에서 설정
   // (preprocessDone이 true일 때만 활성화되어야 함)
 
