@@ -5088,13 +5088,14 @@ async function handleTrainFiles(fileList) {
     } else if (!res.skipped || res.skipped.length === 0) {
       toast('업로드할 파일이 없습니다', 'info');
     }
-    trainFileInput.value = '';  // 같은 파일 재선택 허용
     // 이전 전처리 결과가 있으면 상태 동기화 (재시작 후 재업로드 시)
     checkPreprocessStatus();
   } catch(e) {
-    trainFileInput.value = '';
     toast('업로드 실패: ' + e.message, 'error');
-  } finally { _uploadInProgress = false; }
+  } finally {
+    _uploadInProgress = false;
+    trainFileInput.value = '';  // 같은 파일 재선택 허용 (finally에서 항상 실행)
+  }
 }
 
 function renderFileList() {
@@ -5257,6 +5258,12 @@ function deleteFile(id) {
       api('/files/' + id, { method: 'DELETE' }).then(function() {
         uploadedFiles = uploadedFiles.filter(function(f) { return f.id !== id; });
         renderFileList();
+        // 마지막 파일 삭제 시 전처리 상태 초기화
+        if (uploadedFiles.length === 0) {
+          preprocessDone = false;
+          preprocessJobId = null;
+          trainFileInput.value = '';
+        }
       }).catch(function(e) {
         toast('파일 삭제 실패: ' + e.message, 'error');
         renderFileList(); // 실패 시 목록 복원
@@ -5284,9 +5291,21 @@ function deleteSelectedFiles() {
       var selectedSet = new Set(selected.map(String));
       uploadedFiles = uploadedFiles.filter(function(f) { return !selectedSet.has(String(f.id)); });
       renderFileList();
+      // 파일 삭제 후 전처리 상태도 동기화
+      if (uploadedFiles.length === 0) {
+        preprocessDone = false;
+        preprocessJobId = null;
+        trainFileInput.value = '';
+      }
+      checkPreprocessStatus();
       toast(selected.length + '개 파일 삭제됨', 'info');
     }).catch(function(e) {
       toast('파일 삭제 실패: ' + e.message, 'error');
+      // 실패 시 서버에서 최신 목록 동기화
+      api('/files').then(function(r) {
+        uploadedFiles = r.files || [];
+        renderFileList();
+      }).catch(function() {});
     });
   });
 }
@@ -5476,15 +5495,26 @@ function skipPreprocess() {
 function cancelPreprocess() {
   if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
   _preprocessStartTime = null;
+  _preprocessPolling = false;
   var jobId = preprocessJobId;
   preprocessJobId = null;
   preprocessDone = false;
+  _uploadInProgress = false;                               // 업로드 플래그 확실히 해제
+  document.body.classList.remove('busy');                   // wait 커서 해제
+  setButtonLoading('btn-start-preprocess', false);          // 버튼 로딩 해제
   document.getElementById('preprocess-running').style.display = 'none';
+  document.getElementById('preprocess-done').style.display = 'none';
   document.getElementById('preprocess-idle').style.display = 'block';
   document.getElementById('btn-start-train').disabled = true;
+  trainFileInput.value = '';                                // 파일 입력 초기화 → 재선택 허용
   if (jobId) {
     api('/jobs/' + jobId + '/cancel', { method: 'POST' }).catch(function() {});
   }
+  // 서버에서 최신 파일 목록 동기화
+  api('/files').then(function(r) {
+    uploadedFiles = r.files || [];
+    renderFileList();
+  }).catch(function() { renderFileList(); });
   toast('전처리를 취소했습니다. 다시 시작하거나 건너뛸 수 있습니다.', 'info');
 }
 
@@ -7311,7 +7341,15 @@ function setupDragDrop(dropzoneId, inputId) {
     e.stopPropagation();
     dz.classList.remove('dragover');
     if (e.dataTransfer.files.length && input) {
-      input.files = e.dataTransfer.files;
+      // input.files는 읽기전용 → DataTransfer로 안전하게 할당
+      try {
+        var dt = new DataTransfer();
+        for (var i = 0; i < e.dataTransfer.files.length; i++) dt.items.add(e.dataTransfer.files[i]);
+        input.files = dt.files;
+      } catch(_) {
+        // DataTransfer 미지원 브라우저: 직접 할당 시도
+        try { input.files = e.dataTransfer.files; } catch(_) {}
+      }
       input.dispatchEvent(new Event('change'));
     }
   });
