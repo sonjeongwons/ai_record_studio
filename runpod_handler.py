@@ -1997,29 +1997,39 @@ def _post_process_vocal(
     """Post-process converted vocal — 최소한의 처리로 자연스러움 극대화.
 
     원칙: RVC 출력은 이미 학습된 음색을 갖고 있음. 과처리가 AI스러움의 주요 원인.
-    1. De-essing: 9kHz Q=5 -1.5dB (매우 좁은 대역, 한국어 자음 4-8kHz 보존)
-    2. 투명 컴프레션: threshold=-12dBFS, ratio=1.3 (큰 피크만, 다이나믹스 보존)
-    3. Air band 미세 복원: 12kHz+ +0.5dB (HiFi-GAN 고역 손실 보상)
-    4. (고음 모드) 2-4kHz 프레즌스 보강 + 6kHz 가성 공기감 복원
-    5. (선택) 소프트 새츄레이션: threshold=0.95 (기본 OFF)
-    6. (선택) 리버브: 8탭 초기 반사 (기본 0.05 → 매우 미세)
+    1. 워밍 EQ: 250Hz +1.0dB, 800Hz +0.5dB (HiFi-GAN 차가운 스펙트럼 보상)
+    2. De-essing: 9kHz Q=5 -1.5dB (매우 좁은 대역, 한국어 자음 4-8kHz 보존)
+    3. 안정화 컴프레서: threshold=-18dBFS, ratio=1.8 (떨림/진폭 변동 억제)
+    4. Air band 미세 복원: 12kHz+ +0.5dB (HiFi-GAN 고역 손실 보상)
+    5. 초고역 제거: 15kHz 이상 -2dB (HiFi-GAN 에일리어싱 아티팩트 제거)
+    6. (고음 모드) 2-4kHz 프레즌스 보강 + 6kHz 가성 공기감 복원
+    7. (선택) 소프트 새츄레이션: threshold=0.95 (기본 OFF)
+    8. (선택) 리버브: 8탭 초기 반사 (기본 0.05 → 매우 미세)
     """
     filters = [
-        # ─── 최소한의 후처리 (과처리 = AI스러움의 주요 원인) ───
+        # ─── 워밍 EQ: HiFi-GAN의 차가운/기계적 음색 보상 ───
+        # 250Hz: 흉성 따뜻함 보강 → 보컬에 살집을 더해 기계음 완화
+        "equalizer=f=250:width_type=o:width=1.0:g=1.0",
+        # 800Hz: 보컬 바디감 보강 → 소리가 얇고 날카로운 느낌 완화
+        "equalizer=f=800:width_type=o:width=0.8:g=0.5",
         #
-        # 원칙: RVC 출력은 이미 학습된 음색을 갖고 있으므로, 후처리는 최소한으로.
-        #
-        # --- De-essing: 9kHz+ 좁은 대역만 (한국어 자음 4-8kHz 보존) ---
+        # ─── De-essing: 9kHz+ 좁은 대역만 (한국어 자음 4-8kHz 보존) ───
         # Q=5 → 매우 좁은 대역 (8.1-10kHz만) → 자연스러운 치찰음은 통과
         "equalizer=f=9000:width_type=q:width=5:g=-1.5",
-        # --- 투명 다이나믹 컴프레션 (RVC 레벨 점프만 완화) ---
-        # threshold=0.25 (-12dBFS): 큰 피크만 압축
-        # ratio=1.3: 매우 부드러운 압축 → 자연스러운 다이나믹스 보존
-        # attack=30ms: 자음 트랜지언트 완전 통과
-        # release=200ms: 비브라토 주기(~167ms)보다 약간 길게 → 펌핑 방지
-        "acompressor=threshold=0.25:ratio=1.3:attack=30:release=200:makeup=1.0:knee=10",
-        # --- Air band 미세 복원 (HiFi-GAN의 10kHz+ 디테일 손실 보상) ---
+        #
+        # ─── 안정화 컴프레서: 떨림/진폭 마이크로 변동 억제 ───
+        # threshold=0.12 (-18dBFS): 이전(0.25)보다 넓은 범위에서 안정화
+        # ratio=1.8: 적당한 압축 → 떨림 억제하되 다이나믹스 보존
+        # attack=15ms: 빠른 어택으로 진폭 변동 즉시 포착
+        # release=150ms: 비브라토 주기보다 짧게 → 자연 비브라토는 보존
+        # knee=15: 넓은 니 → 압축 시작점이 부드러워 자연스러운 전환
+        "acompressor=threshold=0.12:ratio=1.8:attack=15:release=150:makeup=1.0:knee=15",
+        #
+        # ─── Air band 미세 복원 (HiFi-GAN의 10kHz+ 디테일 손실 보상) ───
         "highshelf=f=12000:width_type=o:width=0.8:g=0.5",
+        # ─── 초고역 롤오프: HiFi-GAN 에일리어싱 아티팩트 제거 ───
+        # 15kHz 이상은 음악적 의미가 적고, HiFi-GAN이 생성하는 노이즈성 고역 제거
+        "highshelf=f=15000:width_type=o:width=0.6:g=-2.0",
     ]
 
     if high_note_mode:
@@ -2135,16 +2145,15 @@ def task_convert(job_input: dict, job: dict) -> dict:
     audio_filename: str = Path(job_input.get("audio_filename", "input.wav")).name  # path traversal 방지
     # 명시적 타입 변환: RunPod job_input에서 문자열로 전달될 수 있음
     pitch_shift: int = int(job_input.get("pitch_shift", 0))
-    index_rate: float = float(job_input.get("index_rate", 0.65))
+    index_rate: float = float(job_input.get("index_rate", 0.55))
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    # filter_radius 3: 균형점 — 너무 작으면(1-2) 고음 경계에서 pitch jump 발생,
-    # 너무 크면(5+) vibrato가 뭉개짐. 3은 Applio 기본값이자 실전 최적값.
-    filter_radius: int = int(job_input.get("filter_radius", 3))
+    # filter_radius 4: 피치 커브 스무딩 — 3보다 떨림 감소, 5 이상은 비브라토 뭉개짐
+    filter_radius: int = int(job_input.get("filter_radius", 4))
     # rms_mix_rate 0.15: preserve original dynamics more → natural volume contour
     rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
-    # protect 0.35: 적절한 자음/숨소리 보존 (0.5는 원본 50% 잔류 → uncanny valley)
-    protect: float = float(job_input.get("protect", 0.35))
+    # protect 0.40: 자음/숨소리/전환부 보존 강화 → 기계음 감소
+    protect: float = float(job_input.get("protect", 0.40))
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     hop_length: int = int(job_input.get("hop_length", 64))
     clean_audio_raw = job_input.get("clean_audio", False)
