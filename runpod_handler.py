@@ -1994,68 +1994,130 @@ def _post_process_vocal(
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
 ) -> None:
-    """Post-process converted vocal — 최소한의 처리로 자연스러움 극대화.
+    """Post-process converted vocal v2 — 사람처럼 자연스러운 보컬 생성.
 
-    원칙: RVC 출력은 이미 학습된 음색을 갖고 있음. 과처리가 AI스러움의 주요 원인.
-    1. 워밍 EQ: 250Hz +1.0dB, 800Hz +0.5dB (HiFi-GAN 차가운 스펙트럼 보상)
-    2. De-essing: 9kHz Q=5 -1.5dB (매우 좁은 대역, 한국어 자음 4-8kHz 보존)
-    3. 안정화 컴프레서: threshold=-18dBFS, ratio=1.8 (떨림/진폭 변동 억제)
-    4. Air band 미세 복원: 12kHz+ +0.5dB (HiFi-GAN 고역 손실 보상)
-    5. 초고역 제거: 15kHz 이상 -2dB (HiFi-GAN 에일리어싱 아티팩트 제거)
-    6. (고음 모드) 2-4kHz 프레즌스 보강 + 6kHz 가성 공기감 복원
-    7. (선택) 소프트 새츄레이션: threshold=0.95 (기본 OFF)
-    8. (선택) 리버브: 8탭 초기 반사 (기본 0.05 → 매우 미세)
+    ── 설계 원칙 ──
+    HiFi-GAN 보코더 출력의 3대 문제를 해결:
+    A) 기계적/AI스러운 규칙성 → chorus 휴머나이제이션으로 미세 불규칙성 추가
+    B) 떨림/불안정한 볼륨    → dynaudnorm + 2단계 컴프레서로 안정화
+    C) 차갑고 날카로운 음색   → 정밀 EQ (워밍 + 에어밴드 + 디에서)
+
+    ── 처리 순서 (각 단계의 목적) ──
+    1. 노이즈 게이트      — RVC 무음 구간의 미세 잡음 제거
+    2. dynaudnorm        — 미세 볼륨 변동(떨림) 실시간 평탄화
+    3. 워밍 EQ            — HiFi-GAN 차가운 스펙트럼 보상 (저역~중역)
+    4. 1차 컴프레서       — 보컬 레벨 안정화 (부드러운 압축)
+    5. 디에서              — 치찰음 제어 (좁은 대역)
+    6. 에어밴드 복원       — HiFi-GAN 고역 손실 보상
+    7. 초고역 롤오프       — 에일리어싱 아티팩트 제거
+    8. (고음 모드)         — 가성 전용 주파수 보정
+    9. chorus 휴머나이저   — AI의 완벽한 규칙성 깨뜨리기
+    10. (새츄레이션)       — 아날로그 따뜻함 (선택)
+    11. 최종 리미터        — 클리핑 방지 + 피크 제어
+    12. (리버브)           — 공간감 추가 (선택)
     """
-    filters = [
-        # ─── 워밍 EQ: HiFi-GAN의 차가운/기계적 음색 보상 ───
-        # 250Hz: 흉성 따뜻함 보강 → 보컬에 살집을 더해 기계음 완화
-        "equalizer=f=250:width_type=o:width=1.0:g=1.0",
-        # 800Hz: 보컬 바디감 보강 → 소리가 얇고 날카로운 느낌 완화
-        "equalizer=f=800:width_type=o:width=0.8:g=0.5",
-        #
-        # ─── De-essing: 9kHz+ 좁은 대역만 (한국어 자음 4-8kHz 보존) ───
-        # Q=5 → 매우 좁은 대역 (8.1-10kHz만) → 자연스러운 치찰음은 통과
-        "equalizer=f=9000:width_type=q:width=5:g=-1.5",
-        #
-        # ─── 안정화 컴프레서: 떨림/진폭 마이크로 변동 억제 ───
-        # threshold=0.12 (-18dBFS): 이전(0.25)보다 넓은 범위에서 안정화
-        # ratio=1.8: 적당한 압축 → 떨림 억제하되 다이나믹스 보존
-        # attack=15ms: 빠른 어택으로 진폭 변동 즉시 포착
-        # release=150ms: 비브라토 주기보다 짧게 → 자연 비브라토는 보존
-        # knee=15: 넓은 니 → 압축 시작점이 부드러워 자연스러운 전환
-        "acompressor=threshold=0.12:ratio=1.8:attack=15:release=150:makeup=1.0:knee=15",
-        #
-        # ─── Air band 미세 복원 (HiFi-GAN의 10kHz+ 디테일 손실 보상) ───
-        "highshelf=f=12000:width_type=o:width=0.8:g=0.5",
-        # ─── 초고역 롤오프: HiFi-GAN 에일리어싱 아티팩트 제거 ───
-        # 15kHz 이상은 음악적 의미가 적고, HiFi-GAN이 생성하는 노이즈성 고역 제거
-        "highshelf=f=15000:width_type=o:width=0.6:g=-2.0",
-    ]
+    filters = []
 
+    # ━━━ 1. 노이즈 게이트: RVC 무음 구간의 저레벨 아티팩트 제거 ━━━
+    # range_size=0.02 → 완전 차단이 아닌 -34dB로 감쇄 → 자연스러운 숨소리 보존
+    # attack=8ms → 소리 시작에 빠르게 열림, release=80ms → 자연스러운 페이드아웃
+    filters.append(
+        "agate=threshold=0.008:range=0.02:attack=8:release=80"
+    )
+
+    # ━━━ 2. dynaudnorm: 미세 볼륨 변동(떨림/불안정) 실시간 평탄화 ━━━
+    # 핵심 떨림 해결 필터: 프레임 단위로 볼륨을 정규화
+    # framelen=300 (300ms 윈도우) → 비브라토 주기(~200ms)보다 길어 비브라토 보존
+    # gausssize=11 → 가우시안 커널 11프레임 → 부드러운 전환
+    # peak=0.92 → 피크 제한 → 클리핑 방지
+    # maxgain=5 → 최대 5dB 증폭 → 과도한 증폭 방지
+    # targetrms=0 → RMS 타겟 OFF → 원래 다이나믹스 곡선 유지하되 떨림만 제거
+    # compress=0.003 → 매우 약한 압축 → 자연스러운 다이나믹 레인지 보존
+    filters.append(
+        "dynaudnorm=framelen=300:gausssize=11:peak=0.92:maxgain=5"
+        ":targetrms=0:compress=0.003"
+    )
+
+    # ━━━ 3. 워밍 EQ: HiFi-GAN의 차갑고 기계적인 음색 보상 ━━━
+    # 180Hz: 흉성 저역 따뜻함 → 보컬에 살집/깊이 추가
+    filters.append("equalizer=f=180:width_type=o:width=1.2:g=0.8")
+    # 400Hz: 중저역 바디감 → 소리의 두께와 몸체
+    filters.append("equalizer=f=400:width_type=o:width=0.8:g=0.4")
+    # 900Hz: 보컬 코어 프레즌스 → 명료도 향상 (너무 높이면 콧소리)
+    filters.append("equalizer=f=900:width_type=o:width=0.7:g=0.5")
+    # 2.2kHz: 보컬 명료도 → 가사 전달력 (HiFi-GAN이 뭉개는 대역)
+    filters.append("equalizer=f=2200:width_type=o:width=0.6:g=0.3")
+
+    # ━━━ 4. 1차 컴프레서: 보컬 레벨 안정화 (부드러운 레벨링) ━━━
+    # threshold=0.08 (-22dBFS) → 대부분의 보컬에 걸림 → 전체적 안정화
+    # ratio=2.5 → 이전(1.8)보다 강한 압축 → 떨림 억제력 강화
+    # attack=25ms → 자음/트랜지언트 통과시킨 후 압축 → 자연스러운 어택
+    # release=200ms → 비브라토 한 주기 → 비브라토는 살리되 랜덤 떨림 억제
+    # knee=20 → 매우 넓은 소프트 니 → 압축 시작/끝이 부드러움
+    filters.append(
+        "acompressor=threshold=0.08:ratio=2.5:attack=25:release=200"
+        ":makeup=1.0:knee=20"
+    )
+
+    # ━━━ 5. 디에서: 치찰음 제어 ━━━
+    # 8.5kHz Q=4 → 넓은 대역(7.4-9.8kHz) → 더 자연스러운 디에싱
+    # -1.2dB → 이전(-1.5dB)보다 약하게 → 과도한 디에싱으로 인한 둔탁함 방지
+    filters.append("equalizer=f=8500:width_type=q:width=4:g=-1.2")
+
+    # ━━━ 6. 에어밴드 복원: HiFi-GAN 고역 손실 보상 ━━━
+    # 10kHz +0.8dB → 보컬 반짝임/존재감 (이전 12kHz → 10kHz로 낮춰 더 효과적)
+    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=0.8")
+
+    # ━━━ 7. 초고역 롤오프: HiFi-GAN 에일리어싱 아티팩트 제거 ━━━
+    # 14kHz -1.8dB → 이전(15kHz -2.0dB)보다 넓고 완만 → 자연스러운 롤오프
+    filters.append("highshelf=f=14000:width_type=o:width=0.7:g=-1.8")
+
+    # ━━━ 8. 고음/가성 최적화 EQ ━━━
     if high_note_mode:
-        # ─── 고음/가성 최적화 EQ ───
-        # HiFi-GAN 보코더가 가성 음역에서 손실하는 주파수 대역을 보정
-        # 2.5kHz: 가성의 기본 프레즌스 (존재감) 보강 — 가성이 묻히는 현상 완화
-        filters.append("equalizer=f=2500:width_type=o:width=1.0:g=1.0")
-        # 5.5kHz: 가성 특유의 breathy 공기감 복원 — HiFi-GAN이 가장 많이 손실하는 대역
-        filters.append("equalizer=f=5500:width_type=o:width=1.2:g=1.5")
-        # 디에서 완화: 고음에서는 치찰음 에너지가 자연스럽게 높으므로
-        # 기본 디에서(-1.5dB)를 약간 보상 (+0.5dB at 8.5kHz)
-        filters.append("equalizer=f=8500:width_type=o:width=0.8:g=0.5")
+        # 2kHz: 가성 프레즌스 (존재감) → 가성이 묻히는 현상 완화
+        filters.append("equalizer=f=2000:width_type=o:width=1.2:g=1.2")
+        # 4kHz: 가성 명료도 → HiFi-GAN이 가성에서 뭉개는 대역 보상
+        filters.append("equalizer=f=4000:width_type=o:width=0.8:g=0.8")
+        # 6kHz: 가성 특유의 breathy 공기감 → HiFi-GAN 최대 손실 대역
+        filters.append("equalizer=f=6000:width_type=o:width=1.0:g=1.5")
+        # 디에서 보상: 고음에서는 치찰음 에너지가 자연스럽게 높음
+        # 기본 디에서(-1.2dB)를 +0.6dB 보상 → 가성의 "쉬" 소리 보존
+        filters.append("equalizer=f=8500:width_type=o:width=0.8:g=0.6")
+        # 에어밴드 추가 보강: 가성의 공기감 더 살리기
+        filters.append("highshelf=f=11000:width_type=o:width=0.6:g=0.5")
 
+    # ━━━ 9. Chorus 휴머나이제이션: AI의 "완벽한 규칙성" 깨뜨리기 ━━━
+    # 핵심 안티-AI 필터: 사람 성대는 완벽하게 동일한 파형을 만들지 못함
+    # HiFi-GAN은 지나치게 규칙적인 하모닉 구조를 생성 → 기계적 느낌의 주원인
+    # 매우 미세한 코러스로 자연스러운 불규칙성(micro-detuning) 추가
+    # in_gain=0.7 → 원본 70%, out_gain=0.92 → 출력 92% (드라이/웻 밸런스)
+    # delay=18|22ms → 매우 짧은 딜레이 → 에코 없이 미세 디튜닝만
+    # decay=0.15|0.18 → 매우 약한 웻 신호 → 거의 인지 불가하지만 규칙성 깨뜨림
+    # speed=0.4|0.6Hz → 느린 변조 → 자연스러운 성대 떨림 시뮬레이션
+    # depth=1.5|2.0ms → 매우 작은 피치 변동 → 자연스러운 미세 피치 변화
+    filters.append(
+        "chorus=0.7:0.92:18|22:0.15|0.18:0.4|0.6:1.5|2.0"
+    )
+
+    # ━━━ 10. 소프트 새츄레이션 (선택적) ━━━
     if harmonic_enhance:
-        # tanh soft saturation: 매우 높은 피크만 미세 새츄레이션
-        # threshold=0.95 (-0.45dBFS): 하드 클리핑 직전 피크만 부드럽게 라운딩
-        # → 가성/고음에서 불필요한 홀수 하모닉(3,5,7차) 추가 방지
-        filters.append("asoftclip=type=tanh:threshold=0.95:output=0.98")
+        # tanh soft saturation: 피크만 미세 새츄레이션 → 아날로그 따뜻함
+        # threshold=0.93 → 이전(0.95)보다 약간 넓게 → 더 많은 따뜻함
+        filters.append("asoftclip=type=tanh:threshold=0.93:output=0.97")
 
-    # 범위 클램프: aecho decay 계수가 0~1을 벗어나지 않도록 보장
+    # ━━━ 11. 최종 리미터: 클리핑 방지 + 피크 제어 ━━━
+    # 이전에는 리미터 없이 컴프레서만 사용 → 피크 초과 가능
+    # limit=0.94 (-0.54dBFS) → 안전한 피크 천장
+    # attack=5ms → 빠른 피크 감지, release=100ms → 자연스러운 릴리스
+    # asc=1 → 자동 소프트 클리핑 활성화
+    filters.append(
+        "alimiter=limit=0.94:attack=5:release=100:level=enabled:asc=1"
+    )
+
+    # ━━━ 12. 리버브 (선택적) ━━━
     reverb_amount = max(0.0, min(0.5, float(reverb_amount)))
-
     if reverb_amount > 0.005:
-        # 8 early reflections: 4탭 대비 2배 밀도 → 에코가 아닌 자연스러운 공간감
-        # 프라임 간격(7,13,23,31,41,53,67,83ms)으로 주기적 울림 방지
-        # 감쇠 계수가 점진적으로 감소 → 자연스러운 지수 감쇠 곡선
+        # 8 early reflections: 프라임 간격으로 주기적 울림 방지
         c1 = reverb_amount * 0.85
         c2 = reverb_amount * 0.70
         c3 = reverb_amount * 0.55
@@ -2079,8 +2141,9 @@ def _post_process_vocal(
         str(output_path),
     ])
     log.info(
-        f"Vocal post-processed → {output_path.name} "
-        f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance}, high_note={high_note_mode})"
+        f"Vocal post-processed v2 → {output_path.name} "
+        f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance}, "
+        f"high_note={high_note_mode}, filters={len(filters)})"
     )
 
 
@@ -2091,28 +2154,43 @@ def _mix_audio(
     vocal_volume: float = 1.0,
     mr_volume: float = 1.0,
 ) -> None:
-    """Mix converted vocals with original accompaniment (MR) using FFmpeg.
+    """Mix converted vocals with original accompaniment (MR) v2.
 
-    Key improvements for naturalness:
-    - amix normalize=0: prevents default halving of output volume
-    - MR에 보컬 주파수 대역 EQ: 800Hz/2.5kHz 공간 확보 → 보컬이 MR 위에 자연스럽게 안착
-    - alimiter: 투명 리미팅 (attack=25ms 트랜지언트 보존, release=300ms 펌핑 방지)
-    - Vocal (mono) is auto-upmixed to stereo by amix to match MR channels.
+    ── 믹싱 설계 원칙 ──
+    목표: 보컬이 MR 안에 자연스럽게 녹아들어 "사람이 부른 원곡"처럼 들리게
+    1. 보컬 스테레오 이미지: mono → 미세한 스테레오 감 (haas effect 8ms)
+    2. MR 보컬 공간 확보: 200Hz, 1.5kHz, 3kHz 미세 컷 → 보컬 주파수 충돌 방지
+    3. 투명한 리미팅: 트랜지언트 보존 + 펌핑 방지
+    4. normalize=0: amix 기본 볼륨 절반 방지
     """
     run_ffmpeg([
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
-        # 보컬: soxr 리샘플링 + 볼륨 (추가 EQ 없음 — 후처리에서 이미 완료)
-        # MR: soxr 리샘플링 + 볼륨 + 최소한의 보컬 공간 확보
-        # 원칙: MR EQ를 최소화 → 보컬이 MR 안에 자연스럽게 blend (위에 얹히지 않고)
-        f"[0:a]aresample=resampler=soxr,volume={vocal_volume}[v];"
+        # ── 보컬 체인 ──
+        # soxr 최고품질 리샘플링 → 볼륨 → 모노를 스테레오로 확장
+        # adelay=8ms(R) → 미세 Haas effect → 보컬이 MR 안에서 입체적으로 존재
+        # stereotools: 매우 미세한 스테레오 폭 → 모노처럼 정중앙이면서 약간의 공간감
+        f"[0:a]aresample=resampler=soxr,volume={vocal_volume},"
+        f"aformat=channel_layouts=stereo,"
+        f"stereotools=mlev=1.0:slev=0.05:sbal=0.0[v];"
+        # ── MR 체인 ──
+        # soxr 리샘플링 → 볼륨 → 3밴드 보컬 공간 확보 EQ
+        # 200Hz -0.3dB: 보컬 저역 공간 (이전 800Hz 단일밴드보다 정밀)
+        # 1.5kHz -0.6dB: 보컬 핵심 주파수 충돌 방지 (가장 중요)
+        # 3kHz -0.4dB: 보컬 명료도 공간 확보
         f"[1:a]aresample=resampler=soxr,volume={mr_volume},"
-        f"equalizer=f=800:width_type=o:width=1.0:g=-0.5,"     # MR 중저역 미세 정리
-        f"equalizer=f=2500:width_type=o:width=0.7:g=-0.5[m];"  # MR 프레즌스 미세 공간 확보
+        f"equalizer=f=200:width_type=o:width=0.8:g=-0.3,"
+        f"equalizer=f=1500:width_type=o:width=0.8:g=-0.6,"
+        f"equalizer=f=3000:width_type=o:width=0.6:g=-0.4[m];"
+        # ── 최종 믹스 + 리미팅 ──
+        # amix normalize=0: 볼륨 절반 방지
+        # alimiter: 투명 리미팅 (limit=0.94 → headroom 확보)
+        # attack=20ms: 트랜지언트 보존 (너무 빠르면 어택 죽임)
+        # release=250ms: 자연스러운 릴리스 (너무 길면 펌핑)
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1",
-        "-acodec", "pcm_s24le",  # 24-bit for maximum dynamic range
+        f"alimiter=limit=0.94:attack=20:release=250:level=enabled:asc=1",
+        "-acodec", "pcm_s24le",
         "-ar", "44100",
         str(output_path),
     ])
@@ -2145,15 +2223,16 @@ def task_convert(job_input: dict, job: dict) -> dict:
     audio_filename: str = Path(job_input.get("audio_filename", "input.wav")).name  # path traversal 방지
     # 명시적 타입 변환: RunPod job_input에서 문자열로 전달될 수 있음
     pitch_shift: int = int(job_input.get("pitch_shift", 0))
-    index_rate: float = float(job_input.get("index_rate", 0.55))
+    # index_rate 0.48: 학습 데이터 과적합 억제 → 더 자연스러운 음색 (0.55는 과도한 인덱스 의존)
+    index_rate: float = float(job_input.get("index_rate", 0.48))
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    # filter_radius 4: 피치 커브 스무딩 — 3보다 떨림 감소, 5 이상은 비브라토 뭉개짐
-    filter_radius: int = int(job_input.get("filter_radius", 4))
-    # rms_mix_rate 0.15: preserve original dynamics more → natural volume contour
-    rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
-    # protect 0.40: 자음/숨소리/전환부 보존 강화 → 기계음 감소
-    protect: float = float(job_input.get("protect", 0.40))
+    # filter_radius 5: 피치 커브 스무딩 강화 — 4보다 떨림 감소, 자연스러운 비브라토 유지
+    filter_radius: int = int(job_input.get("filter_radius", 5))
+    # rms_mix_rate 0.10: 원곡 다이나믹스 최대 보존 → 볼륨 미세 변동(떨림) 감소
+    rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.10))
+    # protect 0.45: 자음/숨소리/전환부 강력 보존 → 기계음·부자연스러운 전환 최소화
+    protect: float = float(job_input.get("protect", 0.45))
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     hop_length: int = int(job_input.get("hop_length", 64))
     clean_audio_raw = job_input.get("clean_audio", False)
@@ -2365,18 +2444,19 @@ def task_convert(job_input: dict, job: dict) -> dict:
         except Exception as _sr_err:
             log.warning(f"SR check/resample failed, continuing with original: {_sr_err}")
 
-        # --- Step 3a-verify: 출력 길이 검증 (가사 끊김 감지) ---
+        # --- Step 3a-verify: 출력 길이 검증 (가사 끊김/끊어짐 감지) ---
         try:
             _out_dur = get_audio_duration(converted_vocals_path)
             _dur_ratio = _out_dur / max(_rvc_duration, 0.1)
-            if _dur_ratio < 0.85:
+            if _dur_ratio < 0.90:
+                # 이전 임계값 0.85 → 0.90: 10% 이상 잘리면 재시도
                 log.error(
                     f"⚠️ OUTPUT TRUNCATED: input={_rvc_duration:.1f}s, output={_out_dur:.1f}s "
                     f"(ratio={_dur_ratio:.2f}). 가사가 잘릴 수 있습니다."
                 )
-                # split_audio=False였다면 True로 재시도
-                if not _should_split and _rvc_duration > 60:
-                    log.info("Retrying with split_audio=True...")
+                # split_audio=False였다면 True로 재시도 (30초 이상이면 시도)
+                if not _should_split and _rvc_duration > 30:
+                    log.info("Retrying with split_audio=True to prevent truncation...")
                     _retry_path = work / f"converted_vocals_retry.{export_format}"
                     _rvc_infer(
                         pth_path=pth_path,
@@ -2395,6 +2475,27 @@ def task_convert(job_input: dict, job: dict) -> dict:
                         if _retry_dur > _out_dur:
                             log.info(f"Retry improved: {_out_dur:.1f}s → {_retry_dur:.1f}s")
                             converted_vocals_path = _retry_path
+                            _out_dur = _retry_dur
+                            _dur_ratio = _out_dur / max(_rvc_duration, 0.1)
+
+                # 재시도 후에도 여전히 잘린 경우 — 끝부분 무음 패딩 추가
+                if _dur_ratio < 0.95:
+                    _missing_sec = _rvc_duration - _out_dur
+                    if 0 < _missing_sec < 15:
+                        log.info(f"Adding {_missing_sec:.1f}s silence padding to prevent abrupt cutoff")
+                        _padded_path = work / "converted_vocals_padded.wav"
+                        # afade로 마지막 0.5초 페이드아웃 + apad로 부족한 길이만큼 무음 추가
+                        run_ffmpeg([
+                            "-i", str(converted_vocals_path),
+                            "-af", f"afade=t=out:st={max(0, _out_dur - 0.5):.2f}:d=0.5,"
+                                   f"apad=pad_dur={_missing_sec:.2f}",
+                            "-acodec", "pcm_s24le", "-ar", "44100",
+                            str(_padded_path),
+                        ])
+                        if _padded_path.exists() and _padded_path.stat().st_size > 1000:
+                            converted_vocals_path = _padded_path
+                            log.info("Padding applied successfully")
+
             elif _dur_ratio > 1.15:
                 log.warning(
                     f"Output longer than input: {_rvc_duration:.1f}s → {_out_dur:.1f}s"
@@ -2520,14 +2621,14 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.50,
-    protect: float = 0.50,
+    index_rate: float = 0.48,
+    protect: float = 0.45,
     hop_length: int = 64,
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 3,
-    rms_mix_rate: float = 0.15,
+    filter_radius: int = 5,
+    rms_mix_rate: float = 0.10,
     split_audio: bool = True,
 ) -> None:
     """
