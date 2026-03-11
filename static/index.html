@@ -6382,6 +6382,7 @@ async function pollConvertStatus() {
           }, 100);
         }
       }
+      currentConvertJobId = null;
       toast('변환이 완료되었습니다', 'success');
       // 변환 결과로 스크롤
       setTimeout(function() {
@@ -6406,6 +6407,7 @@ async function pollConvertStatus() {
       document.getElementById('convert-ring').classList.remove('running');
       document.getElementById('convert-status-msg').textContent = '변환 실패';
       document.getElementById('convert-cancel-area').style.display = 'none';
+      currentConvertJobId = null;
       fadeSection(document.getElementById('convert-error-area'), true, 240);
       document.getElementById('convert-error-msg').textContent = extractErrorSummary(job.message || '');
       document.title = 'AI Voice Studio';
