@@ -2018,6 +2018,16 @@ def _post_process_vocal(
     """
     filters = []
 
+    # ━━━ 0. 디클릭: 삑사리/피치 스파이크로 인한 클릭·팝 아티팩트 제거 ━━━
+    # F0 추출 오류 → 갑작스러운 피치 점프 → 클릭/삑사리 발생
+    # window=55 → 55 샘플 윈도우로 클릭 감지
+    # overlap=75% → 충분한 오버랩으로 아티팩트 누락 방지
+    # threshold=2 → 민감도: 2 표준편차 이상 편차만 클릭으로 간주
+    # burst=2 → 연속 클릭도 감지 (빠른 삑사리)
+    filters.append(
+        "adeclick=window=55:overlap=75:arorder=8:threshold=2:burst=2"
+    )
+
     # ━━━ 1. 노이즈 게이트: RVC 무음 구간의 저레벨 아티팩트 제거 ━━━
     # range_size=0.02 → 완전 차단이 아닌 -34dB로 감쇄 → 자연스러운 숨소리 보존
     # attack=8ms → 소리 시작에 빠르게 열림, release=80ms → 자연스러운 페이드아웃
@@ -2045,17 +2055,21 @@ def _post_process_vocal(
     filters.append("equalizer=f=400:width_type=o:width=0.8:g=0.4")
     # 900Hz: 보컬 코어 프레즌스 → 명료도 향상 (너무 높이면 콧소리)
     filters.append("equalizer=f=900:width_type=o:width=0.7:g=0.5")
-    # 2.2kHz: 보컬 명료도 → 가사 전달력 (HiFi-GAN이 뭉개는 대역)
-    filters.append("equalizer=f=2200:width_type=o:width=0.6:g=0.3")
+    # 2.2kHz: 보컬 명료도 → 가사/모음 전달력 (HiFi-GAN이 뭉개는 대역)
+    filters.append("equalizer=f=2200:width_type=o:width=0.6:g=0.5")
+    # 3.2kHz: 조음 명확도 → 자음(ㅅ,ㅈ,ㅊ,ㅋ,ㅌ,ㅍ) 발음 선명도 향상
+    # 이 대역은 한국어 자음 에너지가 집중되는 핵심 대역
+    filters.append("equalizer=f=3200:width_type=o:width=0.7:g=0.6")
 
     # ━━━ 4. 1차 컴프레서: 보컬 레벨 안정화 (부드러운 레벨링) ━━━
     # threshold=0.08 (-22dBFS) → 대부분의 보컬에 걸림 → 전체적 안정화
     # ratio=2.5 → 이전(1.8)보다 강한 압축 → 떨림 억제력 강화
-    # attack=25ms → 자음/트랜지언트 통과시킨 후 압축 → 자연스러운 어택
+    # attack=35ms → 자음 트랜지언트 충분히 통과 후 압축 → 발음 명확도 보존
+    #   (이전 25ms에서 35ms로 증가 → 파열음/마찰음 초기 에너지 살림)
     # release=200ms → 비브라토 한 주기 → 비브라토는 살리되 랜덤 떨림 억제
     # knee=20 → 매우 넓은 소프트 니 → 압축 시작/끝이 부드러움
     filters.append(
-        "acompressor=threshold=0.08:ratio=2.5:attack=25:release=200"
+        "acompressor=threshold=0.08:ratio=2.5:attack=35:release=200"
         ":makeup=1.0:knee=20"
     )
 
@@ -2090,13 +2104,13 @@ def _post_process_vocal(
     # 핵심 안티-AI 필터: 사람 성대는 완벽하게 동일한 파형을 만들지 못함
     # HiFi-GAN은 지나치게 규칙적인 하모닉 구조를 생성 → 기계적 느낌의 주원인
     # 매우 미세한 코러스로 자연스러운 불규칙성(micro-detuning) 추가
-    # in_gain=0.7 → 원본 70%, out_gain=0.92 → 출력 92% (드라이/웻 밸런스)
+    # in_gain=0.7 → 원본 70%, out_gain=0.93 → 출력 93% (드라이/웻 밸런스)
     # delay=18|22ms → 매우 짧은 딜레이 → 에코 없이 미세 디튜닝만
-    # decay=0.15|0.18 → 매우 약한 웻 신호 → 거의 인지 불가하지만 규칙성 깨뜨림
+    # decay=0.12|0.15 → 이전(0.15|0.18)보다 약화 → 자음 경계 흐림 방지
     # speed=0.4|0.6Hz → 느린 변조 → 자연스러운 성대 떨림 시뮬레이션
-    # depth=1.5|2.0ms → 매우 작은 피치 변동 → 자연스러운 미세 피치 변화
+    # depth=1.0|1.3ms → 이전(1.5|2.0)보다 축소 → 발음 선명도 유지 + 피치 오류 증폭 방지
     filters.append(
-        "chorus=0.7:0.92:18|22:0.15|0.18:0.4|0.6:1.5|2.0"
+        "chorus=0.7:0.93:18|22:0.12|0.15:0.4|0.6:1.0|1.3"
     )
 
     # ━━━ 10. 소프트 새츄레이션 (선택적) ━━━
@@ -2227,12 +2241,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
     index_rate: float = float(job_input.get("index_rate", 0.48))
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    # filter_radius 5: 피치 커브 스무딩 강화 — 4보다 떨림 감소, 자연스러운 비브라토 유지
-    filter_radius: int = int(job_input.get("filter_radius", 5))
+    # filter_radius 7: F0 피치 커브 강력 스무딩 — 삑사리(피치 스파이크) 억제, 비브라토는 유지
+    filter_radius: int = int(job_input.get("filter_radius", 7))
     # rms_mix_rate 0.10: 원곡 다이나믹스 최대 보존 → 볼륨 미세 변동(떨림) 감소
     rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.10))
-    # protect 0.45: 자음/숨소리/전환부 강력 보존 → 기계음·부자연스러운 전환 최소화
-    protect: float = float(job_input.get("protect", 0.45))
+    # protect 0.50: 자음/숨소리/전환부 최대 보존 → 발음 명확도 + 부자연스러운 전환 최소화
+    protect: float = float(job_input.get("protect", 0.50))
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     hop_length: int = int(job_input.get("hop_length", 64))
     clean_audio_raw = job_input.get("clean_audio", False)
@@ -2622,12 +2636,12 @@ def _rvc_infer(
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
     index_rate: float = 0.48,
-    protect: float = 0.45,
+    protect: float = 0.50,
     hop_length: int = 64,
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 5,
+    filter_radius: int = 7,
     rms_mix_rate: float = 0.10,
     split_audio: bool = True,
 ) -> None:
