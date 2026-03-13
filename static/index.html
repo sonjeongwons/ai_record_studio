@@ -3316,18 +3316,18 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0~0.2 = 원본 음량 유지 (추천! 자연스러움)\n• 0.3~0.5 = AI가 적당히 음량 조절\n• 0.5 이상 = 강한 음량 조절 (부자연스러울 수 있음)\n\n💡 처음엔 기본값(0.15). 소리가 작거나 크면 0.2~0.3으로 조절.">ⓘ</i></span>
-              <span class="slider-value" id="rms-val">0.10</span>
+              <span class="slider-value" id="rms-val">0.20</span>
             </div>
-            <input type="range" id="rms-slider" min="0" max="100" value="10" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (0.15 기본, 0.1~0.2 권장, 낮을수록 원본 음량 패턴 유지)</div>
+            <input type="range" id="rms-slider" min="0" max="100" value="20" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (0.20 기본, 0.15~0.30 권장, 낮을수록 원본 음량 패턴 유지)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음 많은 노래, 빠른 멜로디\n• 3~5 = 일반 노래 (기본, 추천)\n• 6~7 = 발라드 등 느린 곡\n\n💡 음정이 '뚝뚝' 끊기면 높이고, 너무 밋밋하면 낮추세요.">ⓘ</i></span>
-              <span class="slider-value" id="filter-val">9</span>
+              <span class="slider-value" id="filter-val">6</span>
             </div>
-            <input type="range" id="filter-slider" min="0" max="12" value="9" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (9 기본, 7~10 권장, 삑사리 방지↑)</div>
+            <input type="range" id="filter-slider" min="0" max="12" value="6" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (6 기본, 4~8 권장, 높으면 삑사리↓ 비브라토↓)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4733,36 +4733,36 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default v3: 데이터 기반 — 발음↑ 삑사리↓ 볼륨 정규화
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 9, hop: 1,
+      // Default v4: "Less is More" — 최소 개입, 최대 자연스러움
+      f0: 'rmvpe', protect: 50, rms: 20, filter: 6, hop: 1,
       clean: false, cleanStr: 70, index: 48,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false,
-      desc: '기본 설정 (v3: 발음↑↑ 삑사리↓↓ 볼륨정규화 자연스러움↑)'
+      desc: '기본 설정 (v4: 자연스러움 최우선, 과잉처리 제거, 발음·볼륨↑)'
     },
     falsetto: {
-      // 가성/고음: Crepe + filter=7 + 고음모드 → 피치 정밀도 + 스무딩
-      f0: 'crepe', protect: 50, rms: 8, filter: 7, hop: 0,
+      // 가성/고음: Crepe + filter=4 + 고음모드 → 피치 정밀도 + 비브라토 보존
+      f0: 'crepe', protect: 50, rms: 15, filter: 4, hop: 0,
       clean: false, cleanStr: 70, index: 45,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: true,
-      desc: '가성/고음 최적화 — Crepe, 삑사리↓↓, 공기감 보정, 발음↑↑'
+      desc: '가성/고음 최적화 — Crepe, 비브라토↑, 고음 선명도↑'
     },
     natural: {
       // Natural: 최대 자연스러움 — 인덱스 최소, 원곡 최대 보존
-      f0: 'rmvpe', protect: 50, rms: 8, filter: 9, hop: 1,
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 5, hop: 1,
       clean: false, cleanStr: 70, index: 42,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false,
-      desc: '최대 자연스러움 — index↓↓, 원곡 다이나믹스·음색 최대 보존'
+      desc: '최대 자연스러움 — index↓, filter↓, 원곡 특성 최대 보존'
     },
     studio: {
-      // Studio: 프로 마스터링 품질 — 안정적 + 공간감
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 9, hop: 1,
+      // Studio: 깨끗한 원본에 최적화 — 안정적 + 공간감
+      f0: 'rmvpe', protect: 50, rms: 20, filter: 6, hop: 1,
       clean: false, cleanStr: 70, index: 48,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false,
-      desc: '스튜디오 품질 — 안정적 음색 + 미세한 공간감'
+      desc: '스튜디오 품질 — 안정적 + 미세한 공간감'
     }
   };
   var p = presets[preset];
@@ -6198,8 +6198,8 @@ async function startConversion() {
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
   form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
-  form.append('rms_mix_rate', (getVal('rms-slider', '10') / 100).toFixed(2));
-  form.append('filter_radius', getVal('filter-slider', '9'));
+  form.append('rms_mix_rate', (getVal('rms-slider', '20') / 100).toFixed(2));
+  form.append('filter_radius', getVal('filter-slider', '6'));
   var hopSteps = [32, 64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '1')] || 64);
   // Post-processing for naturalness
@@ -6599,8 +6599,8 @@ async function startBatchConversion() {
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
       form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
-      form.append('rms_mix_rate', (getVal('rms-slider', '10') / 100).toFixed(2));
-      form.append('filter_radius', getVal('filter-slider', '9'));
+      form.append('rms_mix_rate', (getVal('rms-slider', '20') / 100).toFixed(2));
+      form.append('filter_radius', getVal('filter-slider', '6'));
       var hopSteps2 = [32, 64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '1')] || 64);
       // Post-processing for naturalness
