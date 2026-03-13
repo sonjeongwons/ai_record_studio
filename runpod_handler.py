@@ -1994,93 +1994,95 @@ def _post_process_vocal(
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
 ) -> None:
-    """Post-process converted vocal v4 — "Less is More" 최소 개입 철학.
+    """Post-process converted vocal v5 — 볼륨/밝기/발음 대폭 강화.
 
-    ── v4 개편 근거 (플레이브 - 기다릴게 원곡 vs 변환곡 분석) ──
-    v3 문제: 15단계 필터 체인이 누적 위상 왜곡 + 과압축 → AI스러운 기계음
-      - dynaudnorm: 300ms 프레임 자동 레벨링 → 음정 뚝뚝 끊김의 주범
-      - chorus: 피치 미세 변조 → 오히려 기계적 떨림 추가
-      - 2중 컴프레서: 과압축 → 다이나믹 레인지 19.4dB→12.6dB (-35%)
-      - EQ 13개: 누적 위상 왜곡 → 금속성 울림
+    ── v5 개편 근거 (재변환곡2 분석 결과) ──
+    v4에서 dynaudnorm/chorus 제거로 기계음은 감소했지만:
+      - 볼륨: 여전히 -17.9dB vs 원곡 -12.8dB (5.1dB 부족)
+      - 밝기: 센트로이드 2428Hz vs 원곡 2891Hz (-16%)
+      - 발음: 2-4kHz 3.7% vs 원곡 5.6% (-34%)
+      - 공기감: 10-20kHz 0.1% vs 원곡 0.5% (-80%)
+      - 삑사리: 7회 (원곡 4회 대비 75% 증가)
 
-    v4 원칙: RVC 출력을 최대한 보존, 필수 보정만 최소한으로 적용
+    v5 변경:
+      - EQ 부스트 대폭 강화 (2-5kHz +3~4dB, 고역 +3~4dB)
+      - loudnorm I=-8 (v4의 -11보다 3dB 강하게)
+      - 컴프레서 threshold 올림 (0.12→0.25) → 과압축 방지
+      - 컴프레서 makeup 강화 (1.3→1.8) → 볼륨 보상
+      - 리미터 limit=0.99 → 헤드룸 최소화
+
     ── 처리 순서 (7단계) ──
-    1. adeclick          — 클릭/팝 아티팩트 제거 (비파괴적)
-    2. 발음 명료도 EQ     — 2-4kHz 핵심 대역만 보정 (3밴드)
-    3. 프레즌스/에어 EQ   — 고역 존재감 복원 (2밴드)
-    4. 컴프레서           — 부드러운 레벨 안정화 (1개만, 약하게)
-    5. loudnorm          — 볼륨 정규화 (원곡 수준, 다이나믹 보존)
+    1. adeclick          — 클릭/팝 제거 (비파괴적)
+    2. 발음 명료도 EQ     — 2-5kHz 강력 보정 (4밴드)
+    3. 프레즌스/에어 EQ   — 고역 존재감 강력 복원 (3밴드)
+    4. 컴프레서           — 부드러운 레벨 안정화 (피크만)
+    5. loudnorm          — 볼륨 정규화 (원곡 이상으로)
     6. 리미터             — 클리핑 방지
     7. (리버브)           — 공간감 (선택)
-
-    제거된 것들 (v3→v4):
-    - dynaudnorm: 음정 끊김 주범 → 완전 제거
-    - chorus: 기계적 떨림 주범 → 완전 제거
-    - 2차 컴프레서: 과압축 → 제거
-    - adeclip: adeclick으로 충분 → 제거
-    - 노이즈 게이트: RVC 출력에 불필요 → 제거
-    - 워밍 EQ 3밴드: 과도한 저역 부스트 → 제거 (원음 보존)
-    - 디에서 EQ: 고역 부스트 안 하므로 불필요 → 제거
-    - 소프트 새츄레이션: 위상 왜곡 추가 → 제거
     """
     filters = []
 
     # ━━━ 1. 클릭/팝 아티팩트 제거 (비파괴적) ━━━
-    # RVC 보코더(HiFi-GAN) 출력에서 발생하는 미세 클릭만 제거
-    # window=55, overlap=75: 충분한 해상도, threshold=2: 적절한 민감도
     filters.append(
         "adeclick=window=55:overlap=75:arorder=8:threshold=2:burst=2"
     )
 
-    # ━━━ 2. 발음 명료도 EQ — 핵심 3밴드만 ━━━
-    # 분석결과: 2-4kHz 대역 원곡 5.6% → 변환곡 3.7% (34% 감소)
-    # 센트로이드 2891→2432Hz (-459Hz) → 어둡고 탁한 음색
-    # 2.5kHz: 모음 명료도 + 자음 기초 (넓은 밴드로 자연스럽게)
-    filters.append("equalizer=f=2500:width_type=o:width=1.0:g=2.0")
-    # 3.5kHz: 한국어 자음 핵심 대역 (ㅅ,ㅈ,ㅊ,ㅋ,ㅌ,ㅍ)
-    filters.append("equalizer=f=3500:width_type=o:width=0.8:g=1.5")
-    # 4.5kHz: 프레즌스 — 보컬 존재감/전달력
-    filters.append("equalizer=f=4500:width_type=o:width=0.7:g=1.0")
+    # ━━━ 2. 발음 명료도 EQ — 4밴드, 강력 부스트 ━━━
+    # v4에서 +2.0/+1.5/+1.0 → 여전히 -34% 부족
+    # v5: +3.5/+3.0/+2.5/+2.0 으로 대폭 강화
+    # 2kHz: 모음 기본 명료도 (넓은 Q로 자연스럽게)
+    filters.append("equalizer=f=2000:width_type=o:width=1.2:g=3.0")
+    # 3kHz: 한국어 자음 핵심 (ㅅ,ㅈ,ㅊ,ㅋ,ㅌ,ㅍ) — 가장 중요
+    filters.append("equalizer=f=3000:width_type=o:width=1.0:g=3.5")
+    # 4kHz: 프레즌스 — 보컬 존재감/전달력
+    filters.append("equalizer=f=4000:width_type=o:width=0.8:g=2.5")
+    # 5kHz: 에어 시작점 — 보컬 밝기
+    filters.append("equalizer=f=5000:width_type=o:width=0.7:g=2.0")
 
-    # ━━━ 3. 고역 존재감 복원 — 2밴드만 ━━━
-    # 분석결과: 롤오프 6181→5182Hz (-999Hz), 초고역 80% 손실
-    # HiFi-GAN 보코더의 고역 감쇠를 보상
-    # 8kHz shelf: 에어/밝기 복원
-    filters.append("highshelf=f=8000:width_type=o:width=0.8:g=2.0")
-    # 13kHz shelf: 초고역 공기감 (원곡 0.5% vs 변환곡 0.1%)
-    filters.append("highshelf=f=13000:width_type=o:width=0.6:g=1.5")
+    # ━━━ 3. 고역 존재감 복원 — 3밴드, 강력 ━━━
+    # v4: +2.0/+1.5 → 초고역 여전히 -80% 손실
+    # v5: +3.5/+3.0/+4.0 으로 대폭 강화
+    # 7kHz shelf: 밝기/에어 복원
+    filters.append("highshelf=f=7000:width_type=o:width=0.8:g=3.5")
+    # 10kHz shelf: 고역 광택
+    filters.append("highshelf=f=10000:width_type=o:width=0.7:g=3.0")
+    # 14kHz shelf: 초고역 공기감 (원곡 0.5% vs 변환곡 0.1% → 5배 부스트 필요)
+    filters.append("highshelf=f=14000:width_type=o:width=0.5:g=4.0")
 
     # ━━━ 고음/가성 최적화 (선택적) ━━━
     if high_note_mode:
-        filters.append("equalizer=f=2000:width_type=o:width=1.0:g=1.0")
-        filters.append("equalizer=f=6000:width_type=o:width=0.8:g=1.0")
+        # 고음 대역 추가 부스트 + 저중역 살짝 컷 (탁함 방지)
+        filters.append("equalizer=f=1800:width_type=o:width=1.0:g=1.5")
+        filters.append("equalizer=f=6000:width_type=o:width=0.8:g=1.5")
+        filters.append("equalizer=f=400:width_type=o:width=0.8:g=-1.0")
 
-    # ━━━ 4. 컴프레서 — 1개만, 투명하게 ━━━
-    # ratio=2.0: 부드러운 압축 (v3의 2.5+1.8 이중 압축 → 2.0 단일로)
-    # threshold=0.12: 피크만 잡음 (v3의 0.08은 너무 공격적)
+    # ━━━ 4. 컴프레서 — 투명, 피크만 ━━━
+    # threshold=0.25: 큰 피크만 잡음 (v4의 0.12는 너무 공격적 → 과압축)
+    # ratio=2.0: 부드러운 압축
     # attack=25ms: 자음 트랜지언트 보존
-    # release=250ms: 자연스러운 릴리스 (v3의 200ms는 너무 빨라서 펌핑)
-    # makeup=1.3: 압축분 보상
-    # knee=25: 넓은 knee → 압축 시작이 부드러움
+    # release=300ms: 자연스러운 릴리스 (v4의 250ms보다 느리게)
+    # makeup=1.8: 강한 볼륨 보상 (v4의 1.3은 부족)
+    # knee=30: 매우 부드러운 압축 시작
     filters.append(
-        "acompressor=threshold=0.12:ratio=2.0:attack=25:release=250"
-        ":makeup=1.3:knee=25"
+        "acompressor=threshold=0.25:ratio=2.0:attack=25:release=300"
+        ":makeup=1.8:knee=30"
     )
 
     # ━━━ 5. 볼륨 정규화 ━━━
-    # 분석결과: 평균 RMS -12.8dB(원곡) vs -17.9dB(변환곡) → 5.1dB 차이
-    # I=-11: 원곡보다 약간 높게 → MR과 합쳐질 때 묻히지 않도록
+    # v4: I=-11 → 결과 -17.9dB (원곡 -12.8dB 대비 5.1dB 부족)
+    # v5: I=-8 → 원곡보다 4.8dB 높게 타겟 (MR과 합쳐지면 묻히므로)
     # TP=-1: 트루피크 안전 마진
-    # LRA=14: 넓은 다이나믹 레인지 허용 (v3의 LRA=11은 과압축)
+    # LRA=16: 최대한 넓은 다이나믹 레인지 (v4의 14보다 확장)
     filters.append(
-        "loudnorm=I=-11:TP=-1:LRA=14:print_format=none"
+        "loudnorm=I=-8:TP=-1:LRA=16:print_format=none"
     )
 
     # ━━━ 6. 최종 리미터 ━━━
-    # limit=0.98: 헤드룸 최소화 → 볼륨 극대화 (v3의 0.95는 3dB 손실)
-    # attack=8ms: 빠른 피크 캐치, release=150ms: 자연스러운 릴리스
+    # limit=0.99: 헤드룸 거의 없이 볼륨 극대화
+    # attack=5ms: 빠른 피크 캐치
+    # release=200ms: 자연스러운 릴리스
     filters.append(
-        "alimiter=limit=0.98:attack=8:release=150:level=enabled:asc=1"
+        "alimiter=limit=0.99:attack=5:release=200:level=enabled:asc=1"
     )
 
     # ━━━ 7. 리버브 (선택적) ━━━
@@ -2110,7 +2112,7 @@ def _post_process_vocal(
         str(output_path),
     ])
     log.info(
-        f"Vocal post-processed v4 → {output_path.name} "
+        f"Vocal post-processed v5 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance}, "
         f"high_note={high_note_mode}, filters={len(filters)})"
     )
@@ -2123,39 +2125,42 @@ def _mix_audio(
     vocal_volume: float = 1.0,
     mr_volume: float = 1.0,
 ) -> None:
-    """Mix converted vocals with original accompaniment (MR) v4.
+    """Mix converted vocals with original accompaniment (MR) v5.
 
-    ── v4 믹싱 설계 — 최소 개입, 최대 자연스러움 ──
-    v3 문제: 보컬/MR 양쪽에 과도한 EQ → 위상 왜곡 누적 → 기계적 소리
-    v4 원칙: 보컬은 이미 _post_process_vocal v4에서 충분히 처리됨
-             → 믹싱에서는 볼륨 밸런스 + 최소 EQ + 볼륨 정규화만
+    ── v5 믹싱 — 보컬 볼륨 대폭 강화, MR에서 보컬 공간 적극 확보 ──
+    v4 문제: 최종 믹스 RMS -17.9dB vs 원곡 -12.8dB (5.1dB 부족)
+      - loudnorm I=-13이 부족 → I=-9로 강화
+      - 보컬이 MR에 묻힘 → vocal_volume 기본 1.15배, MR 보컬대역 더 컷
+      - 보컬 밝기 추가 부스트 → MR에 묻혀도 발음 유지
 
-    1. 보컬: 볼륨 + 스테레오 + 최소 EQ (1밴드)
-    2. MR: 보컬 공간 최소 확보 (2밴드만 — v3의 4밴드에서 축소)
-    3. 최종 loudnorm + 리미터
+    1. 보컬: 볼륨 1.15x + 스테레오 + 밝기 부스트 (2밴드)
+    2. MR: 보컬 공간 적극 확보 (3밴드 컷)
+    3. 최종 loudnorm I=-9 + 리미터 0.99
     """
     run_ffmpeg([
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
         # ── 보컬 체인 ──
-        # 볼륨 → 스테레오 → 발음 대역 최종 보정 (1밴드만)
-        f"[0:a]aresample=resampler=soxr,volume={vocal_volume},"
+        # 볼륨 1.15x: 보컬 우선 (MR에 묻히지 않도록)
+        f"[0:a]aresample=resampler=soxr,volume={vocal_volume * 1.15},"
         f"aformat=channel_layouts=stereo,"
         f"stereotools=mlev=1.0:slev=0.05:sbal=0.0,"
-        # MR과 합쳐지면 2-4kHz가 묻히므로 마지막 부스트 1회
-        f"equalizer=f=3000:width_type=o:width=1.2:g=1.0[v];"
+        # MR과 합쳐졌을 때 발음 유지: 3kHz +2.0, 5kHz +1.5
+        f"equalizer=f=3000:width_type=o:width=1.0:g=2.0,"
+        f"equalizer=f=5000:width_type=o:width=0.8:g=1.5[v];"
         # ── MR 체인 ──
-        # 최소한의 보컬 공간 확보 (2밴드 — v3의 4밴드에서 축소)
-        f"[1:a]aresample=resampler=soxr,volume={mr_volume},"
-        f"equalizer=f=2500:width_type=o:width=1.0:g=-1.0,"
-        f"equalizer=f=4000:width_type=o:width=0.8:g=-0.5[m];"
+        # 보컬 공간 적극 확보 (3밴드 — v4의 2밴드보다 강화)
+        f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.92},"
+        f"equalizer=f=2000:width_type=o:width=1.2:g=-1.5,"
+        f"equalizer=f=3500:width_type=o:width=1.0:g=-2.0,"
+        f"equalizer=f=5000:width_type=o:width=0.8:g=-1.0[m];"
         # ── 최종 믹스 + 정규화 + 리미팅 ──
-        # I=-13: 원곡(-12.8dB RMS) 수준 볼륨 (v3의 -14는 1dB 작았음)
-        # LRA=14: 다이나믹 레인지 최대 보존 (v3의 11은 과압축)
+        # I=-9: 원곡(-12.8dB) 대비 강하게 → 보컬이 확실히 들리도록
+        # LRA=16: 다이나믹 레인지 최대 보존
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"loudnorm=I=-13:TP=-1:LRA=14:print_format=none,"
-        f"alimiter=limit=0.98:attack=8:release=200:level=enabled:asc=1",
+        f"loudnorm=I=-9:TP=-1:LRA=16:print_format=none,"
+        f"alimiter=limit=0.99:attack=5:release=200:level=enabled:asc=1",
         "-acodec", "pcm_s24le",
         "-ar", "44100",
         str(output_path),
@@ -2193,15 +2198,16 @@ def task_convert(job_input: dict, job: dict) -> dict:
     index_rate: float = float(job_input.get("index_rate", 0.48))
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    # filter_radius 6: F0 피치 스무딩 — 삑사리 억제와 비브라토 보존의 균형점
-    # v3의 9는 과도 → 비브라토 파괴, 음정 평탄화 → AI스러움 증가
-    # 6: 삑사리는 잡으면서 자연스러운 피치 변화 보존
-    filter_radius: int = int(job_input.get("filter_radius", 6))
+    # filter_radius 4: F0 피치 스무딩 — 비브라토 최대 보존
+    # v4의 6 → 재변환곡2 삑사리 7회(원곡 4회 대비 75% 증가)
+    # 4: 최소 스무딩으로 자연스러운 피치 변화 최대 보존, Crepe와 조합 시 최적
+    filter_radius: int = int(job_input.get("filter_radius", 4))
     # rms_mix_rate 0.20: 원곡 다이나믹스 보존하면서 적절한 볼륨 안정성
     # v3의 0.10은 너무 낮아서 볼륨 편차 과다 → 0.20으로 약간 올림
     rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.20))
-    # protect 0.50: 자음/숨소리/전환부 최대 보존 → 발음 명확도 + 부자연스러운 전환 최소화
-    protect: float = float(job_input.get("protect", 0.50))
+    # protect 0.55: 자음/숨소리/전환부 최대 보존 → 발음 명확도 극대화
+    # v4의 0.50 → 0.55: 보호 영역 확대, AI 보코더가 자음을 왜곡하는 것 방지
+    protect: float = float(job_input.get("protect", 0.55))
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     hop_length: int = int(job_input.get("hop_length", 64))
     clean_audio_raw = job_input.get("clean_audio", False)
@@ -2591,12 +2597,12 @@ def _rvc_infer(
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
     index_rate: float = 0.48,
-    protect: float = 0.50,
+    protect: float = 0.55,
     hop_length: int = 64,
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 6,
+    filter_radius: int = 4,
     rms_mix_rate: float = 0.20,
     split_audio: bool = True,
 ) -> None:
