@@ -2231,8 +2231,8 @@ async def start_conversion(
         raise HTTPException(400, f"Protect는 0.0~0.5 사이여야 합니다. (입력: {protect})")
     if not (0.0 <= rms_mix_rate <= 1.0):
         raise HTTPException(400, f"RMS Mix는 0.0~1.0 사이여야 합니다. (입력: {rms_mix_rate})")
-    if not (0 <= filter_radius <= 7):
-        raise HTTPException(400, f"Filter Radius는 0~7 사이여야 합니다. (입력: {filter_radius})")
+    if not (0 <= filter_radius <= 12):
+        raise HTTPException(400, f"Filter Radius는 0~12 사이여야 합니다. (입력: {filter_radius})")
     if hop_length not in (32, 64, 128, 256, 512):
         hop_length = 64  # 잘못된 값은 기본값으로
     if f0_method not in ("rmvpe", "crepe", "crepe-tiny", "harvest", "pm"):
