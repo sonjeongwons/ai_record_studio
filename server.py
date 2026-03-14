@@ -2209,7 +2209,7 @@ async def start_conversion(
     mr_volume: float = Form(1.0),
     clean_audio: bool = Form(False),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.55),
+    protect: float = Form(0.5),
     rms_mix_rate: float = Form(0.20),
     filter_radius: int = Form(4),
     hop_length: int = Form(64),

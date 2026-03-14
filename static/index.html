@@ -3307,11 +3307,11 @@ input[type="range"]::-moz-range-track {
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.55 = 기본값 (자음·가성 최대 보존, 추천!)\n• 0.45~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.30~0.40 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.50~0.55 유지\n⚠️ 자음이 뭉개지면 → 0.55에서 조금씩 낮추기">ⓘ</i></span>
-              <span class="slider-value" id="protect-val">0.55</span>
+              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.50 = 기본값 (자음·가성 최대 보존, 추천!)\n• 0.40~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.35 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.45~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.50에서 조금씩 낮추기">ⓘ</i></span>
+              <span class="slider-value" id="protect-val">0.50</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="55" value="55" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 자음·가성 원본 질감 보존 (0.45~0.55 권장)</div>
+            <input type="range" id="protect-slider" min="0" max="50" value="50" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 자음·가성 원본 질감 보존 (0.40~0.50 권장)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4734,7 +4734,7 @@ function applyConvertPreset(preset) {
   var presets = {
     default: {
       // Default v5: 볼륨/밝기/발음 대폭 강화
-      f0: 'rmvpe', protect: 55, rms: 20, filter: 4, hop: 1,
+      f0: 'rmvpe', protect: 50, rms: 20, filter: 4, hop: 1,
       clean: false, cleanStr: 70, index: 48,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false,
@@ -4742,7 +4742,7 @@ function applyConvertPreset(preset) {
     },
     falsetto: {
       // 가성/고음: Crepe + filter=2 + 고음모드 → 피치 정밀도 + 비브라토 최대 보존
-      f0: 'crepe', protect: 55, rms: 15, filter: 2, hop: 0,
+      f0: 'crepe', protect: 50, rms: 15, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 45,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: true,
@@ -4750,7 +4750,7 @@ function applyConvertPreset(preset) {
     },
     natural: {
       // Natural: 최대 자연스러움 — 인덱스 최소, 원곡 최대 보존
-      f0: 'rmvpe', protect: 55, rms: 15, filter: 3, hop: 1,
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 42,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false,
@@ -4758,7 +4758,7 @@ function applyConvertPreset(preset) {
     },
     studio: {
       // Studio: 깨끗한 원본에 최적화 — 안정적 + 공간감
-      f0: 'rmvpe', protect: 55, rms: 20, filter: 4, hop: 1,
+      f0: 'rmvpe', protect: 50, rms: 20, filter: 4, hop: 1,
       clean: false, cleanStr: 70, index: 48,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false,
