@@ -1348,8 +1348,9 @@ def _rvc_preprocess(
                 import soundfile as _sf
                 _audio, _sr = _sf.read(str(gt_path))
                 _rms_db = 20 * np.log10(np.sqrt(np.mean(_audio ** 2)) + 1e-10)
-                if _rms_db < -50:
-                    # 거의 무음 세그먼트만 제외 — 가성/여린 노래(-40~-50dBFS)는 보존
+                if _rms_db < -45:
+                    # v8: -50→-45 — 조용한 잡음 세그먼트 더 적극적으로 제외
+                    # 가성/여린 노래는 -35~-40dBFS이므로 -45dBFS 이하는 실질적 무음
                     gt_path.unlink(missing_ok=True)
                     log.info(f"Skipped quiet segment ({_rms_db:.1f}dB): {padded}")
                     continue
@@ -1398,7 +1399,7 @@ def _rvc_preprocess(
             except Exception:
                 continue
         if _global_peak > 0:
-            _TARGET = 10.0 ** (-3 / 20)  # -3 dBFS = 0.708 (충분한 헤드룸 → RVC 내부 클리핑 방지)
+            _TARGET = 10.0 ** (-6 / 20)  # -6 dBFS = 0.501 (v8: -3→-6 더 넉넉한 헤드룸, 인터샘플 피크 방지)
             _norm_factor = _TARGET / _global_peak
             log.info(
                 f"Global normalization: peak={_global_peak:.4f}, "
@@ -1994,28 +1995,29 @@ def _post_process_vocal(
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
 ) -> None:
-    """Post-process converted vocal v7 — loudnorm 제거, 프레즌스 복원.
+    """Post-process converted vocal v8 — 볼륨 복원 + 프레즌스 강화 + 디에서.
 
-    ── v7 개편 근거 (재변환곡4 분석 결과) ──
-    v6에서 기계음/노이즈는 해결됐으나 두 가지 문제 잔존:
-      1. 음색이 원곡보다 일관되게 어둡다 (센트로이드 2891→2570Hz, -321Hz)
-         - 특히 2-4kHz 발음 명확도 대역 손실: 5.6%→3.2%
-         - HiFi-GAN 보코더가 2-4kHz를 약하게 재구성하는 특성
-         - v6의 highshelf 6kHz/12kHz는 문제 대역(2-4kHz)을 빗나감
-      2. 다이나믹 레인지 여전히 압축: 원곡 19.4dB → 변환곡 11.1dB
-         - loudnorm이 LRA=20이어도 이중 적용(보컬+믹스)으로 8dB 압축
-         - 조용한↔큰 부분 대비 소실 → 평평하고 기계적
+    ── v8 개편 근거 (재변환곡5 분석 결과, My Voice v27) ──
+    v7에서 다이나믹 레인지(19.7dB)는 복원됐으나 핵심 문제 잔존:
+      1. 볼륨 -4.6dB 부족 (원곡 -12.8dB vs 변환 -17.4dB)
+         → volume=0.84 + level=disabled 리미터가 원인
+      2. 2-4kHz 여전히 부족: 3.3% vs 원곡 5.6% (EQ 2.8kHz +2.5dB 불충분)
+      3. 피치 기계적: filter_radius=5가 비브라토 과스무딩 + 점프 시 부자연 단절
+      4. 노이즈 18x: HiFi-GAN 치찰음 아티팩트에 디에서 부재
 
-    v7 핵심 변경:
-      - loudnorm 완전 제거 → 피크 정규화 + 리미터만 사용
-      - 2-4kHz 프레즌스 EQ 추가 → 발음 명확도 복원
-      - 다이나믹 레인지 원곡 수준 보존
+    v8 핵심 변경:
+      - 볼륨: volume=0.84 제거 → 적절한 부스트 + limit=0.95 리미터
+      - EQ: 2-4kHz 2밴드 프레즌스 강화 (3kHz +3.0dB, 4kHz +1.5dB)
+      - 워밍: 500Hz +1.0dB → 보코더 특유의 차가운 음색 보완
+      - 디에서: 6kHz 타겟 → 치찰음(ㅅ,ㅆ,ㅈ,ㅊ) 아티팩트 제거
+      - 리미터: level=enabled → 적절한 볼륨 보상
 
-    ── 처리 순서 (4단계) ──
+    ── 처리 순서 (5단계) ──
     1. adeclick           — 클릭/팝 제거 (비파괴적)
-    2. EQ 보상            — 2-4kHz 프레즌스 + 고역 보상 (3밴드)
-    3. 리미터              — 피크 제한만 (다이나믹 레인지 보존)
-    4. (리버브)            — 공간감 (선택)
+    2. 디에서             — 치찰음 아티팩트 억제 (6kHz 타겟)
+    3. EQ 보상            — 워밍 + 프레즌스 + 공기감 (5밴드)
+    4. 리미터              — 피크 제한 + 볼륨 보상
+    5. (리버브)            — 공간감 (선택)
     """
     filters = []
 
@@ -2024,37 +2026,36 @@ def _post_process_vocal(
         "adeclick=window=55:overlap=75:arorder=8:threshold=2:burst=2"
     )
 
-    # ━━━ 2. EQ 보상 — HiFi-GAN 보코더 특성 보정 ━━━
-    # 재변환곡4 분석: 2-4kHz 에너지 5.6%→3.2% (발음 명확도 손실)
-    # HiFi-GAN이 2-4kHz를 약하게 재구성 → 타겟 프레즌스 부스트
-    # 후반부(2:10~3:20)에서 밝기 차이 -600~-826Hz로 가장 심각
-    filters.append("equalizer=f=2800:width_type=o:width=1.2:g=2.5")   # 프레즌스 복원
-    filters.append("highshelf=f=6000:width_type=o:width=1.0:g=1.5")   # 공기감
-    filters.append("highshelf=f=12000:width_type=o:width=0.8:g=1.5")  # 초고역 (v6 2.0→1.5)
+    # ━━━ 2. 디에서 — HiFi-GAN 치찰음 아티팩트 억제 ━━━
+    # RVC HiFi-GAN 보코더가 치찰음(ㅅ,ㅆ,ㅈ,ㅊ)을 과도하게 재구성
+    # 6kHz 중심 좁은 대역 컷으로 타겟 억제 (광대역 고역 손실 방지)
+    filters.append("equalizer=f=6000:width_type=o:width=1.5:g=-3.0")
 
-    # ━━━ 고음/가성 모드: 저중역만 살짝 컷 (탁함 방지) ━━━
-    # v5: 3밴드 추가 부스트 → 과처리
-    # v6: EQ 부스트 없이, 저역 컷만으로 상대적 밝기 확보
+    # ━━━ 3. EQ 보상 — 5밴드 음색 보정 ━━━
+    # [워밍] 500Hz +1.0dB: HiFi-GAN 보코더의 차가운 중저역 보완
+    filters.append("equalizer=f=500:width_type=o:width=0.7:g=1.0")
+    # [프레즌스] 3kHz +3.0dB: 2-4kHz 에너지 5.6→3.3% 갭 보정 (핵심)
+    # v7의 2.8kHz +2.5dB는 불충분 → 3kHz +3.0dB로 강화
+    filters.append("equalizer=f=3000:width_type=o:width=1.0:g=3.0")
+    # [명확도] 4kHz +1.5dB: 프레즌스 상단 보강 → 발음 또렷함
+    filters.append("equalizer=f=4000:width_type=o:width=0.8:g=1.5")
+    # [공기감] 8kHz +1.5dB: 자연스러운 공기감 (v7의 6kHz 셸프 대체, 디에서와 분리)
+    filters.append("highshelf=f=8000:width_type=o:width=1.0:g=1.5")
+    # [초고역] 12kHz +1.0dB: 미세한 에어 (v7의 1.5dB에서 완화)
+    filters.append("highshelf=f=12000:width_type=o:width=0.8:g=1.0")
+
+    # ━━━ 고음/가성 모드: 저중역 컷 (탁함 방지) ━━━
     if high_note_mode:
         filters.append("equalizer=f=300:width_type=o:width=1.0:g=-1.5")
 
-    # ━━━ loudnorm 완전 제거 (v7) ━━━
-    # v6: loudnorm I=-10, LRA=20이 보컬+믹스 이중 적용 → 19.4→11.1dB 압축
-    # v7: loudnorm 없음 → 피크 정규화(리미터)만으로 레벨 관리
-    # 다이나믹 레인지를 원곡 수준(19.4dB)으로 보존
-
-    # ━━━ 3. 볼륨 정규화 — volume 필터로 피크 기준 정규화 ━━━
-    # -1.5 dBFS 피크 타겟 (리미터 전 헤드룸 확보)
-    # loudnorm 대신 단순 볼륨 스케일링 → 다이나믹 레인지 완전 보존
-    filters.append("volume=replaygain=drop:volume=0.84")  # ~-1.5 dBFS peak target
-
     # ━━━ 4. 최종 리미터 ━━━
-    # limit=0.95: 인터-샘플 피크 여유 (v6의 0.98보다 안전)
-    # attack=25ms: 트랜지언트 보존 (v6의 8ms는 과공격적)
-    # release=300ms: 펌핑 방지
-    # level=disabled: 리미터가 자동 볼륨 보상하지 않음 → 다이나믹 보존
+    # v7 문제: volume=0.84 + level=disabled → 출력 -4.6dB 부족
+    # v8: volume 필터 제거, 리미터 level=enabled → 적절한 출력 레벨
+    # limit=0.95: 인터-샘플 피크 여유
+    # attack=20ms: 자음 트랜지언트 보존 (v7의 25ms보다 약간 빠르게)
+    # release=250ms: 자연스러운 릴리스
     filters.append(
-        "alimiter=limit=0.95:attack=25:release=300:level=disabled"
+        "alimiter=limit=0.95:attack=20:release=250:level=enabled:asc=1"
     )
 
     # ━━━ 5. 리버브 (선택적) ━━━
@@ -2084,7 +2085,7 @@ def _post_process_vocal(
         str(output_path),
     ])
     log.info(
-        f"Vocal post-processed v7 → {output_path.name} "
+        f"Vocal post-processed v8 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance}, "
         f"high_note={high_note_mode}, filters={len(filters)})"
     )
@@ -2097,37 +2098,37 @@ def _mix_audio(
     vocal_volume: float = 1.0,
     mr_volume: float = 1.0,
 ) -> None:
-    """Mix converted vocals with original accompaniment (MR) v7.
+    """Mix converted vocals with original accompaniment (MR) v8.
 
-    ── v7 믹싱 — loudnorm 제거, 다이나믹 레인지 완전 보존 ──
-    v6 문제: loudnorm이 보컬+믹스 이중 적용 → 다이나믹 레인지 19.4→11.1dB
-      - 조용한↔큰 부분 대비 소실 → 평평하고 기계적으로 들림
+    ── v8 믹싱 — 볼륨 밸런스 복원 ──
+    v7 문제: 출력 RMS -17.4dB (원곡 -12.8dB) → 4.6dB 부족
+      - volume=0.84 + level=disabled가 원인
 
-    v7 변경:
-      - loudnorm 완전 제거 → 볼륨 스케일링 + 리미터만 사용
-      - 보컬: EQ 없음 (후처리에서 프레즌스 보상 완료)
-      - MR: 보컬 공간 확보용 2밴드 부드러운 컷
-      - 리미터: limit=0.95, attack=25ms (투명 리미팅)
+    v8 변경:
+      - 보컬: volume 1.0 (그대로, 후처리에서 EQ/리미터 완료)
+      - MR: 보컬 공간 확보용 2밴드 컷 + 볼륨 0.90 (v7의 0.95에서 약간 낮춤)
+      - 리미터: limit=0.95, level=enabled → 적절한 출력 레벨 보장
     """
     run_ffmpeg([
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
         # ── 보컬 체인 ──
-        # EQ 없음: 후처리에서 프레즌스 보상 완료
+        # EQ 없음: 후처리에서 5밴드 보상 + 디에서 완료
         f"[0:a]aresample=resampler=soxr,volume={vocal_volume},"
         f"aformat=channel_layouts=stereo,"
         f"stereotools=mlev=1.0:slev=0.05:sbal=0.0[v];"
         # ── MR 체인 ──
-        # 보컬 핵심 대역(800Hz, 2.5kHz) 부드러운 컷 → 보컬 공간 확보
-        f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.95},"
+        # 보컬 핵심 대역(800Hz, 2.5kHz) 컷 → 보컬 묻힘 방지
+        # v8: MR 볼륨 *0.90 (v7의 0.95에서 약간 낮춤 → 보컬 더 부각)
+        f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.90},"
         f"equalizer=f=800:width_type=o:width=1.5:g=-1.5,"
         f"equalizer=f=2500:width_type=o:width=1.0:g=-1.5[m];"
-        # ── 최종 믹스 + 리미팅 (loudnorm 없음) ──
-        # v6: loudnorm I=-11이 다이나믹 레인지 19.4→11.1dB 압축
-        # v7: loudnorm 제거 → 리미터만 사용, 다이나믹 레인지 보존
+        # ── 최종 믹스 + 리미팅 ──
+        # v7 문제: level=disabled → 출력 -4.6dB 부족
+        # v8: level=enabled → 리미터가 적절한 출력 레벨 보장
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.95:attack=25:release=300:level=disabled",
+        f"alimiter=limit=0.95:attack=20:release=250:level=enabled:asc=1",
         "-acodec", "pcm_s24le",
         "-ar", "44100",
         str(output_path),
@@ -2161,22 +2162,22 @@ def task_convert(job_input: dict, job: dict) -> dict:
     audio_filename: str = Path(job_input.get("audio_filename", "input.wav")).name  # path traversal 방지
     # 명시적 타입 변환: RunPod job_input에서 문자열로 전달될 수 있음
     pitch_shift: int = int(job_input.get("pitch_shift", 0))
-    # index_rate 0.35: 인덱스 의존도 낮춤 → 과적합 억제, 자연스러운 음색
-    # v5의 0.48은 학습 데이터에 과의존 → 특정 음절에서 기계적 반복 패턴 발생
-    # 0.35: 원본 음색 65% + 학습 음색 35% → 자연스러운 균형
-    index_rate: float = float(job_input.get("index_rate", 0.35))
+    # index_rate 0.30: v8 — 인덱스 의존도 더 낮춤
+    # v7의 0.35에서도 기계적 패턴 잔존 → 0.30으로 추가 완화
+    # 원본 음색 70% + 학습 음색 30% → 더 자연스러운 균형
+    index_rate: float = float(job_input.get("index_rate", 0.30))
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    # filter_radius 5: F0 피치 스무딩 — 삑사리 억제와 비브라토 보존 균형
-    # v5의 4: 삑사리 20회 (원곡 4회의 5배) → 스무딩 부족
-    # v3의 6: 과도한 스무딩 → AI스러운 로봇 피치
-    # 5: 중간값 — 삑사리 억제하면서 비브라토 보존
-    filter_radius: int = int(job_input.get("filter_radius", 5))
-    # rms_mix_rate 0.10: 원곡 다이나믹스 최대 보존
-    # v5의 0.20: 과도한 RMS 평탄화 → 다이나믹 레인지 파괴 (19.4→11.5dB)
-    # 0.10: 원곡 볼륨 엔벨로프 90% 보존 → 자연스러운 강약
-    rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.10))
+    # filter_radius 3: v8 — 비브라토/피치 변화 최대 보존
+    # v7의 5: 과도한 스무딩 → 피치가 로봇처럼 평평 + 점프 시 부자연스러운 단절
+    # 3: 미세 비브라토 보존 → 더 인간적인 피치 곡선
+    # (대규모 피치 점프는 filter_radius로 해결 불가 — 모델 품질 문제)
+    filter_radius: int = int(job_input.get("filter_radius", 3))
+    # rms_mix_rate 0.12: v8 — 원곡 다이나믹스 보존 + 약간의 레벨 안정화
+    # v7의 0.10: 다이나믹 보존 OK, 그러나 일부 구간에서 볼륨 불안정
+    # 0.12: 88% 원곡 엔벨로프 보존, 12% RVC 레벨 믹싱 → 안정적인 강약
+    rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.12))
     # protect 0.50: 표준 자음/숨소리 보호
     # v5의 0.55: 과보호 → 음절 전환부에서 어색한 끊김 발생 가능
     # 0.50: Applio 권장 기본값, 충분한 보호 + 자연스러운 전환
