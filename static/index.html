@@ -5128,10 +5128,20 @@ function renderFileList() {
   // Show preprocess section when files exist
   preprocessSection.style.display = 'block';
 
+  // 미처리 파일이 있는지 확인
+  var hasUnprocessed = uploadedFiles.some(function(f) { return !f.preprocessed; });
+
   // Sync preprocess sub-section visibility with current state
-  if (!preprocessDone && !preprocessJobId) {
-    document.getElementById('preprocess-idle').style.display = 'block';
-    document.getElementById('preprocess-done').style.display = 'none';
+  if (!preprocessJobId) {
+    // 미처리 파일이 있으면 항상 전처리 버튼(preprocess-idle) 표시
+    if (hasUnprocessed) {
+      document.getElementById('preprocess-idle').style.display = 'block';
+      // 이미 처리된 파일도 있으면 done 패널도 유지 (stats 표시용)
+      // 전처리 버튼은 항상 보이도록
+    } else if (!preprocessDone) {
+      document.getElementById('preprocess-idle').style.display = 'block';
+      document.getElementById('preprocess-done').style.display = 'none';
+    }
     document.getElementById('preprocess-running').style.display = 'none';
   }
 
@@ -5626,7 +5636,11 @@ async function checkPreprocessStatus() {
         uploadedFiles = r.files || [];
       } catch(e2) {}
       preprocessDone = true;
-      fadeSection(document.getElementById('preprocess-idle'), false, 150);
+      // 미처리 파일이 남아있으면 전처리 버튼 유지
+      var stillHasUnprocessed = uploadedFiles.some(function(f) { return !f.preprocessed; });
+      if (!stillHasUnprocessed) {
+        fadeSection(document.getElementById('preprocess-idle'), false, 150);
+      }
       fadeSection(document.getElementById('preprocess-running'), false, 150);
       setTimeout(function() { fadeSection(document.getElementById('preprocess-done'), true, 240); }, 170);
       document.getElementById('preprocess-segments').textContent =
@@ -6642,10 +6656,10 @@ async function startBatchConversion() {
       ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     var dlBtn = r.resultUrl
-      ? '<button class="btn btn-secondary" onclick="downloadFile(' + JSON.stringify(r.resultUrl) + ',' + JSON.stringify(r.filename || '') + ')" style="padding:6px 12px;font-size:11px">보컬</button>'
+      ? '<button class="btn btn-secondary" onclick="downloadFile(\'' + (r.resultUrl || '').replace(/'/g, "\\'") + '\',\'' + (r.filename || '').replace(/'/g, "\\'") + '\')" style="padding:6px 12px;font-size:11px">보컬</button>'
       : '';
     var mixBtn = r.mixedUrl
-      ? '<button class="btn btn-primary" onclick="downloadFile(' + JSON.stringify(r.mixedUrl) + ',' + JSON.stringify(r.mixedFilename || '') + ')" style="padding:6px 12px;font-size:11px">믹스</button>'
+      ? '<button class="btn btn-primary" onclick="downloadFile(\'' + (r.mixedUrl || '').replace(/'/g, "\\'") + '\',\'' + (r.mixedFilename || '').replace(/'/g, "\\'") + '\')" style="padding:6px 12px;font-size:11px">믹스</button>'
       : '';
     dlBtn = dlBtn + mixBtn;
     var playerHtml = (r.mixedUrl || r.resultUrl) ? createAudioPlayer(r.mixedUrl || r.resultUrl, 'br_' + idx) : '';
@@ -6930,8 +6944,12 @@ function renderConvHistoryPage() {
       statusBadgeHtml = '<span class="badge badge-violet">' + escapeHtml(c.status || '알 수 없음') + '</span>';
     }
 
+    // onclick 속성에서 JSON.stringify의 "가 HTML attribute의 "와 충돌하므로
+    // 작은따옴표로 감싸고 내부 작은따옴표를 이스케이프
+    var safeUrl = ('/api/download/' + encodeURIComponent(playFile)).replace(/'/g, "\\'");
+    var safeName = (playFile || '').replace(/'/g, "\\'");
     var downloadBtn = isCompleted
-      ? '<button class="btn-conv-action" onclick="downloadFile(' + JSON.stringify('/api/download/' + encodeURIComponent(playFile)) + ',' + JSON.stringify(playFile) + ')" title="다운로드">' +
+      ? '<button class="btn-conv-action" onclick="downloadFile(\'' + safeUrl + '\',\'' + safeName + '\')" title="다운로드">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
         '</button>'
       : '';
