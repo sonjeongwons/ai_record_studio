@@ -1994,26 +1994,28 @@ def _post_process_vocal(
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
 ) -> None:
-    """Post-process converted vocal v6 — 최소 개입 철학.
+    """Post-process converted vocal v7 — loudnorm 제거, 프레즌스 복원.
 
-    ── v6 개편 근거 (재변환곡3 분석 결과) ──
-    v5의 과도한 후처리가 오히려 품질을 악화시킴:
-      - 노이즈 7배 증가 (flatness 0.0001→0.0007) ← EQ 7밴드 +20dB가 원인
-      - 다이나믹 레인지 파괴 (19.4→11.5dB) ← 컴프레서가 원인
-      - 삑사리 5배 증가 (4→20회) ← RVC 모델 문제 (후처리로 해결 불가)
-      - 밝기 부족은 EQ로 올려도 노이즈만 같이 증폭
+    ── v7 개편 근거 (재변환곡4 분석 결과) ──
+    v6에서 기계음/노이즈는 해결됐으나 두 가지 문제 잔존:
+      1. 음색이 원곡보다 일관되게 어둡다 (센트로이드 2891→2570Hz, -321Hz)
+         - 특히 2-4kHz 발음 명확도 대역 손실: 5.6%→3.2%
+         - HiFi-GAN 보코더가 2-4kHz를 약하게 재구성하는 특성
+         - v6의 highshelf 6kHz/12kHz는 문제 대역(2-4kHz)을 빗나감
+      2. 다이나믹 레인지 여전히 압축: 원곡 19.4dB → 변환곡 11.1dB
+         - loudnorm이 LRA=20이어도 이중 적용(보컬+믹스)으로 8dB 압축
+         - 조용한↔큰 부분 대비 소실 → 평평하고 기계적
 
-    v6 핵심 원칙: "후처리는 RVC 출력을 고칠 수 없다"
-      - RVC 품질 문제는 추론 파라미터(filter_radius, index_rate 등)로 해결
-      - 후처리는 볼륨 매칭 + 최소한의 고역 보상만 수행
-      - 처리할수록 노이즈/기계음 증가 → 최소 개입이 최선
+    v7 핵심 변경:
+      - loudnorm 완전 제거 → 피크 정규화 + 리미터만 사용
+      - 2-4kHz 프레즌스 EQ 추가 → 발음 명확도 복원
+      - 다이나믹 레인지 원곡 수준 보존
 
     ── 처리 순서 (4단계) ──
-    1. adeclick          — 클릭/팝 제거 (비파괴적)
-    2. 고역 보상 EQ      — HiFi-GAN 롤오프만 보정 (2밴드, 부드럽게)
-    3. loudnorm          — 볼륨 정규화
-    4. 리미터             — 클리핑 방지
-    5. (리버브)           — 공간감 (선택)
+    1. adeclick           — 클릭/팝 제거 (비파괴적)
+    2. EQ 보상            — 2-4kHz 프레즌스 + 고역 보상 (3밴드)
+    3. 리미터              — 피크 제한만 (다이나믹 레인지 보존)
+    4. (리버브)            — 공간감 (선택)
     """
     filters = []
 
@@ -2022,12 +2024,13 @@ def _post_process_vocal(
         "adeclick=window=55:overlap=75:arorder=8:threshold=2:burst=2"
     )
 
-    # ━━━ 2. 최소한의 고역 보상 — HiFi-GAN 롤오프만 보정 ━━━
-    # v5: 7밴드 EQ (+3.0~+4.0dB) → 노이즈 7배 증가, 기계음 증폭
-    # v6: 2밴드 고역 셸프만 (+1.5/+2.0dB) → 자연스러운 공기감 복원
-    # 중역(2-5kHz) EQ 완전 제거: HiFi-GAN의 중역 아티팩트를 증폭하지 않음
-    filters.append("highshelf=f=6000:width_type=o:width=1.0:g=1.5")
-    filters.append("highshelf=f=12000:width_type=o:width=0.8:g=2.0")
+    # ━━━ 2. EQ 보상 — HiFi-GAN 보코더 특성 보정 ━━━
+    # 재변환곡4 분석: 2-4kHz 에너지 5.6%→3.2% (발음 명확도 손실)
+    # HiFi-GAN이 2-4kHz를 약하게 재구성 → 타겟 프레즌스 부스트
+    # 후반부(2:10~3:20)에서 밝기 차이 -600~-826Hz로 가장 심각
+    filters.append("equalizer=f=2800:width_type=o:width=1.2:g=2.5")   # 프레즌스 복원
+    filters.append("highshelf=f=6000:width_type=o:width=1.0:g=1.5")   # 공기감
+    filters.append("highshelf=f=12000:width_type=o:width=0.8:g=1.5")  # 초고역 (v6 2.0→1.5)
 
     # ━━━ 고음/가성 모드: 저중역만 살짝 컷 (탁함 방지) ━━━
     # v5: 3밴드 추가 부스트 → 과처리
@@ -2035,26 +2038,23 @@ def _post_process_vocal(
     if high_note_mode:
         filters.append("equalizer=f=300:width_type=o:width=1.0:g=-1.5")
 
-    # ━━━ 컴프레서 완전 제거 ━━━
-    # v5: threshold=0.25, makeup=1.8 → 다이나믹 레인지 19.4→11.5dB 파괴
-    # v6: 컴프레서 없음 → 원곡의 자연스러운 다이나믹스 보존
-    # loudnorm이 레벨 안정화를 충분히 수행
+    # ━━━ loudnorm 완전 제거 (v7) ━━━
+    # v6: loudnorm I=-10, LRA=20이 보컬+믹스 이중 적용 → 19.4→11.1dB 압축
+    # v7: loudnorm 없음 → 피크 정규화(리미터)만으로 레벨 관리
+    # 다이나믹 레인지를 원곡 수준(19.4dB)으로 보존
 
-    # ━━━ 3. 볼륨 정규화 ━━━
-    # v5: I=-8 → 과도하게 높아 리미터에서 잘림
-    # v6: I=-10 → 원곡(-12.8dB RMS)보다 살짝 높게 (MR 합산 시 묻힘 보상)
-    # TP=-1.5: 트루피크 안전 마진 (v5의 -1보다 여유)
-    # LRA=20: 다이나믹 레인지 최대 보존 (v5의 16보다 확장)
-    filters.append(
-        "loudnorm=I=-10:TP=-1.5:LRA=20:print_format=none"
-    )
+    # ━━━ 3. 볼륨 정규화 — volume 필터로 피크 기준 정규화 ━━━
+    # -1.5 dBFS 피크 타겟 (리미터 전 헤드룸 확보)
+    # loudnorm 대신 단순 볼륨 스케일링 → 다이나믹 레인지 완전 보존
+    filters.append("volume=replaygain=drop:volume=0.84")  # ~-1.5 dBFS peak target
 
     # ━━━ 4. 최종 리미터 ━━━
-    # limit=0.98: 약간의 헤드룸 유지 (v5의 0.99는 너무 공격적)
-    # attack=8ms: 자음 트랜지언트 보존 (v5의 5ms보다 느리게)
-    # release=250ms: 자연스러운 릴리스
+    # limit=0.95: 인터-샘플 피크 여유 (v6의 0.98보다 안전)
+    # attack=25ms: 트랜지언트 보존 (v6의 8ms는 과공격적)
+    # release=300ms: 펌핑 방지
+    # level=disabled: 리미터가 자동 볼륨 보상하지 않음 → 다이나믹 보존
     filters.append(
-        "alimiter=limit=0.98:attack=8:release=250:level=enabled:asc=1"
+        "alimiter=limit=0.95:attack=25:release=300:level=disabled"
     )
 
     # ━━━ 5. 리버브 (선택적) ━━━
@@ -2084,7 +2084,7 @@ def _post_process_vocal(
         str(output_path),
     ])
     log.info(
-        f"Vocal post-processed v6 → {output_path.name} "
+        f"Vocal post-processed v7 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance}, "
         f"high_note={high_note_mode}, filters={len(filters)})"
     )
@@ -2097,40 +2097,37 @@ def _mix_audio(
     vocal_volume: float = 1.0,
     mr_volume: float = 1.0,
 ) -> None:
-    """Mix converted vocals with original accompaniment (MR) v6.
+    """Mix converted vocals with original accompaniment (MR) v7.
 
-    ── v6 믹싱 — 최소 개입, 자연스러운 밸런스 ──
-    v5 문제: 보컬 EQ 2밴드 + MR 3밴드 컷 + 볼륨 1.15x = 과처리
-      - 보컬 EQ가 HiFi-GAN 아티팩트를 증폭
-      - MR 과도한 컷이 반주 음색을 파괴
-      - I=-9가 너무 높아 리미터에서 왜곡
+    ── v7 믹싱 — loudnorm 제거, 다이나믹 레인지 완전 보존 ──
+    v6 문제: loudnorm이 보컬+믹스 이중 적용 → 다이나믹 레인지 19.4→11.1dB
+      - 조용한↔큰 부분 대비 소실 → 평평하고 기계적으로 들림
 
-    v6 변경:
-      - 보컬: EQ 없음, 볼륨 그대로 (후처리에서 이미 정규화됨)
-      - MR: 단일 밴드 부드러운 컷만 (보컬 공간 최소 확보)
-      - loudnorm I=-11: 원곡(-12.8dB) 수준에 맞춤
-      - LRA=20: 다이나믹 레인지 최대 보존
+    v7 변경:
+      - loudnorm 완전 제거 → 볼륨 스케일링 + 리미터만 사용
+      - 보컬: EQ 없음 (후처리에서 프레즌스 보상 완료)
+      - MR: 보컬 공간 확보용 2밴드 부드러운 컷
+      - 리미터: limit=0.95, attack=25ms (투명 리미팅)
     """
     run_ffmpeg([
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
         # ── 보컬 체인 ──
-        # EQ 없음: 후처리에서 이미 고역 보상 완료, 추가 EQ는 노이즈 증폭
+        # EQ 없음: 후처리에서 프레즌스 보상 완료
         f"[0:a]aresample=resampler=soxr,volume={vocal_volume},"
         f"aformat=channel_layouts=stereo,"
         f"stereotools=mlev=1.0:slev=0.05:sbal=0.0[v];"
         # ── MR 체인 ──
-        # v5: 3밴드 컷(-1.5/-2.0/-1.0) → 반주 음색 파괴
-        # v6: 단일 밴드 부드러운 컷 (보컬 핵심 대역만)
+        # 보컬 핵심 대역(800Hz, 2.5kHz) 부드러운 컷 → 보컬 공간 확보
         f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.95},"
-        f"equalizer=f=3000:width_type=o:width=1.5:g=-1.5[m];"
-        # ── 최종 믹스 + 정규화 + 리미팅 ──
-        # I=-11: 원곡 -12.8dB 수준 매칭 (v5의 -9는 과도)
-        # LRA=20: 다이나믹 레인지 최대 보존 (v5의 16보다 확장)
+        f"equalizer=f=800:width_type=o:width=1.5:g=-1.5,"
+        f"equalizer=f=2500:width_type=o:width=1.0:g=-1.5[m];"
+        # ── 최종 믹스 + 리미팅 (loudnorm 없음) ──
+        # v6: loudnorm I=-11이 다이나믹 레인지 19.4→11.1dB 압축
+        # v7: loudnorm 제거 → 리미터만 사용, 다이나믹 레인지 보존
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"loudnorm=I=-11:TP=-1.5:LRA=20:print_format=none,"
-        f"alimiter=limit=0.98:attack=8:release=250:level=enabled:asc=1",
+        f"alimiter=limit=0.95:attack=25:release=300:level=disabled",
         "-acodec", "pcm_s24le",
         "-ar", "44100",
         str(output_path),
