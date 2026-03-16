@@ -3993,7 +3993,7 @@ function createAudioPlayer(audioUrl, containerId) {
       '<span class="audio-time" id="' + uid + '_time">0:00</span>' +
       '<span class="audio-time" id="' + uid + '_dur" style="color:var(--text3);opacity:0.6">0:00</span>' +
     '</div>' +
-    '<audio id="' + uid + '_audio" src="' + audioUrl + '" preload="metadata"></audio>' +
+    '<audio id="' + uid + '_audio" src="' + audioUrl.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" preload="metadata"></audio>' +
   '</div>';
 }
 
@@ -5601,7 +5601,7 @@ function updatePreprocessDownloads(accompFiles, vocalFiles) {
   var hasFiles = false;
   if (accompFiles && accompFiles.length > 0) {
     var fn = typeof accompFiles[0] === 'string' ? accompFiles[0] : accompFiles[0].filename;
-    mrBtn.dataset.url = '/api/preprocess/download/' + fn;
+    mrBtn.dataset.url = '/api/preprocess/download/' + encodeURIComponent(fn);
     mrBtn.dataset.fname = fn;
     mrBtn.style.display = 'inline-flex';
     hasFiles = true;
@@ -5610,7 +5610,7 @@ function updatePreprocessDownloads(accompFiles, vocalFiles) {
   }
   if (vocalFiles && vocalFiles.length > 0) {
     var fn2 = typeof vocalFiles[0] === 'string' ? vocalFiles[0] : vocalFiles[0].filename;
-    vocalBtn.dataset.url = '/api/preprocess/download/' + fn2;
+    vocalBtn.dataset.url = '/api/preprocess/download/' + encodeURIComponent(fn2);
     vocalBtn.dataset.fname = fn2;
     vocalBtn.style.display = 'inline-flex';
     hasFiles = true;
