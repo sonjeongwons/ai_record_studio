@@ -1399,7 +1399,7 @@ def _rvc_preprocess(
             except Exception:
                 continue
         if _global_peak > 0:
-            _TARGET = 10.0 ** (-6 / 20)  # -6 dBFS = 0.501 (v8: -3→-6 더 넉넉한 헤드룸, 인터샘플 피크 방지)
+            _TARGET = 10.0 ** (-3 / 20)  # -3 dBFS = 0.708 (v10: -6→-3, 볼륨 부족 해소, 학습 시 충분한 레벨)
             _norm_factor = _TARGET / _global_peak
             log.info(
                 f"Global normalization: peak={_global_peak:.4f}, "
@@ -1995,30 +1995,32 @@ def _post_process_vocal(
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
 ) -> None:
-    """Post-process converted vocal v9 — 중역 과잉 교정 + 볼륨 복원 + 최소 개입.
+    """Post-process converted vocal v10 — 볼륨 완전 복원 + 저역 정리 + 최소 EQ.
 
-    ── v9 개편 근거 (재변환곡6 분석, My Voice v27 + v8 설정) ──
-    v8에서도 전곡 AI 사운드 잔존, 핵심 원인:
-      1. 중역(500-2kHz) 에너지 과잉: 27.6% vs 원곡 19.1% (+8.4%)
-         → v8 EQ의 500Hz +1.0dB가 중역 과잉 악화
-         → 3kHz +3.0dB도 과도 → 기계적 나살 사운드 생성
-      2. 볼륨 여전히 -3~4dB 부족
-      3. MFCC 거리 50~75 → 음색 왜곡 심각 (모델 과의존)
-      4. 1:44-1:46 피치 702Hz vs 원곡 175Hz → 피치 트래킹 실패
+    ── v10 개편 근거 (재변환곡7 분석, My Voice v27 + 가성/고음 프리셋) ──
+    v9에서 여전히 심각한 문제 잔존:
+      1. 전 구간 -5dB 볼륨 부족 (v9의 volume=1.15 = ~3dB, 부족)
+      2. 저역 에너지 과다: 베이스 +5.2%, 서브베이스 +3.2%
+      3. 저중역(250-500Hz) -4.0% 손실 → v9의 800Hz -2dB 컷이 원인
+      4. 중고역(2-4kHz) -2.3% 손실 → 발음 명확도 저하
+      5. 피치점프 32회 (>80Hz) — EQ로 해결 불가, RVC 파라미터에서 처리
+      6. MFCC 거리 58-95 — 전 구간 음색 차이 큼
 
-    v9 핵심 철학: **최소 개입** — EQ/이펙트를 줄이고 원음에 가깝게
-      - EQ: 중역 컷(800Hz -2dB) + 프레즌스 완화(3kHz +1.5, 4kHz +1.0)
-      - 500Hz 부스트 제거 (중역 과잉 원인이었음)
-      - 디에서 완화: -3dB → -2dB (자연스러운 치찰음 유지)
-      - 볼륨: volume=1.15 추가 (3-4dB 부족 보상)
-      - RVC 파라미터: index 0.15, filter 1, rms 0.05 (별도 task_convert에서)
+    v10 핵심 변경:
+      - 800Hz 컷 제거: 저중역 손실 원인이었음 (RVC 중역 과잉은 v9에서 이미 해결)
+      - 저역 정리 추가: 100Hz lowshelf -2dB (베이스 과다 해결)
+      - 볼륨: volume=1.45 (~3.2dB → ~5dB 보상)
+      - 프레즌스 유지: 3kHz +1.5dB, 4kHz +1.0dB (발음 명확도)
+      - 디에서 -1.5dB (v9 -2dB에서 더 완화, 자연스러운 치찰음)
+      - 리미터: attack 25ms (트랜지언트 보존), release 300ms (펌핑 방지)
 
     ── 처리 순서 ──
     1. adeclick — 클릭/팝 제거
-    2. 디에서 — 치찰음 완화 (-2dB)
-    3. EQ — 중역 컷 + 완만한 프레즌스/에어
-    4. 볼륨 보상 + 리미터
-    5. (리버브) — 공간감 (선택)
+    2. 저역 정리 — 과도한 베이스 에너지 교정
+    3. 디에서 — 치찰음 미세 완화
+    4. EQ — 프레즌스/에어 (최소한)
+    5. 볼륨 보상 + 리미터
+    6. (리버브) — 공간감 (선택)
     """
     filters = []
 
@@ -2027,51 +2029,57 @@ def _post_process_vocal(
         "adeclick=window=55:overlap=75:arorder=8:threshold=2:burst=2"
     )
 
-    # ━━━ 2. 디에서 — 치찰음 완화 (v9: -3→-2dB) ━━━
-    # v8의 -3dB가 자연스러운 치찰음까지 억제 → -2dB로 완화
-    filters.append("equalizer=f=6000:width_type=o:width=1.5:g=-2.0")
+    # ━━━ 2. 저역 정리 — RVC 보코더의 저역 과잉 교정 ━━━
+    # v7 분석: 서브베이스 +3.2%, 베이스 +5.2% 과다 → 탁하고 뭉개진 소리
+    # highpass 40Hz: 불필요한 초저역 럼블 제거
+    # lowshelf 100Hz -2dB: 베이스 과잉 교정 (넓은 Q로 자연스럽게)
+    filters.append("highpass=f=40:poles=2")
+    filters.append("lowshelf=f=100:width_type=o:width=0.8:g=-2.0")
 
-    # ━━━ 3. EQ — 최소 개입 원칙 (v9) ━━━
-    # v8 문제: 500-2kHz 에너지 27.6% vs 원곡 19.1% (+8.4% 과잉)
-    # → 500Hz 부스트 제거 + 800Hz 컷으로 중역 과잉 교정
+    # ━━━ 3. 디에서 — 치찰음 미세 완화 (v10: -2→-1.5dB) ━━━
+    # v9의 -2dB도 약간 과도 → -1.5dB로 최소화하여 자연스러운 ㅅ/ㅆ 유지
+    filters.append("equalizer=f=6500:width_type=o:width=1.2:g=-1.5")
+
+    # ━━━ 4. EQ — 최소 개입 (v10) ━━━
+    # v9의 800Hz -2dB 컷 제거 — 저중역 -4% 손실의 원인이었음
+    # 대신 중역은 건드리지 않음 (RVC v9에서 중역 과잉이 이미 해소됨)
     #
-    # [중역 컷] 800Hz -2.0dB: RVC HiFi-GAN의 중역 과잉 교정 (핵심)
-    filters.append("equalizer=f=800:width_type=o:width=1.2:g=-2.0")
-    # [프레즌스] 3kHz +1.5dB: 발음 명확도 (v8의 +3.0은 과도 → 절반으로)
+    # [프레즌스] 3kHz +1.5dB: 발음 명확도 복원 (v7에서 중고역 -2.3% 손실)
     filters.append("equalizer=f=3000:width_type=o:width=1.0:g=1.5")
-    # [명확도] 4kHz +1.0dB: 프레즌스 상단 (v8의 +1.5에서 완화)
-    filters.append("equalizer=f=4000:width_type=o:width=0.8:g=1.0")
-    # [공기감] 8kHz +1.0dB: 자연스러운 에어 (v8의 +1.5에서 완화)
-    filters.append("highshelf=f=8000:width_type=o:width=1.0:g=1.0")
-    # [초고역] 12kHz +0.5dB: 미세한 에어 (v8의 +1.0에서 완화)
-    filters.append("highshelf=f=12000:width_type=o:width=0.8:g=0.5")
+    # [명확도] 4.5kHz +1.0dB: 자음 명확도 (4kHz→4.5kHz, 더 정밀한 타겟)
+    filters.append("equalizer=f=4500:width_type=o:width=0.8:g=1.0")
+    # [공기감] 9kHz +0.8dB: 자연스러운 에어 (v9의 8kHz +1.0에서 조정)
+    filters.append("highshelf=f=9000:width_type=o:width=1.0:g=0.8")
 
-    # ━━━ 고음/가성 모드: 저중역 컷 (탁함 방지) ━━━
+    # ━━━ 고음/가성 모드: 저중역 추가 컷 + 프레즌스 강화 ━━━
     if high_note_mode:
-        filters.append("equalizer=f=300:width_type=o:width=1.0:g=-1.5")
+        filters.append("equalizer=f=250:width_type=o:width=0.8:g=-1.5")
+        filters.append("equalizer=f=5000:width_type=o:width=0.6:g=0.5")
 
-    # ━━━ 4. 볼륨 보상 + 리미터 ━━━
-    # v8 분석: 전 구간 -3~4dB 볼륨 부족 → volume=1.15로 보상 (~3dB)
-    filters.append("volume=1.15")
-    # 리미터: 피크 제한 + 안전 마진
+    # ━━━ 5. 볼륨 보상 + 리미터 ━━━
+    # v7 분석: 전 구간 -4.5~-5.9dB 볼륨 부족
+    # volume=1.45 ≈ +3.2dB 부스트 (리미터와 함께 ~5dB 실효 보상)
+    filters.append("volume=1.45")
+    # 리미터: 투명 리미팅 — 트랜지언트 보존 + 펌핑 방지
     filters.append(
-        "alimiter=limit=0.95:attack=20:release=250:level=enabled:asc=1"
+        "alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1"
     )
 
-    # ━━━ 5. 리버브 (선택적) ━━━
+    # ━━━ 6. 리버브 (선택적) ━━━
     reverb_amount = max(0.0, min(0.5, float(reverb_amount)))
     if reverb_amount > 0.005:
-        # 8탭 초기 반사음 → 자연스러운 공간감
-        c1 = reverb_amount * 0.80
-        c2 = reverb_amount * 0.65
-        c3 = reverb_amount * 0.50
-        c4 = reverb_amount * 0.38
-        c5 = reverb_amount * 0.28
-        c6 = reverb_amount * 0.18
-        c7 = reverb_amount * 0.12
-        c8 = reverb_amount * 0.06
+        # 8탭 초기 반사음 → 자연스러운 공간감 (에코가 아닌 실제 룸 시뮬레이션)
+        # 소수 딜레이 값: 7~83ms = 작은 룸~중간 룸 반사 시뮬레이션
+        c1 = reverb_amount * 0.75
+        c2 = reverb_amount * 0.60
+        c3 = reverb_amount * 0.45
+        c4 = reverb_amount * 0.33
+        c5 = reverb_amount * 0.24
+        c6 = reverb_amount * 0.16
+        c7 = reverb_amount * 0.10
+        c8 = reverb_amount * 0.05
         filters.append(
-            f"aecho=0.82:0.88:"
+            f"aecho=0.85:0.88:"
             f"7|13|23|31|41|53|67|83:"
             f"{c1:.4f}|{c2:.4f}|{c3:.4f}|{c4:.4f}|"
             f"{c5:.4f}|{c6:.4f}|{c7:.4f}|{c8:.4f}"
@@ -2085,7 +2093,7 @@ def _post_process_vocal(
         str(output_path),
     ])
     log.info(
-        f"Vocal post-processed v9 → {output_path.name} "
+        f"Vocal post-processed v10 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance}, "
         f"high_note={high_note_mode}, filters={len(filters)})"
     )
@@ -2098,35 +2106,36 @@ def _mix_audio(
     vocal_volume: float = 1.0,
     mr_volume: float = 1.0,
 ) -> None:
-    """Mix converted vocals with original accompaniment (MR) v9.
+    """Mix converted vocals with original accompaniment (MR) v10.
 
-    ── v9 믹싱 — 최소 개입 ──
-    v8 분석: 보컬 후처리에서 volume=1.15 + 리미터로 볼륨 복원 완료.
-    믹싱 단계에서는 추가 볼륨 조작 불필요.
+    ── v10 믹싱 — 보컬 부각 + 투명 리미팅 ──
+    v9 분석: 보컬 후처리 volume=1.45로 볼륨 복원 강화.
 
-    v9 변경:
-      - MR 볼륨: *0.90 → *0.85 (보컬 더 부각, v8에서도 MR에 묻힘)
+    v10 변경:
+      - MR 볼륨: *0.85 → *0.82 (보컬 v10 볼륨 보상에 맞춰 MR 미세 조정)
       - MR EQ: 800Hz -1.5, 2.5kHz -1.5 유지 (보컬 공간 확보)
-      - 리미터: limit=0.95, level=enabled
+      - MR 저역 정리: 80Hz 이하 -2dB (서브베이스 과다 방지)
+      - 리미터: limit=0.95, attack=25ms(트랜지언트 보존), release=300ms(펌핑 방지)
     """
     run_ffmpeg([
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
         # ── 보컬 체인 ──
-        # 후처리에서 EQ + volume=1.15 + 리미터 완료 → 그대로 전달
+        # 후처리에서 EQ + volume=1.45 + 리미터 완료 → 그대로 전달
         f"[0:a]aresample=resampler=soxr,volume={vocal_volume},"
         f"aformat=channel_layouts=stereo,"
         f"stereotools=mlev=1.0:slev=0.05:sbal=0.0[v];"
         # ── MR 체인 ──
         # 보컬 핵심 대역(800Hz, 2.5kHz) 컷 → 보컬 묻힘 방지
-        # v9: MR *0.85 (v8의 0.90에서 추가 낮춤 → 보컬 더 부각)
-        f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.85},"
+        # MR 저역 정리: 보컬 후처리의 저역 컷과 조화
+        f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.82},"
+        f"lowshelf=f=80:width_type=o:width=0.8:g=-2.0,"
         f"equalizer=f=800:width_type=o:width=1.5:g=-1.5,"
         f"equalizer=f=2500:width_type=o:width=1.0:g=-1.5[m];"
-        # ── 최종 믹스 + 리미팅 ──
+        # ── 최종 믹스 + 투명 리미팅 ──
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.95:attack=20:release=250:level=enabled:asc=1",
+        f"alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1",
         "-acodec", "pcm_s24le",
         "-ar", "44100",
         str(output_path),

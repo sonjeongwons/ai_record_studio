@@ -21,6 +21,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from typing import Optional
 
+import asyncio
 import uvicorn
 import requests
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -1387,6 +1388,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
@@ -2054,19 +2056,16 @@ async def start_preprocess(
             "skipped": skipped, "processing": len(unprocessed)}
 
 
-@app.get("/api/preprocess/status")
-async def preprocess_status():
-    """전처리 상태 확인 — 모든 파일이 전처리되었는지 DB + 디스크 기반으로 판단."""
+def _preprocess_status_sync():
+    """전처리 상태 확인 (동기) — asyncio.to_thread로 호출."""
     files = _list_preprocessed_files()
 
-    # DB에서 전처리되지 않은 파일 수 확인
     with get_db() as db:
         total_files = db.execute("SELECT COUNT(*) FROM training_files WHERE deleted=0").fetchone()[0]
         unprocessed = db.execute(
             "SELECT COUNT(*) FROM training_files WHERE preprocessed=0 AND deleted=0"
         ).fetchone()[0]
 
-    # Categorize files: training segments vs MR vs vocals
     training_segments = []
     accomp_files = []
     vocal_files = []
@@ -2082,7 +2081,6 @@ async def preprocess_status():
     all_processed = total_files > 0 and unprocessed == 0
     processed_count = total_files - unprocessed
 
-    # 메타데이터 파일에서 정확한 총 길이 읽기 (핸들러가 계산한 값)
     total_dur = 0.0
     meta_path = PREPROCESSED_DIR / "_metadata.json"
     if meta_path.exists():
@@ -2091,27 +2089,18 @@ async def preprocess_status():
         except Exception as e:
             print(f"[Warning] Failed to parse metadata: {e}")
 
-    # 메타데이터 없으면 WAV 파일에서 직접 계산 (폴백)
+    # 메타데이터 없으면 파일 크기 기반으로 빠르게 추정 (수백 개 파일을 열지 않음)
     if total_dur == 0.0 and has_segments:
-        import wave
         for f in training_segments:
             try:
-                if f.suffix.lower() == ".wav":
-                    with wave.open(str(f), "rb") as wf:
-                        total_dur += wf.getnframes() / wf.getframerate()
-                elif f.suffix.lower() == ".mp3":
-                    try:
-                        from pydub import AudioSegment
-                        audio = AudioSegment.from_mp3(str(f))
-                        total_dur += len(audio) / 1000.0
-                    except Exception:
-                        # MP3 192kbps ≈ 24000 bytes/sec
-                        total_dur += f.stat().st_size / 24000.0
+                size = f.stat().st_size
+                ext = f.suffix.lower()
+                if ext == ".wav":
+                    total_dur += size / 96000.0
+                elif ext == ".mp3":
+                    total_dur += size / 24000.0
                 else:
-                    # Fallback for other formats: try ffprobe
-                    dur = _get_audio_duration(f)
-                    if dur:
-                        total_dur += dur
+                    total_dur += size / 96000.0
             except Exception:
                 pass
 
@@ -2125,6 +2114,11 @@ async def preprocess_status():
         "accompaniment_files": accomp_files,
         "vocal_files": vocal_files,
     }
+
+@app.get("/api/preprocess/status")
+async def preprocess_status():
+    """전처리 상태 확인 — 이벤트 루프 블로킹 방지를 위해 스레드에서 실행."""
+    return await asyncio.to_thread(_preprocess_status_sync)
 
 
 @app.get("/api/preprocess/download/{filename}")
@@ -2703,8 +2697,8 @@ async def get_stats():
 async def health_check():
     """서버 상태, RunPod 연결, 디스크 용량 확인"""
     # 주기적 stale job 정리 + 청크 업로드 정리 (30분 간격)
-    maybe_cleanup_stale_jobs()
-    _cleanup_stale_chunk_uploads()
+    await asyncio.to_thread(maybe_cleanup_stale_jobs)
+    await asyncio.to_thread(_cleanup_stale_chunk_uploads)
 
     health = {
         "status": "ok",
@@ -2714,7 +2708,8 @@ async def health_check():
 
     if runpod_client.is_configured():
         try:
-            resp = requests.get(
+            resp = await asyncio.to_thread(
+                requests.get,
                 f"https://api.runpod.ai/v2/{runpod_client.endpoint_id}/health",
                 headers=runpod_client.headers,
                 timeout=10

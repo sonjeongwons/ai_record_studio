@@ -3275,6 +3275,9 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('studio')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(99,102,241,0.4);color:#818cf8" title="깨끗한 스튜디오 녹음에 최적화. 최소한의 후처리로 원본 품질 유지">
               🎧 스튜디오 품질
             </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(236,72,153,0.4);color:#ec4899" title="화음/코러스가 많은 곡에 최적화. 인덱스 최소화로 원곡 화음 구조 보존">
+              🎼 화음/코러스 곡
+            </button>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4747,28 +4750,28 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default v9: 최소 개입 — index↓ filter↓ rms↓
+      // Default v10: 최소 개입 — 볼륨 완전 복원 + 저역 정리
       f0: 'rmvpe', protect: 50, rms: 5, filter: 1, hop: 1,
       clean: false, cleanStr: 70, index: 15,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false,
-      desc: 'v9 기본 — 최소 개입, 원곡 느낌 최대 보존'
+      desc: 'v10 기본 — 볼륨 복원, 저역 정리, 원곡 느낌 최대 보존'
     },
     falsetto: {
-      // 가성/고음: filter=0 + 고음모드
+      // 가성/고음: filter=0 + 고음모드 + 리버브 최소
       f0: 'rmvpe', protect: 50, rms: 3, filter: 0, hop: 0,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: true,
-      desc: '가성/고음 최적화 — 피치 스무딩 OFF, 원곡 비브라토 100% 보존'
+      desc: '가성/고음 최적화 — 피치 스무딩 OFF, 비브라토 100% 보존, 저중역 컷'
     },
     natural: {
-      // Natural: 최대 자연스러움
+      // Natural: 최대 자연스러움 — 모든 이펙트 최소
       f0: 'rmvpe', protect: 50, rms: 3, filter: 1, hop: 1,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false,
-      desc: '최대 자연스러움 — 모델 의존 최소, 원곡 특성 최대 보존'
+      desc: '최대 자연스러움 — 모델 의존 최소, 리버브 없음, 원곡 그대로'
     },
     studio: {
       // Studio: 깨끗한 원본에 최적화 — 안정적 + 공간감
@@ -4776,7 +4779,15 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 15,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false,
-      desc: '스튜디오 품질 — v9 기본 + 미세한 공간감'
+      desc: '스튜디오 품질 — v10 기본 + 미세한 공간감'
+    },
+    chorus: {
+      // 화음/코러스가 많은 곡: protect↑, index↓↓, filter 0
+      f0: 'rmvpe', protect: 50, rms: 3, filter: 0, hop: 0,
+      clean: false, cleanStr: 70, index: 5,
+      postReverb: 5, useReverb: false, harmonicEnhance: false,
+      highNote: false,
+      desc: '화음/코러스 곡 — 인덱스 최소(0.05), 원곡 화음 구조 최대 보존'
     }
   };
   var p = presets[preset];
