@@ -3993,11 +3993,25 @@ function createAudioPlayer(audioUrl, containerId) {
       '<span class="audio-time" id="' + uid + '_time">0:00</span>' +
       '<span class="audio-time" id="' + uid + '_dur" style="color:var(--text3);opacity:0.6">0:00</span>' +
     '</div>' +
-    '<audio id="' + uid + '_audio" src="' + encodeURI(audioUrl) + '" preload="metadata"></audio>' +
+    '<audio id="' + uid + '_audio" src="' + audioUrl + '" preload="metadata"></audio>' +
   '</div>';
 }
 
 var apWaveData = {};
+
+var _playIcon = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+var _pauseIcon = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+
+function apResetAllPlayers(exceptUid) {
+  document.querySelectorAll('.audio-player').forEach(function(ap) {
+    var aUid = ap.id;
+    if (aUid === exceptUid) return;
+    var a = document.getElementById(aUid + '_audio');
+    var b = ap.querySelector('.audio-play-btn');
+    if (a && !a.paused) a.pause();
+    if (b) b.innerHTML = _playIcon;
+  });
+}
 
 function apToggle(uid) {
   var audio = document.getElementById(uid + '_audio');
@@ -4005,17 +4019,17 @@ function apToggle(uid) {
   if (!audio) return;
 
   if (audio.paused) {
-    // Pause all other players
-    document.querySelectorAll('.audio-player audio').forEach(function(a) {
-      if (a.id !== uid + '_audio' && !a.paused) {
-        a.pause();
-        var otherUid = a.id.replace('_audio', '');
-        var otherBtn = document.querySelector('#' + otherUid + ' .audio-play-btn');
-        if (otherBtn) otherBtn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
-      }
-    });
-    audio.play();
-    btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+    // Reset ALL other players (both playing and stuck)
+    apResetAllPlayers(uid);
+
+    var playPromise = audio.play();
+    btn.innerHTML = _pauseIcon;
+
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(function() {
+        btn.innerHTML = _playIcon;
+      });
+    }
 
     if (!apWaveData[uid]) {
       apDrawWaveform(uid);
@@ -4023,11 +4037,11 @@ function apToggle(uid) {
 
     audio.ontimeupdate = function() { apUpdateTime(uid); };
     audio.onended = function() {
-      btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+      btn.innerHTML = _playIcon;
     };
   } else {
     audio.pause();
-    btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>';
+    btn.innerHTML = _playIcon;
   }
 }
 
