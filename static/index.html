@@ -5759,6 +5759,18 @@ async function _doStartTraining() {
     toast('학습에 사용할 파일을 1개 이상 선택해 주세요', 'error');
     return;
   }
+  // 선택된 파일 중 전처리 미완료 파일 체크
+  var unprocessedNames = [];
+  selectedIds.forEach(function(id) {
+    var file = uploadedFiles.find(function(f) { return String(f.id) === String(id); });
+    if (file && !file.preprocessed) {
+      unprocessedNames.push(file.original_name || file.filename);
+    }
+  });
+  if (unprocessedNames.length > 0) {
+    toast('전처리되지 않은 파일이 ' + unprocessedNames.length + '개 선택되어 있습니다: ' + unprocessedNames.slice(0, 3).join(', ') + (unprocessedNames.length > 3 ? ' 외 ' + (unprocessedNames.length - 3) + '개' : '') + '\n먼저 전처리를 완료하거나 해당 파일을 선택 해제해 주세요.', 'error');
+    return;
+  }
   var fileIds = selectedIds.join(',');
 
   var f0Method = document.getElementById('train-f0').value;
