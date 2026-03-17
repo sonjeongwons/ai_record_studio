@@ -5666,7 +5666,7 @@ async function checkPreprocessStatus() {
       res.processed_count || 0);
 
     if (res.preprocessed) {
-      // DB says all files are preprocessed — enable training
+      // 전처리된 세그먼트가 있으면 학습 가능 (모든 파일 전처리 완료 불필요)
       try {
         var r = await api('/files');
         uploadedFiles = r.files || [];

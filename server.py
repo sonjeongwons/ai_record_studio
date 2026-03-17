@@ -2155,7 +2155,7 @@ def _preprocess_status_sync():
                 pass
 
     return {
-        "preprocessed": all_processed,
+        "preprocessed": has_segments,  # 세그먼트가 있으면 학습 가능 (전체 완료 불필요)
         "has_segments": has_segments,
         "segment_count": len(training_segments),
         "total_duration": round(total_dur, 2),
