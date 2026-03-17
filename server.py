@@ -724,8 +724,8 @@ _poll_errors_lock = threading.Lock()
 _JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 3600}  # convert: 30분→60분
 
 
-def upload_to_r2(file_path: Path, key: str) -> str:
-    """로컬 파일을 R2에 업로드하고 presigned URL을 반환합니다."""
+def _get_r2_client():
+    """R2 boto3 클라이언트를 생성합니다. 캐시하여 재사용합니다."""
     try:
         import boto3
         from botocore.config import Config as BotoConfig
@@ -749,15 +749,26 @@ def upload_to_r2(file_path: Path, key: str) -> str:
         aws_secret_access_key=secret_key,
         config=BotoConfig(
             signature_version="s3v4",
-            s3={"addressing_style": "path"},  # R2는 path-style 필수
+            s3={"addressing_style": "path"},
+            connect_timeout=10,
+            read_timeout=30,
+            retries={"max_attempts": 3, "mode": "adaptive"},
         ),
         region_name="auto",
     )
+    return s3, bucket
+
+
+def upload_to_r2(file_path: Path, key: str, s3_client=None, bucket_name=None) -> str:
+    """로컬 파일을 R2에 업로드하고 presigned URL을 반환합니다."""
+    if s3_client and bucket_name:
+        s3, bucket = s3_client, bucket_name
+    else:
+        s3, bucket = _get_r2_client()
 
     try:
         s3.upload_file(str(file_path), bucket, key)
         # Cloudflare R2 presigned URL 최대 만료: 7일 (604800초)
-        # 이를 초과하면 R2가 400 Bad Request 반환
         presigned_url = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": key},
@@ -773,20 +784,8 @@ def upload_to_r2(file_path: Path, key: str) -> str:
 def refresh_presigned_url(old_url: str) -> str:
     """만료된 R2 presigned URL에서 key를 추출하여 새 presigned URL을 생성합니다."""
     from urllib.parse import urlparse, unquote
-    try:
-        import boto3
-        from botocore.config import Config as BotoConfig
-    except ImportError:
-        raise HTTPException(400, "boto3가 설치되지 않았습니다.")
 
-    config = load_config()
-    endpoint_url = config.get("r2_endpoint_url")
-    access_key = config.get("r2_access_key_id")
-    secret_key = config.get("r2_secret_access_key")
-    bucket = config.get("r2_bucket_name", "voice-studio")
-
-    if not all([endpoint_url, access_key, secret_key]):
-        raise HTTPException(400, "R2 스토리지가 설정되지 않았습니다.")
+    s3, bucket = _get_r2_client()
 
     # presigned URL에서 R2 key 추출: /{bucket}/{key}?X-Amz-...
     parsed = urlparse(old_url)
@@ -798,17 +797,6 @@ def refresh_presigned_url(old_url: str) -> str:
         key = path[1:]
     else:
         key = path
-
-    s3 = boto3.client("s3",
-        endpoint_url=endpoint_url,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        config=BotoConfig(
-            signature_version="s3v4",
-            s3={"addressing_style": "path"},
-        ),
-        region_name="auto",
-    )
 
     new_url = s3.generate_presigned_url(
         "get_object",
@@ -2043,18 +2031,31 @@ async def start_training(
         use_r2 = total_size > 5_000_000  # 5MB 이상이면 R2 사용
 
         if use_r2:
-            print(f"[Train] Uploading {len(file_paths)} files ({total_size:,} bytes) to R2...")
+            import time as _time
+            print(f"[Train] Uploading {len(file_paths)} files ({total_size:,} bytes, {total_size/1024/1024:.1f}MB) to R2...")
+            r2_client, r2_bucket_name = _get_r2_client()
+            upload_start = _time.time()
+            uploaded_bytes = 0
             for i, fp in enumerate(file_paths):
                 r2_key = f"train/{job_id}/{Path(fp).name}"
+                file_size = Path(fp).stat().st_size
                 try:
-                    url = upload_to_r2(Path(fp), r2_key)
+                    url = upload_to_r2(Path(fp), r2_key, s3_client=r2_client, bucket_name=r2_bucket_name)
                     audio_urls.append({"filename": Path(fp).name, "url": url})
+                    uploaded_bytes += file_size
+                    # 10개마다 또는 마지막 파일일 때 진행률 출력
+                    if (i + 1) % 10 == 0 or i == len(file_paths) - 1:
+                        elapsed = _time.time() - upload_start
+                        pct = (i + 1) / len(file_paths) * 100
+                        speed = uploaded_bytes / 1024 / 1024 / max(elapsed, 0.1)
+                        print(f"[Train] R2 upload: {i+1}/{len(file_paths)} ({pct:.0f}%) — {uploaded_bytes/1024/1024:.1f}MB, {speed:.1f}MB/s, {elapsed:.0f}s elapsed")
                 except Exception as e:
-                    print(f"[Train] R2 upload failed for {fp}: {e}")
+                    print(f"[Train] R2 upload failed at file {i+1}/{len(file_paths)} ({Path(fp).name}): {e}")
                     update_job(job_id, status="failed",
-                        message=f"학습 데이터 R2 업로드 실패: {e}")
+                        message=f"학습 데이터 R2 업로드 실패 ({i+1}/{len(file_paths)}): {e}")
                     raise HTTPException(500, f"학습 데이터 R2 업로드 실패: {e}")
-            print(f"[Train] All {len(audio_urls)} files uploaded to R2")
+            total_elapsed = _time.time() - upload_start
+            print(f"[Train] All {len(audio_urls)} files uploaded to R2 in {total_elapsed:.1f}s ({total_size/1024/1024:.1f}MB, {total_size/1024/1024/max(total_elapsed,0.1):.1f}MB/s)")
 
         config = load_config()
         r2_bucket = config.get("r2_bucket_name", "")
