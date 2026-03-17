@@ -1543,6 +1543,22 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 async def startup():
     init_db()
     recover_orphan_jobs_on_startup()
+
+    # Windows ProactorEventLoop에서 브라우저 연결 끊김 시 발생하는
+    # ConnectionResetError [WinError 10054] 로그 억제
+    loop = asyncio.get_event_loop()
+    _original_handler = loop.get_exception_handler()
+
+    def _suppress_connection_reset(loop, context):
+        exc = context.get("exception")
+        if isinstance(exc, ConnectionResetError):
+            return  # 무시 — 브라우저가 연결을 먼저 닫은 것
+        if _original_handler:
+            _original_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
+
+    loop.set_exception_handler(_suppress_connection_reset)
     # 30분마다 오래된 청크 업로드 세션 자동 정리
     def _chunk_cleanup_loop():
         while True:
