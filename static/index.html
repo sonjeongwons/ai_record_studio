@@ -3876,6 +3876,44 @@ var _preprocessStartTime = null;
 var _trainStartTime = null;
 var _convertStartTime = null;
 
+// ── localStorage 작업 상태 영속화 ──
+var _LS_KEY = 'voiceStudio_activeJobs';
+
+function _saveJobState() {
+  try {
+    var state = {};
+    if (preprocessJobId) state.preprocess = { id: preprocessJobId, startTime: _preprocessStartTime };
+    if (currentTrainJobId) state.train = { id: currentTrainJobId, startTime: _trainStartTime };
+    if (currentConvertJobId) state.convert = { id: currentConvertJobId, startTime: _convertStartTime };
+    if (Object.keys(state).length > 0) {
+      localStorage.setItem(_LS_KEY, JSON.stringify(state));
+    } else {
+      localStorage.removeItem(_LS_KEY);
+    }
+  } catch(e) { /* localStorage 불가 환경 무시 */ }
+}
+
+function _loadJobState() {
+  try {
+    var raw = localStorage.getItem(_LS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function _clearJobState(jobType) {
+  try {
+    var raw = localStorage.getItem(_LS_KEY);
+    if (!raw) return;
+    var state = JSON.parse(raw);
+    delete state[jobType];
+    if (Object.keys(state).length > 0) {
+      localStorage.setItem(_LS_KEY, JSON.stringify(state));
+    } else {
+      localStorage.removeItem(_LS_KEY);
+    }
+  } catch(e) { /* 무시 */ }
+}
+
 // Batch conversion state
 var batchFiles = [];
 var batchResults = [];
@@ -5397,6 +5435,7 @@ async function startPreprocess() {
     preprocessJobId = res.job_id;
     _preprocessPollErrors = 0;
     _preprocessStartTime = Date.now();
+    _saveJobState();
     // 전처리 진행 상태로 스크롤
     setTimeout(function() {
       var el = document.getElementById('preprocess-running');
@@ -5456,6 +5495,7 @@ async function pollPreprocessStatus() {
 
       preprocessDone = true;
       _preprocessStartTime = null;
+      _clearJobState('preprocess');
       document.getElementById('btn-start-train').disabled = false;
       toast('전처리 완료: ' + segments + '개 세그먼트', 'success');
       // 학습 시작 버튼으로 스크롤
@@ -5488,6 +5528,7 @@ async function pollPreprocessStatus() {
       document.getElementById('preprocess-running').style.display = 'none';
       document.getElementById('preprocess-idle').style.display = 'block';
       preprocessJobId = null;
+      _clearJobState('preprocess');
       document.title = 'AI Voice Studio';
       toast('전처리가 외부에서 취소되었습니다', 'warning');
       return;
@@ -5499,6 +5540,7 @@ async function pollPreprocessStatus() {
       toast('전처리 실패: ' + (job.message || ''), 'error');
       preprocessJobId = null;
       _preprocessStartTime = null;
+      _clearJobState('preprocess');
       setTimeout(function() {
         document.getElementById('preprocess-running').style.display = 'none';
         document.getElementById('preprocess-idle').style.display = 'block';
@@ -5510,12 +5552,14 @@ async function pollPreprocessStatus() {
     _preprocessPollTimer = setTimeout(pollPreprocessStatus, 3000);
   } catch(e) {
     _preprocessPollErrors++;
-    if (_preprocessPollErrors >= 20) {
-      toast('전처리 상태 확인 연속 실패 (20회). 폴링 중단됨.', 'warning');
-      document.getElementById('preprocess-msg').textContent = '연결 끊김 — 새로고침 후 다시 시도하세요';
-      return;
+    // 점진적 백오프: 5초→10초→30초 (서버 작업은 계속 진행 중이므로 폴링 유지)
+    var backoff = _preprocessPollErrors <= 12 ? 5000 : _preprocessPollErrors <= 36 ? 10000 : 30000;
+    document.getElementById('preprocess-msg').textContent =
+      '네트워크 연결 끊김 — 자동 재연결 대기 중 (재시도 ' + _preprocessPollErrors + '회)';
+    if (_preprocessPollErrors === 10 || _preprocessPollErrors === 30) {
+      toast('네트워크 연결 끊김 — RunPod 작업은 계속 진행 중 (자동 재연결 대기)', 'warning');
     }
-    _preprocessPollTimer = setTimeout(pollPreprocessStatus, 5000);
+    _preprocessPollTimer = setTimeout(pollPreprocessStatus, backoff);
   } finally {
     _preprocessPolling = false;
   }
@@ -5527,6 +5571,7 @@ function skipPreprocess() {
   }
   preprocessDone = true;
   preprocessJobId = null;
+  _clearJobState('preprocess');
   fadeSection(document.getElementById('preprocess-idle'), false, 150);
   fadeSection(document.getElementById('preprocess-running'), false, 150);
   setTimeout(function() { fadeSection(document.getElementById('preprocess-done'), true, 240); }, 170);
@@ -5542,6 +5587,7 @@ function cancelPreprocess() {
   _preprocessPolling = false;
   var jobId = preprocessJobId;
   preprocessJobId = null;
+  _clearJobState('preprocess');
   preprocessDone = false;
   _uploadInProgress = false;                               // 업로드 플래그 확실히 해제
   document.body.classList.remove('busy');                   // wait 커서 해제
@@ -5793,6 +5839,7 @@ async function _doStartTraining() {
     currentTrainJobId = res.job_id;
     _trainStartTime = Date.now();
     _trainPollErrors = 0;          // 이전 작업 오류 카운트 초기화
+    _saveJobState();
     updateNavBadges();
 
     fadeSection(document.getElementById('train-upload'), false, 180);
@@ -5865,6 +5912,7 @@ async function pollTrainingStatus() {
           ? '모델 "' + job.result.model_name + '" 이 준비되었습니다'
           : '학습이 완료되었습니다';
       toast('학습 완료!', 'success');
+      _clearJobState('train');
       // 학습 완료 결과로 스크롤
       setTimeout(function() {
         var donEl = document.getElementById('train-done');
@@ -5880,6 +5928,7 @@ async function pollTrainingStatus() {
       document.getElementById('train-cancel-area').style.display = 'none';
       document.getElementById('train-progress').style.display = 'none';
       currentTrainJobId = null;
+      _clearJobState('train');
       document.title = 'AI Voice Studio';
       toast('학습이 외부에서 취소되었습니다', 'warning');
       return;
@@ -5895,13 +5944,20 @@ async function pollTrainingStatus() {
       document.getElementById('train-error-msg').textContent = errMsg;
       document.getElementById('train-error-msg').title = job.message || '';
       toast('학습 실패: ' + errMsg, 'error');
+      _clearJobState('train');
       return;
     }
 
     _trainPollTimer = setTimeout(pollTrainingStatus, 5000);
   } catch(e) {
     _trainPollErrors++;
-    _trainPollTimer = setTimeout(pollTrainingStatus, 10000);
+    var backoff = _trainPollErrors <= 12 ? 5000 : _trainPollErrors <= 36 ? 10000 : 30000;
+    document.getElementById('train-status-msg').textContent =
+      '네트워크 연결 끊김 — 자동 재연결 대기 중 (재시도 ' + _trainPollErrors + '회)';
+    if (_trainPollErrors === 10 || _trainPollErrors === 30) {
+      toast('네트워크 연결 끊김 — RunPod 학습은 계속 진행 중 (자동 재연결 대기)', 'warning');
+    }
+    _trainPollTimer = setTimeout(pollTrainingStatus, backoff);
   } finally {
     _trainPolling = false;
   }
@@ -5916,6 +5972,7 @@ function resetTraining() {
   }
   currentTrainJobId = null;
   _trainPollErrors = 0;
+  _clearJobState('train');
 
   // 버튼 비활성화 + 로딩 표시
   var backBtn = document.getElementById('btn-train-back');
@@ -6290,6 +6347,7 @@ async function startConversion() {
     }
     _convertStartTime = Date.now();
     _convertPollErrors = 0;        // 이전 작업 오류 카운트 초기화
+    _saveJobState();
 
     fadeSection(document.getElementById('convert-main'), false, 180);
     setTimeout(function() { fadeSection(document.getElementById('convert-progress'), true, 260); }, 200);
@@ -6443,6 +6501,7 @@ async function pollConvertStatus() {
         }
       }
       currentConvertJobId = null;
+      _clearJobState('convert');
       toast('변환이 완료되었습니다', 'success');
       // 변환 결과로 스크롤
       setTimeout(function() {
@@ -6458,6 +6517,7 @@ async function pollConvertStatus() {
       document.getElementById('convert-ring').classList.remove('running');
       document.getElementById('convert-cancel-area').style.display = 'none';
       currentConvertJobId = null;
+      _clearJobState('convert');
       document.title = 'AI Voice Studio';
       resetConversion();
       toast('변환이 외부에서 취소되었습니다', 'warning');
@@ -6468,6 +6528,7 @@ async function pollConvertStatus() {
       document.getElementById('convert-status-msg').textContent = '변환 실패';
       document.getElementById('convert-cancel-area').style.display = 'none';
       currentConvertJobId = null;
+      _clearJobState('convert');
       fadeSection(document.getElementById('convert-error-area'), true, 240);
       document.getElementById('convert-error-msg').textContent = extractErrorSummary(job.message || '');
       document.title = 'AI Voice Studio';
@@ -6478,7 +6539,13 @@ async function pollConvertStatus() {
     _convertPollTimer = setTimeout(pollConvertStatus, 3000);
   } catch(e) {
     _convertPollErrors++;
-    _convertPollTimer = setTimeout(pollConvertStatus, 5000);
+    var backoff = _convertPollErrors <= 12 ? 5000 : _convertPollErrors <= 36 ? 10000 : 30000;
+    document.getElementById('convert-status-msg').textContent =
+      '네트워크 연결 끊김 — 자동 재연결 대기 중 (재시도 ' + _convertPollErrors + '회)';
+    if (_convertPollErrors === 10 || _convertPollErrors === 30) {
+      toast('네트워크 연결 끊김 — RunPod 변환은 계속 진행 중 (자동 재연결 대기)', 'warning');
+    }
+    _convertPollTimer = setTimeout(pollConvertStatus, backoff);
   } finally {
     _convertPolling = false;
   }
@@ -6837,6 +6904,7 @@ function resetConversion() {
   if (_convertPollTimer) { clearTimeout(_convertPollTimer); _convertPollTimer = null; }
   _convertStartTime = null;
   currentConvertJobId = null;
+  _clearJobState('convert');
   convertFile = null;
   batchFiles = [];
   batchResults = [];
@@ -7455,6 +7523,8 @@ function initAllSliders() {
 // Active Job State Restoration (페이지 재로드 시 복원)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async function restoreActiveJobs() {
+  // 1차: 서버 API에서 활성 작업 조회
+  var restored = false;
   try {
     var res = await api('/jobs/active');
     var jobs = res.active_jobs || [];
@@ -7463,12 +7533,13 @@ async function restoreActiveJobs() {
       if (job.job_type === 'preprocess') {
         if (job.status === 'running' || job.status === 'submitting') {
           preprocessJobId = job.id;
-          // started_at 있으면 실제 시작 시간 사용 (경과 시간 정확도 개선)
           _preprocessStartTime = job.started_at ? new Date(job.started_at).getTime() : Date.now();
           document.getElementById('preprocess-idle').style.display = 'none';
           document.getElementById('preprocess-running').style.display = 'block';
           document.getElementById('preprocess-done').style.display = 'none';
+          _saveJobState();
           pollPreprocessStatus();
+          restored = true;
         }
       } else if (job.job_type === 'train') {
         if (job.status === 'running' || job.status === 'submitting') {
@@ -7481,8 +7552,10 @@ async function restoreActiveJobs() {
           document.getElementById('train-error-area').style.display = 'none';
           document.getElementById('train-cancel-area').style.display = 'block';
           document.getElementById('train-status-msg').textContent = job.message || '학습 중...';
+          _saveJobState();
           updateNavBadges();
           pollTrainingStatus();
+          restored = true;
         }
       } else if (job.job_type === 'convert') {
         if (job.status === 'running' || job.status === 'submitting') {
@@ -7495,16 +7568,68 @@ async function restoreActiveJobs() {
           document.getElementById('convert-error-area').style.display = 'none';
           document.getElementById('convert-cancel-area').style.display = 'block';
           document.getElementById('convert-status-msg').textContent = job.message || '변환 중...';
+          _saveJobState();
           updateNavBadges();
           pollConvertStatus();
+          restored = true;
         }
       }
     }
-    if (jobs.length > 0) {
+    if (restored) {
       toast('진행 중인 작업이 복원되었습니다', 'info');
     }
   } catch(e) {
-    // 복원 실패는 무시 (비필수 기능)
+    // 서버 API 실패 시 localStorage 폴백
+    console.warn('[restoreActiveJobs] 서버 조회 실패, localStorage 폴백:', e);
+  }
+
+  // 2차: 서버에서 복원되지 않은 작업은 localStorage에서 복구 시도
+  if (!restored) {
+    var saved = _loadJobState();
+    if (saved) {
+      var lsRestored = false;
+      if (saved.preprocess && !preprocessJobId) {
+        preprocessJobId = saved.preprocess.id;
+        _preprocessStartTime = saved.preprocess.startTime || Date.now();
+        document.getElementById('preprocess-idle').style.display = 'none';
+        document.getElementById('preprocess-running').style.display = 'block';
+        document.getElementById('preprocess-done').style.display = 'none';
+        document.getElementById('preprocess-msg').textContent = '복구 중... 서버 상태 확인';
+        pollPreprocessStatus();
+        lsRestored = true;
+      }
+      if (saved.train && !currentTrainJobId) {
+        currentTrainJobId = saved.train.id;
+        _trainStartTime = saved.train.startTime || Date.now();
+        _trainPollErrors = 0;
+        document.getElementById('train-upload').style.display = 'none';
+        document.getElementById('train-progress').style.display = 'block';
+        document.getElementById('train-done').style.display = 'none';
+        document.getElementById('train-error-area').style.display = 'none';
+        document.getElementById('train-cancel-area').style.display = 'block';
+        document.getElementById('train-status-msg').textContent = '복구 중... 서버 상태 확인';
+        updateNavBadges();
+        pollTrainingStatus();
+        lsRestored = true;
+      }
+      if (saved.convert && !currentConvertJobId) {
+        currentConvertJobId = saved.convert.id;
+        _convertStartTime = saved.convert.startTime || Date.now();
+        _convertPollErrors = 0;
+        document.getElementById('convert-main').style.display = 'none';
+        document.getElementById('convert-progress').style.display = 'block';
+        document.getElementById('convert-done').style.display = 'none';
+        document.getElementById('convert-error-area').style.display = 'none';
+        document.getElementById('convert-cancel-area').style.display = 'block';
+        document.getElementById('convert-status-msg').textContent = '복구 중... 서버 상태 확인';
+        updateNavBadges();
+        pollConvertStatus();
+        lsRestored = true;
+      }
+      if (lsRestored) {
+        toast('이전 작업 상태를 복원합니다 (로컬 캐시)', 'info');
+      }
+    }
   }
 }
 
@@ -7919,6 +8044,7 @@ window.addEventListener('beforeunload', function(e) {
   }
 });
 window.addEventListener('unload', function() {
+  _saveJobState();  // 페이지 닫기 전 작업 상태 저장
   if (connectionTimer) { clearInterval(connectionTimer); connectionTimer = null; }
   if (_preprocessPollTimer) { clearTimeout(_preprocessPollTimer); _preprocessPollTimer = null; }
   if (_trainPollTimer) { clearTimeout(_trainPollTimer); _trainPollTimer = null; }

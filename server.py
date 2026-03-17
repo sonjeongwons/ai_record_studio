@@ -383,32 +383,111 @@ def init_db():
         db.execute("CREATE INDEX IF NOT EXISTS idx_training_files_deleted ON training_files(deleted)")
 
 
-def cleanup_stale_jobs_on_startup():
-    """서버 시작 시 1회만 호출. 모든 running/submitting 작업을 실패 처리.
-    서버 재시작 시 폴링 스레드가 사라지므로 진행 중 작업을 정리."""
+def recover_orphan_jobs_on_startup():
+    """서버 시작 시 1회만 호출. running/submitting 작업의 RunPod 상태를 확인하여
+    아직 실행 중인 작업은 폴링 스레드를 재시작하고, 완료/실패된 작업만 정리."""
     with get_db() as db:
-        # RunPod 작업 ID 먼저 수집 → 실제 취소
         stale_rows = db.execute("""
-            SELECT id, runpod_job_id FROM jobs
-            WHERE status IN ('running', 'submitting') AND runpod_job_id IS NOT NULL
-        """).fetchall()
-        if stale_rows and runpod_client.is_configured():
-            for row in stale_rows:
-                try:
-                    runpod_client.cancel_runpod_job(row["runpod_job_id"])
-                except Exception:
-                    pass
-        now_iso = datetime.now().isoformat()
-        active = db.execute("""
-            UPDATE jobs
-            SET status='failed',
-                message='서버 재시작으로 인한 자동 정리',
-                updated_at=?
+            SELECT id, job_type, runpod_job_id, status FROM jobs
             WHERE status IN ('running', 'submitting')
-        """, (now_iso,))
-        if active.rowcount > 0:
-            print(f"  정리된 진행 중 작업: {active.rowcount}개")
-        # conversions 테이블도 동기화 — orphan 'processing' 레코드 정리
+        """).fetchall()
+
+    if not stale_rows:
+        print("[Startup] 복구할 진행 중 작업 없음")
+        return
+
+    print(f"[Startup] 진행 중 작업 {len(stale_rows)}개 발견 — RunPod 상태 확인 중...")
+
+    recovered = 0
+    completed_on_runpod = 0
+    failed_cleanup = 0
+
+    for row in stale_rows:
+        job_id = row["id"]
+        job_type = row["job_type"]
+        runpod_job_id = row["runpod_job_id"]
+
+        # RunPod job ID가 없는 작업 (submit 전 크래시) → 실패 처리
+        if not runpod_job_id:
+            update_job(job_id, status="failed",
+                      message="서버 재시작: RunPod 작업 ID 없음 (제출 전 중단)")
+            failed_cleanup += 1
+            continue
+
+        # RunPod API 미설정 → 상태 확인 불가, 실패 처리
+        if not runpod_client.is_configured():
+            update_job(job_id, status="failed",
+                      message="서버 재시작: RunPod API 미설정으로 상태 확인 불가")
+            failed_cleanup += 1
+            continue
+
+        # RunPod에서 실제 상태 확인
+        try:
+            result = runpod_client.check_status(runpod_job_id)
+            rp_status = result.get("status", "UNKNOWN")
+        except Exception as e:
+            print(f"[Startup] RunPod 상태 확인 실패 ({job_id}): {e}")
+            # 네트워크 문제일 수 있으므로 폴링 스레드를 시작하여 나중에 재시도
+            print(f"[Startup] 폴링 스레드 재시작 (네트워크 복구 대기): {job_id}")
+            t = threading.Thread(target=poll_runpod_job,
+                                args=(job_id, runpod_job_id, job_type),
+                                daemon=True)
+            t.start()
+            recovered += 1
+            continue
+
+        if rp_status in ("IN_PROGRESS", "IN_QUEUE"):
+            # 아직 실행 중 → 폴링 스레드 재시작
+            print(f"[Startup] RunPod 작업 진행 중 → 폴링 복구: {job_id} (type={job_type}, rp={rp_status})")
+            update_job(job_id, status="running",
+                      message=f"서버 재시작 후 자동 복구 (RunPod: {rp_status})")
+            t = threading.Thread(target=poll_runpod_job,
+                                args=(job_id, runpod_job_id, job_type),
+                                daemon=True)
+            t.start()
+            recovered += 1
+
+        elif rp_status == "COMPLETED":
+            # RunPod에서 이미 완료 → 결과 수거
+            print(f"[Startup] RunPod 작업 완료됨 → 결과 수거: {job_id}")
+            output = result.get("output", {})
+            if output:
+                try:
+                    handle_job_result(job_id, job_type, output)
+                    completed_on_runpod += 1
+                except Exception as e:
+                    update_job(job_id, status="failed",
+                              message=f"서버 재시작 후 결과 처리 실패: {e}")
+                    failed_cleanup += 1
+            else:
+                update_job(job_id, status="failed",
+                          message="서버 재시작 후 RunPod 결과가 비어있음")
+                failed_cleanup += 1
+
+        elif rp_status in ("FAILED", "TIMED_OUT", "CANCELLED"):
+            # RunPod에서 실패/취소 → 정리
+            raw_error = result.get("error", "알 수 없는 오류")
+            if isinstance(raw_error, dict):
+                error = raw_error.get("error_message") or raw_error.get("message") or str(raw_error)
+            else:
+                error = str(raw_error)
+            update_job(job_id, status="failed",
+                      message=f"서버 재시작 확인: RunPod {rp_status} — {error}")
+            failed_cleanup += 1
+
+        else:
+            # 알 수 없는 상태 → 폴링 스레드 시작하여 추적 계속
+            print(f"[Startup] RunPod 상태 불명({rp_status}) → 폴링 복구: {job_id}")
+            t = threading.Thread(target=poll_runpod_job,
+                                args=(job_id, runpod_job_id, job_type),
+                                daemon=True)
+            t.start()
+            recovered += 1
+
+    print(f"[Startup] 작업 복구 완료: 폴링 재시작={recovered}, 결과 수거={completed_on_runpod}, 실패 정리={failed_cleanup}")
+
+    # conversions 테이블 동기화 — orphan 'processing' 레코드 정리
+    with get_db() as db:
         db.execute("""
             UPDATE conversions SET status='failed'
             WHERE status='processing'
@@ -958,15 +1037,32 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             with _poll_errors_lock:
                 poll_errors = _poll_error_counts.get(job_id, 0) + 1
                 _poll_error_counts[job_id] = poll_errors
-            if poll_errors > 60:  # 60회 연속 오류 = ~10분 장애 허용 (일시적 네트워크 불안정 대응)
+
+            # 점진적 백오프: 5→10→30→60초 (장시간 네트워크 장애에도 CPU 낭비 최소화)
+            if poll_errors <= 12:       # ~1분: 5초 간격
+                backoff = 5
+            elif poll_errors <= 36:     # ~5분: 10초 간격
+                backoff = 10
+            elif poll_errors <= 96:     # ~30분: 30초 간격
+                backoff = 30
+            else:                       # 30분 이후: 60초 간격
+                backoff = 60
+
+            # 작업 유형별 최대 폴링 실패 허용: train=~11시간, preprocess=~5시간, convert=~2시간
+            _MAX_POLL_ERRORS = {"train": 720, "preprocess": 360, "convert": 180}
+            max_errors = _MAX_POLL_ERRORS.get(job_type, 360)
+
+            if poll_errors > max_errors:
                 with _poll_errors_lock:
                     _poll_error_counts.pop(job_id, None)
                 update_job(job_id, status="failed",
-                          message=f"RunPod 상태 확인 반복 실패: {e}")
+                          message=f"네트워크 장애로 RunPod 상태 확인 불가 ({poll_errors}회 실패): {e}")
                 return
+
+            mins = (poll_errors * backoff) // 60
             update_job(job_id, status="running",
-                      message=f"상태 확인 중... (재시도 {poll_errors})")
-            time.sleep(10)
+                      message=f"네트워크 연결 끊김 — 자동 재연결 대기 중 ({poll_errors}회, ~{mins}분)")
+            time.sleep(backoff)
     except Exception as _poll_fatal:
         # 폴링 스레드 예상치 못한 크래시 — 작업을 failed로 마킹하여 영구 running 상태 방지
         print(f"[CRITICAL] poll_runpod_job crashed for {job_id}: {_poll_fatal}")
@@ -1446,7 +1542,7 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 @app.on_event("startup")
 async def startup():
     init_db()
-    cleanup_stale_jobs_on_startup()
+    recover_orphan_jobs_on_startup()
     # 30분마다 오래된 청크 업로드 세션 자동 정리
     def _chunk_cleanup_loop():
         while True:
