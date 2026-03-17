@@ -3278,6 +3278,9 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('chorus')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(236,72,153,0.4);color:#ec4899" title="화음/코러스가 많은 곡에 최적화. 인덱스 최소화로 원곡 화음 구조 보존">
               🎼 화음/코러스 곡
             </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('indie')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="차분한 인디팝/R&B에 최적화. 피치 안정화 + 낮은 인덱스 + 부드러운 공간감">
+              🌙 인디/차분한 곡
+            </button>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4788,6 +4791,14 @@ function applyConvertPreset(preset) {
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false,
       desc: '화음/코러스 곡 — 인덱스 최소(0.05), 원곡 화음 구조 최대 보존'
+    },
+    indie: {
+      // 차분한 인디팝/R&B — 낮은 인덱스, 부드러운 피치, 원곡 밸런스 보존
+      f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 1,
+      clean: false, cleanStr: 70, index: 10,
+      postReverb: 15, useReverb: true, harmonicEnhance: false,
+      highNote: false,
+      desc: '인디/차분한 곡 — 피치 안정화(filter↑), 낮은 인덱스, 부드러운 공간감'
     }
   };
   var p = presets[preset];
