@@ -690,6 +690,56 @@ def upload_to_r2(file_path: Path, key: str) -> str:
 
     return presigned_url
 
+
+def refresh_presigned_url(old_url: str) -> str:
+    """만료된 R2 presigned URL에서 key를 추출하여 새 presigned URL을 생성합니다."""
+    from urllib.parse import urlparse, unquote
+    try:
+        import boto3
+        from botocore.config import Config as BotoConfig
+    except ImportError:
+        raise HTTPException(400, "boto3가 설치되지 않았습니다.")
+
+    config = load_config()
+    endpoint_url = config.get("r2_endpoint_url")
+    access_key = config.get("r2_access_key_id")
+    secret_key = config.get("r2_secret_access_key")
+    bucket = config.get("r2_bucket_name", "voice-studio")
+
+    if not all([endpoint_url, access_key, secret_key]):
+        raise HTTPException(400, "R2 스토리지가 설정되지 않았습니다.")
+
+    # presigned URL에서 R2 key 추출: /{bucket}/{key}?X-Amz-...
+    parsed = urlparse(old_url)
+    path = unquote(parsed.path)  # URL 디코딩
+    # path-style: /bucket/key 또는 /key
+    if path.startswith(f"/{bucket}/"):
+        key = path[len(f"/{bucket}/"):]
+    elif path.startswith("/"):
+        key = path[1:]
+    else:
+        key = path
+
+    s3 = boto3.client("s3",
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=BotoConfig(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+        ),
+        region_name="auto",
+    )
+
+    new_url = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=604800,
+    )
+    print(f"[R2] Refreshed presigned URL for key: {key}")
+    return new_url
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 백그라운드 작업 관리
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2253,9 +2303,21 @@ async def start_conversion(
         content = await audio.read()
         f.write(content)
 
-    # 모델 URL 또는 base64 준비
-    pth_url = model["pth_url"] if model["pth_url"] else None
-    index_url = model["index_url"] if model["index_url"] else None
+    # 모델 URL 준비 — presigned URL은 7일 후 만료되므로 항상 새로 생성
+    pth_url = None
+    index_url = None
+    if model["pth_url"]:
+        try:
+            pth_url = refresh_presigned_url(model["pth_url"])
+        except Exception as e:
+            print(f"[Convert] pth presigned URL 갱신 실패: {e}, 원본 URL 사용")
+            pth_url = model["pth_url"]
+    if model["index_url"]:
+        try:
+            index_url = refresh_presigned_url(model["index_url"])
+        except Exception as e:
+            print(f"[Convert] index presigned URL 갱신 실패: {e}, 원본 URL 사용")
+            index_url = model["index_url"]
 
     # Job + 변환 기록 동시 생성 (원자성: RunPod 제출 전에 모든 DB 레코드 삽입)
     job_id = uuid.uuid4().hex[:12]
