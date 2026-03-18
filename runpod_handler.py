@@ -93,7 +93,10 @@ def cleanup_gpu() -> None:
 
 def decode_b64_file(data_b64: str, dest_path: Path) -> Path:
     """Decode a base64-encoded string and write it to dest_path."""
-    raw = base64.b64decode(data_b64)
+    try:
+        raw = base64.b64decode(data_b64)
+    except (base64.binascii.Error, ValueError) as e:
+        raise ValueError(f"잘못된 base64 데이터입니다: {e}") from e
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     dest_path.write_bytes(raw)
     return dest_path
@@ -456,8 +459,10 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         return result
 
     finally:
-        cleanup_dir(work)
-        cleanup_gpu()
+        try:
+            cleanup_dir(work)
+        finally:
+            cleanup_gpu()
 
 
 def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
@@ -1245,16 +1250,18 @@ def task_train(job_input: dict, job: dict) -> dict:
         return result
 
     finally:
-        cleanup_dir(WORK_DIR / f"train_{job_id}")
-        # logs_dir is now job-specific (includes job_id), so it's safe to remove entirely.
-        # The model/index have already been uploaded/encoded above.
-        if logs_dir and logs_dir.exists():
-            try:
-                shutil.rmtree(str(logs_dir), ignore_errors=True)
-                log.info(f"Cleaned up training logs: {logs_dir.name}")
-            except Exception:
-                pass
-        cleanup_gpu()
+        try:
+            cleanup_dir(WORK_DIR / f"train_{job_id}")
+            # logs_dir is now job-specific (includes job_id), so it's safe to remove entirely.
+            # The model/index have already been uploaded/encoded above.
+            if logs_dir and logs_dir.exists():
+                try:
+                    shutil.rmtree(str(logs_dir), ignore_errors=True)
+                    log.info(f"Cleaned up training logs: {logs_dir.name}")
+                except Exception:
+                    pass
+        finally:
+            cleanup_gpu()
 
 
 def _rvc_preprocess(
@@ -2347,11 +2354,18 @@ def task_convert(job_input: dict, job: dict) -> dict:
     audio_url: str = job_input.get("audio_url", "")
     audio_filename: str = Path(job_input.get("audio_filename", "input.wav")).name  # path traversal 방지
     # 명시적 타입 변환: RunPod job_input에서 문자열로 전달될 수 있음
-    pitch_shift: int = int(job_input.get("pitch_shift", 0))
+    # try-except: 잘못된 값이 들어와도 기본값으로 폴백 (task_train과 동일 패턴)
+    try:
+        pitch_shift: int = int(job_input.get("pitch_shift", 0))
+    except (ValueError, TypeError):
+        pitch_shift = 0
     # index_rate 0.15: v9 — 모델 의존도 대폭 낮춤
     # v8의 0.30에서도 MFCC 거리 50-75 (음색 왜곡 심각)
     # 0.15: 원본 음색 85% + 학습 음색 15% → 원곡에 가까운 자연스러운 음색
-    index_rate: float = float(job_input.get("index_rate", 0.15))
+    try:
+        index_rate: float = float(job_input.get("index_rate", 0.15))
+    except (ValueError, TypeError):
+        index_rate = 0.15
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
     f0_method: str = job_input.get("f0_method", "rmvpe")
@@ -2359,28 +2373,52 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # v10의 1: 스무딩 없음 → 코러스 구간에서 피치점프 다발 (PJ 4-8)
     # 2: 미세한 피치 중앙값 필터 → 코러스 안정화 + 비브라토 보존
     # (솔로 구간에서도 자연스러움 유지되는 최소 스무딩)
-    filter_radius: int = int(job_input.get("filter_radius", 2))
+    try:
+        filter_radius: int = int(job_input.get("filter_radius", 2))
+    except (ValueError, TypeError):
+        filter_radius = 2
     # rms_mix_rate 0.05: v9 — 원곡 다이나믹스 95% 보존
     # v8의 0.12: RVC가 볼륨 엔벨로프를 12% 왜곡 → 불자연스러운 강약
     # 0.05: 사실상 원곡 다이나믹스 그대로 → 가장 자연스러운 볼륨 변화
-    rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.05))
+    try:
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.05))
+    except (ValueError, TypeError):
+        rms_mix_rate = 0.05
     # protect 0.50: 표준 자음/숨소리 보호
     # v5의 0.55: 과보호 → 음절 전환부에서 어색한 끊김 발생 가능
     # 0.50: Applio 권장 기본값, 충분한 보호 + 자연스러운 전환
-    protect: float = float(job_input.get("protect", 0.50))
+    try:
+        protect: float = float(job_input.get("protect", 0.50))
+    except (ValueError, TypeError):
+        protect = 0.50
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
-    hop_length: int = int(job_input.get("hop_length", 64))
+    try:
+        hop_length: int = int(job_input.get("hop_length", 64))
+    except (ValueError, TypeError):
+        hop_length = 64
     clean_audio_raw = job_input.get("clean_audio", False)
     clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
-    clean_strength: float = float(job_input.get("clean_strength", 0.7))
+    try:
+        clean_strength: float = float(job_input.get("clean_strength", 0.7))
+    except (ValueError, TypeError):
+        clean_strength = 0.7
     export_format: str = job_input.get("export_format", "wav").lower().strip()
     # SVC pipeline options — 일관된 in() 패턴으로 boolean 파싱
     separate_vocals_raw = job_input.get("separate_vocals", True)
     separate_vocals: bool = separate_vocals_raw in (True, "true", "True", "1", 1)
-    vocal_volume: float = float(job_input.get("vocal_volume", 1.0))
-    mr_volume: float = float(job_input.get("mr_volume", 1.0))
+    try:
+        vocal_volume: float = float(job_input.get("vocal_volume", 1.0))
+    except (ValueError, TypeError):
+        vocal_volume = 1.0
+    try:
+        mr_volume: float = float(job_input.get("mr_volume", 1.0))
+    except (ValueError, TypeError):
+        mr_volume = 1.0
     # Post-processing for naturalness (applied after RVC conversion)
-    post_reverb: float = float(job_input.get("post_reverb", 0.05))
+    try:
+        post_reverb: float = float(job_input.get("post_reverb", 0.05))
+    except (ValueError, TypeError):
+        post_reverb = 0.05
     harmonic_enhance_raw = job_input.get("harmonic_enhance", False)
     harmonic_enhance: bool = harmonic_enhance_raw in (True, "true", "True", "1", 1)
     # 고음/가성 최적화 모드: 후처리 EQ를 가성 친화적으로 조정
@@ -2745,8 +2783,10 @@ def task_convert(job_input: dict, job: dict) -> dict:
         return result
 
     finally:
-        cleanup_dir(work)
-        cleanup_gpu()
+        try:
+            cleanup_dir(work)
+        finally:
+            cleanup_gpu()
 
 
 def _rvc_infer(

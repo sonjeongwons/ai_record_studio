@@ -357,39 +357,39 @@ def init_db():
                 updated_at TEXT DEFAULT (datetime('now','localtime'))
             );
         """)
-        # 기존 DB 마이그레이션
+        # 기존 DB 마이그레이션 — sqlite3.OperationalError만 캐치 (권한/손상 에러는 전파)
         for col, default in [("preprocessed", "INTEGER DEFAULT 0"),
                              ("file_hash", "TEXT"),
                              ("deleted", "INTEGER DEFAULT 0")]:
             try:
                 db.execute(f"ALTER TABLE training_files ADD COLUMN {col} {default}")
-            except Exception:
+            except sqlite3.OperationalError:
                 pass  # 이미 존재하면 무시
         # voice_models에 R2 URL 컬럼 추가 (기존 DB 마이그레이션)
         for col in ("pth_url", "index_url", "training_files_json"):
             try:
                 db.execute(f"ALTER TABLE voice_models ADD COLUMN {col} TEXT")
-            except Exception:
+            except sqlite3.OperationalError:
                 pass
         # conversions에 job_id 컬럼 추가 (정확한 작업-변환 매핑)
         try:
             db.execute("ALTER TABLE conversions ADD COLUMN job_id TEXT")
-        except Exception:
+        except sqlite3.OperationalError:
             pass
         # jobs에 pause_state_json 컬럼 추가 (일시정지 재개용)
         try:
             db.execute("ALTER TABLE jobs ADD COLUMN pause_state_json TEXT")
-        except Exception:
+        except sqlite3.OperationalError:
             pass
         # jobs에 started_at 컬럼 추가 (경과 시간 계산용)
         try:
             db.execute("ALTER TABLE jobs ADD COLUMN started_at TEXT")
-        except Exception:
+        except sqlite3.OperationalError:
             pass
         # file_hash 인덱스 (중복 체크 성능)
         try:
             db.execute("CREATE INDEX IF NOT EXISTS idx_training_files_hash ON training_files(file_hash)")
-        except Exception:
+        except sqlite3.OperationalError:
             pass
         # 성능 인덱스 추가
         db.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
@@ -2471,7 +2471,7 @@ async def start_conversion(
 
         payload = {
             "task_type": "convert",
-            "audio_filename": audio.filename,
+            "audio_filename": Path(audio.filename).name,  # path traversal 방지
             "pitch_shift": pitch_shift,
             "index_rate": index_rate,
             "f0_method": f0_method,
