@@ -3330,10 +3330,10 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음 많은 노래, 빠른 멜로디\n• 3~4 = 일반 노래 (기본 4, 추천)\n• 5~7 = 발라드 등 느린 곡\n\n💡 음정이 '뚝뚝' 끊기면 높이고, 너무 밋밋하면 낮추세요.\n💡 비브라토 보존하려면 4 이하 권장.">ⓘ</i></span>
-              <span class="slider-value" id="filter-val">1</span>
+              <span class="slider-value" id="filter-val">2</span>
             </div>
-            <input type="range" id="filter-slider" min="0" max="12" value="1" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (5 기본, 3~7 권장, 높으면 삑사리↓ 비브라토↓)</div>
+            <input type="range" id="filter-slider" min="0" max="12" value="2" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (2 기본, 1~5 권장, 높으면 삑사리↓ 비브라토↓)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4791,24 +4791,25 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default v10: 최소 개입 — 볼륨 완전 복원 + 저역 정리
-      f0: 'rmvpe', protect: 50, rms: 5, filter: 1, hop: 1,
+      // Default v11: 자연스러움 최우선 — 워밍EQ, 완화된 프레즌스, 볼륨 복원
+      f0: 'rmvpe', protect: 50, rms: 5, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 15,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false,
-      desc: 'v10 기본 — 볼륨 복원, 저역 정리, 원곡 느낌 최대 보존'
+      desc: 'v11 기본 — 자연스러움 최우선, 워밍EQ + 볼륨 복원'
     },
     falsetto: {
-      // 가성/고음: filter=0 + 고음모드 + 리버브 최소
-      f0: 'rmvpe', protect: 50, rms: 3, filter: 0, hop: 0,
+      // 가성/고음: filter=1 + 고음모드 + 리버브 최소
+      // v10의 filter=0은 min 1로 클램프됨 → 명시적 1로 변경
+      f0: 'rmvpe', protect: 50, rms: 3, filter: 1, hop: 0,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: true,
-      desc: '가성/고음 최적화 — 피치 스무딩 OFF, 비브라토 100% 보존, 저중역 컷'
+      desc: '가성/고음 최적화 — 피치 스무딩 최소, 비브라토 보존, 고음모드 ON'
     },
     natural: {
-      // Natural: 최대 자연스러움 — 모든 이펙트 최소
-      f0: 'rmvpe', protect: 50, rms: 3, filter: 1, hop: 1,
+      // Natural: 최대 자연스러움 — 모든 이펙트 최소, filter 2로 약간 스무딩
+      f0: 'rmvpe', protect: 50, rms: 3, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false,
@@ -4816,27 +4817,27 @@ function applyConvertPreset(preset) {
     },
     studio: {
       // Studio: 깨끗한 원본에 최적화 — 안정적 + 공간감
-      f0: 'rmvpe', protect: 50, rms: 5, filter: 1, hop: 1,
+      f0: 'rmvpe', protect: 50, rms: 5, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 15,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false,
-      desc: '스튜디오 품질 — v10 기본 + 미세한 공간감'
+      desc: '스튜디오 품질 — v11 기본 + 미세한 공간감'
     },
     chorus: {
-      // 화음/코러스가 많은 곡: protect↑, index↓↓, filter 0
-      f0: 'rmvpe', protect: 50, rms: 3, filter: 0, hop: 0,
+      // 화음/코러스가 많은 곡: protect↑, index↓↓, filter 3(피치 안정화)
+      f0: 'rmvpe', protect: 50, rms: 3, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 5,
-      postReverb: 5, useReverb: false, harmonicEnhance: false,
+      postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: false,
-      desc: '화음/코러스 곡 — 인덱스 최소(0.05), 원곡 화음 구조 최대 보존'
+      desc: '화음/코러스 곡 — 인덱스 최소(0.05), 피치 안정화(filter↑3), 화음 보존'
     },
     indie: {
       // 차분한 인디팝/R&B — 낮은 인덱스, 부드러운 피치, 원곡 밸런스 보존
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 1,
+      f0: 'rmvpe', protect: 50, rms: 8, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 10,
-      postReverb: 15, useReverb: true, harmonicEnhance: false,
+      postReverb: 10, useReverb: true, harmonicEnhance: false,
       highNote: false,
-      desc: '인디/차분한 곡 — 피치 안정화(filter↑), 낮은 인덱스, 부드러운 공간감'
+      desc: '인디/차분한 곡 — 피치 안정화, 낮은 인덱스, 부드러운 공간감'
     }
   };
   var p = presets[preset];
@@ -6318,7 +6319,7 @@ async function startConversion() {
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
   form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
   form.append('rms_mix_rate', (getVal('rms-slider', '5') / 100).toFixed(2));
-  form.append('filter_radius', getVal('filter-slider', '1'));
+  form.append('filter_radius', getVal('filter-slider', '2'));
   var hopSteps = [32, 64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '1')] || 64);
   // Post-processing for naturalness
@@ -6729,7 +6730,7 @@ async function startBatchConversion() {
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
       form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
       form.append('rms_mix_rate', (getVal('rms-slider', '5') / 100).toFixed(2));
-      form.append('filter_radius', getVal('filter-slider', '1'));
+      form.append('filter_radius', getVal('filter-slider', '2'));
       var hopSteps2 = [32, 64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '1')] || 64);
       // Post-processing for naturalness

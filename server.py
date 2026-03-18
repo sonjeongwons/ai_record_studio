@@ -2368,7 +2368,7 @@ async def start_conversion(
     clean_strength: float = Form(0.7),
     protect: float = Form(0.50),
     rms_mix_rate: float = Form(0.05),
-    filter_radius: int = Form(1),
+    filter_radius: int = Form(2),
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),
     harmonic_enhance: bool = Form(False),
