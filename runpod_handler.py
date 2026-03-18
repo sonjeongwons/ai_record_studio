@@ -968,9 +968,18 @@ def task_train(job_input: dict, job: dict) -> dict:
     model_name: str = job_input.get("model_name", "my_voice_model")
     audio_files: list[dict] = job_input.get("audio_files", [])
     audio_urls: list[dict] = job_input.get("audio_urls", [])
-    sample_rate: int = int(job_input.get("sample_rate", 40000))  # 40k recommended for SVC
-    epochs: int = int(job_input.get("epochs", 500))
-    batch_size: int = int(job_input.get("batch_size", 0))  # 0 = auto-detect
+    try:
+        sample_rate: int = int(job_input.get("sample_rate", 40000))
+    except (ValueError, TypeError):
+        sample_rate = 40000  # 40k recommended for SVC
+    try:
+        epochs: int = int(job_input.get("epochs", 500))
+    except (ValueError, TypeError):
+        epochs = 500
+    try:
+        batch_size: int = int(job_input.get("batch_size", 0))
+    except (ValueError, TypeError):
+        batch_size = 0  # 0 = auto-detect
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
     save_every_epoch: int = max(1, int(job_input.get("save_every_epoch", 50)))
@@ -2362,21 +2371,21 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     hop_length: int = int(job_input.get("hop_length", 64))
     clean_audio_raw = job_input.get("clean_audio", False)
-    clean_audio: bool = clean_audio_raw in (True, "true", "1", 1)
+    clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
     clean_strength: float = float(job_input.get("clean_strength", 0.7))
     export_format: str = job_input.get("export_format", "wav").lower().strip()
-    # SVC pipeline options
+    # SVC pipeline options — 일관된 in() 패턴으로 boolean 파싱
     separate_vocals_raw = job_input.get("separate_vocals", True)
-    separate_vocals: bool = separate_vocals_raw not in (False, "false", "0", 0)
+    separate_vocals: bool = separate_vocals_raw in (True, "true", "True", "1", 1)
     vocal_volume: float = float(job_input.get("vocal_volume", 1.0))
     mr_volume: float = float(job_input.get("mr_volume", 1.0))
     # Post-processing for naturalness (applied after RVC conversion)
     post_reverb: float = float(job_input.get("post_reverb", 0.05))
     harmonic_enhance_raw = job_input.get("harmonic_enhance", False)
-    harmonic_enhance: bool = harmonic_enhance_raw not in (False, "false", "0", 0)
+    harmonic_enhance: bool = harmonic_enhance_raw in (True, "true", "True", "1", 1)
     # 고음/가성 최적화 모드: 후처리 EQ를 가성 친화적으로 조정
     high_note_mode_raw = job_input.get("high_note_mode", False)
-    high_note_mode: bool = high_note_mode_raw not in (False, "false", "0", 0)
+    high_note_mode: bool = high_note_mode_raw in (True, "true", "True", "1", 1)
 
     # 파라미터 범위 클램프
     pitch_shift = max(-24, min(24, pitch_shift))

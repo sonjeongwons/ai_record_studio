@@ -94,6 +94,21 @@ def _list_preprocessed_files() -> list[Path]:
     return sorted(files)
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 유틸: FormData boolean 파싱 (JS FormData는 bool을 "true"/"false" 문자열로 전송)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _parse_form_bool(value, default: bool = False) -> bool:
+    """FormData에서 전송된 boolean 값을 안전하게 파싱.
+    JS FormData.append(key, true/false)는 문자열 "true"/"false"로 전송됨.
+    Python bool("false") == True 이므로 직접 파싱 필요."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes", "on")
+    return default
+
+
 # RunPod payload 제한: 오디오 데이터 최대 7MB (base64 → ~10MB JSON)
 MAX_RUNPOD_AUDIO_BYTES = 7 * 1024 * 1024
 SPLIT_SEGMENT_SECONDS = 180  # 3분 단위 분할
@@ -2364,16 +2379,16 @@ async def start_conversion(
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
-    clean_audio: bool = Form(False),
+    clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
     protect: float = Form(0.50),
     rms_mix_rate: float = Form(0.05),
     filter_radius: int = Form(2),
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),
-    harmonic_enhance: bool = Form(False),
-    high_note_mode: bool = Form(False),
-    separate_vocals: bool = Form(True),
+    harmonic_enhance: str = Form("false"),
+    high_note_mode: str = Form("false"),
+    separate_vocals: str = Form("true"),
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2402,6 +2417,12 @@ async def start_conversion(
         raise HTTPException(400, f"Clean Strength는 0.0~1.0 사이여야 합니다. (입력: {clean_strength})")
     if not (0.0 <= post_reverb <= 0.5):
         raise HTTPException(400, f"Post Reverb는 0.0~0.5 사이여야 합니다. (입력: {post_reverb})")
+
+    # FormData boolean 파싱 (JS는 "true"/"false" 문자열 전송)
+    clean_audio = _parse_form_bool(clean_audio, False)
+    harmonic_enhance = _parse_form_bool(harmonic_enhance, False)
+    high_note_mode = _parse_form_bool(high_note_mode, False)
+    separate_vocals = _parse_form_bool(separate_vocals, True)
 
     # 모델 조회
     with get_db() as db:
@@ -2534,14 +2555,15 @@ async def start_conversion(
 
         runpod_job_id = runpod_client.submit_job(payload)
 
+        if not runpod_job_id:
+            raise RuntimeError("RunPod 작업 ID를 받지 못했습니다. 잠시 후 다시 시도해주세요.")
+
         # 임시 입력 파일 정리 — RunPod 제출 성공 후에만 삭제 (재개 시 R2 URL 사용)
         try:
             if temp_path.exists():
                 temp_path.unlink()
         except Exception:
             pass
-        if not runpod_job_id:
-            raise RuntimeError("RunPod 작업 ID를 받지 못했습니다. 잠시 후 다시 시도해주세요.")
 
         update_job(job_id, status="running", progress=10,
                   message="GPU 변환 시작", runpod_job_id=runpod_job_id)

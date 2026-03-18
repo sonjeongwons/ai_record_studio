@@ -3248,7 +3248,7 @@ input[type="range"]::-moz-range-track {
       </div>
       <div class="slider-group">
         <div class="slider-header">
-          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0 = 원래 가수 목소리에 가까움 (AI 최소)\n• 0.40~0.55 = 자연스러운 AI 목소리 (추천!)\n• 0.60~0.80 = 강한 AI 적용\n• 1.0 = AI 목소리 100%\n\n⚠️ 높을수록 기계적/인공적으로 들릴 수 있습니다.\n💡 기본값 0.48은 자연스러움과 AI 적용의 최적 밸런스입니다.">ⓘ</i></span>
+          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (기본값 0.15)\n• 0.20~0.40 = 자연스러운 AI 목소리\n• 0.45~0.65 = 강한 AI 적용 (추천 범위)\n• 0.70~1.0 = AI 목소리 최대\n\n⚠️ 높을수록 기계적/인공적으로 들릴 수 있습니다.\n💡 기본값 0.15는 원본 발성을 최대한 보존하면서 AI를 적용합니다.">ⓘ</i></span>
           <span class="slider-value" id="index-val">0.15</span>
         </div>
         <input type="range" id="index-slider" min="0" max="100" value="15" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
@@ -3316,16 +3316,16 @@ input[type="range"]::-moz-range-track {
               <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.50 = 기본값 (자음·가성 최대 보존, 추천!)\n• 0.40~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.35 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.45~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.50에서 조금씩 낮추기">ⓘ</i></span>
               <span class="slider-value" id="protect-val">0.50</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="55" value="50" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <input type="range" id="protect-slider" min="0" max="50" value="50" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
             <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 자음·가성 원본 질감 보존 (0.40~0.50 권장)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0~0.2 = 원본 음량 유지 (추천! 자연스러움)\n• 0.3~0.5 = AI가 적당히 음량 조절\n• 0.5 이상 = 강한 음량 조절 (부자연스러울 수 있음)\n\n💡 처음엔 기본값(0.15). 소리가 작거나 크면 0.2~0.3으로 조절.">ⓘ</i></span>
+              <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0~0.2 = 원본 음량 유지 (추천! 자연스러움)\n• 0.3~0.5 = AI가 적당히 음량 조절\n• 0.5 이상 = 강한 음량 조절 (부자연스러울 수 있음)\n\n💡 처음엔 기본값(0.05). 소리가 작거나 크면 0.1~0.2로 조절.">ⓘ</i></span>
               <span class="slider-value" id="rms-val">0.05</span>
             </div>
             <input type="range" id="rms-slider" min="0" max="100" value="5" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (0.10 기본, 0.05~0.20 권장, 낮을수록 원본 음량 패턴 유지)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (0.05 기본, 0.05~0.20 권장, 낮을수록 원본 음량 패턴 유지)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -3626,9 +3626,11 @@ input[type="range"]::-moz-range-track {
     <div style="margin-top:16px">
       <label class="label">RunPod API Key <i class="tip" data-tip="RunPod 사이트의 '비밀번호'와 같은 인증 키입니다.\n\n📋 발급 방법:\n① runpod.io에 로그인\n② 왼쪽 메뉴 → Settings → API Keys\n③ 'Create API Key' 클릭\n④ 생성된 키를 복사하여 여기에 붙여넣기\n\n💡 키는 'rpa_'로 시작하는 긴 문자열입니다.\n⚠️ 이 키는 비밀번호와 같으므로 다른 사람에게 알려주지 마세요.">ⓘ</i></label>
       <div class="input-with-copy"><input type="text" id="cfg-api-key" placeholder="rpa_xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" aria-label="RunPod API Key" style="font-family:'JetBrains Mono',monospace;font-size:12px"><button class="copy-btn" onclick="copyToClipboard('cfg-api-key')" title="복사" aria-label="API Key 복사"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+    </div>
     <div style="margin-top:12px">
       <label class="label">Serverless Endpoint ID <i class="tip" data-tip="RunPod에서 만든 AI 서버의 '주소'입니다.\n\n📋 확인 방법:\n① runpod.io에 로그인\n② 왼쪽 메뉴 → Serverless\n③ 배포한 엔드포인트 이름을 클릭\n④ 표시되는 ID를 복사하여 여기에 붙여넣기\n\n💡 아직 엔드포인트를 만들지 않았다면, RunPod에서 먼저 AI 서버를 배포해야 합니다. 설정 방법은 관리자에게 문의하세요.">ⓘ</i></label>
       <div class="input-with-copy"><input type="text" id="cfg-endpoint-id" placeholder="xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" aria-label="Serverless Endpoint ID" style="font-family:'JetBrains Mono',monospace;font-size:12px"><button class="copy-btn" onclick="copyToClipboard('cfg-endpoint-id')" title="복사" aria-label="Endpoint ID 복사"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+    </div>
     <div class="flex gap-8 mt-16">
       <button class="btn btn-primary" id="btn-save-settings" data-loading-label="저장 중..." onclick="saveSettings()">설정 저장</button>
       <button class="btn btn-secondary" id="btn-test-connection" data-loading-label="테스트 중..." onclick="testRunPodConnection()">연결 테스트</button>
@@ -3673,7 +3675,7 @@ input[type="range"]::-moz-range-track {
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">① RunPod GPU 과금 구조</div>
       <div class="alert alert-info" style="margin-bottom:12px;line-height:1.7">
         RunPod Serverless는 <b>GPU를 실제로 사용한 초(秒) 단위</b>로만 과금됩니다. 대기 시간·슬립 상태는 과금되지 않습니다.<br>
-        일시정지(Pause) 버튼을 누르면 즉시 GPU 사용이 중단되고 과금이 멈춥니다.
+        작업 취소(Cancel) 시 즉시 GPU 사용이 중단되고 과금이 멈춥니다.
       </div>
       <table class="billing-table">
         <thead>
@@ -4887,6 +4889,10 @@ function applyConvertPreset(preset) {
     highNoteCb.checked = !!p.highNote;
     document.getElementById('high-note-val').textContent = p.highNote ? 'ON' : 'OFF';
   }
+  // 모든 슬라이더 fill 업데이트 (JS로 value 변경 시 CSS fill이 자동 갱신되지 않음)
+  document.querySelectorAll('#convert-panel input[type="range"].has-fill').forEach(function(el) {
+    updateSliderFill(el);
+  });
   estimateConversionCost();
   toast(p.desc, 'info');
 }
