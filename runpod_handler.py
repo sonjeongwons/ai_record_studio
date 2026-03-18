@@ -1252,24 +1252,26 @@ def _rvc_preprocess(
     model_name: str, dataset_path: str, sample_rate: int, logs_dir: Path
 ) -> None:
     """
-    RVC preprocessing: slice, resample and organize audio for training.
+    RVC preprocessing v11: slice, filter, augment, resample for training.
 
-    Self-contained implementation using FFmpeg — avoids Applio's import chain
-    (core.py → launch_tensorboard → tensorboard, etc.) which frequently breaks.
+    Self-contained implementation using FFmpeg — avoids Applio's import chain.
 
     Steps:
       1) Slice each audio file into ~3.5s segments (optimized for singing voice)
-      2) Resample segments to target sample rate → sliced_audios/
-      3) Resample segments to 16kHz → sliced_audios_16k/
+      2) Quality filter: RMS(-45dBFS) + spectral flatness(0.4) + SNR(10dB) check
+      3) Resample segments to target sample rate → sliced_audios/
+      4) Resample segments to 16kHz → sliced_audios_16k/
+      5) High-note oversampling: F0≥350Hz 세그먼트 복제 (고음 비율 2%→10%+)
+      6) Pitch-shift augmentation: 중고음 세그먼트 +2/+4 semitone 복사
+      7) Global normalization: -4 dBFS (증강 데이터 포함)
 
-    Creates the directory structure current Applio expects:
-      - logs/{model_name}/sliced_audios/     → sliced audio at target sample rate
-      - logs/{model_name}/sliced_audios_16k/ → sliced audio at 16kHz (for extraction)
-
-    Also creates config.json from rvc/configs/{sample_rate}.json template.
+    v11 변경:
+      - 스펙트럴 품질 필터 추가 (노이즈 세그먼트 자동 제거)
+      - 고음 오버샘플링 (F0 분석 기반, 고음 학습 데이터 비율 증가)
+      - 피치 시프트 증강 (중고음 → +2/+4 semitone → 가상 고음역 데이터 생성)
+      - 정규화 타겟 -3→-4 dBFS (증강 데이터 헤드룸 확보)
     """
     SLICE_DURATION = 3.5  # seconds — 긴 슬라이스로 가창 비브라토, 한국어 음절 전환, 호흡 패턴 보존
-                          # (Applio 기본 1.5s는 짧은 음성용 — SVC에서는 3-4s가 최적)
 
     gt_dir = ensure_dir(logs_dir / "sliced_audios")
     sr16k_dir = ensure_dir(logs_dir / "sliced_audios_16k")
@@ -1284,7 +1286,10 @@ def _rvc_preprocess(
     if not audio_files:
         raise RuntimeError(f"전처리할 오디오 파일이 없습니다: {dataset_path}")
 
+    import soundfile as _sf
+
     idx = 0
+    quality_skipped = 0
     for audio_file in audio_files:
         try:
             duration = get_audio_duration(audio_file)
@@ -1293,10 +1298,8 @@ def _rvc_preprocess(
                 continue
 
             if duration <= SLICE_DURATION * 1.5:
-                # Short file — use as single segment (no slicing needed)
                 slice_paths = [audio_file]
             else:
-                # Slice into ~1.5s segments using FFmpeg segment muxer
                 slice_prefix = tmp_slices / f"s{idx:04d}"
                 slice_pattern = f"{slice_prefix}_%05d.wav"
                 run_ffmpeg([
@@ -1316,21 +1319,10 @@ def _rvc_preprocess(
             for sp in slice_paths:
                 seg_dur = get_audio_duration(sp)
                 if seg_dur < 0.3:
-                    continue  # skip very short tail segments
+                    continue
 
-                # CRITICAL: Prefix with "0_" so Applio's generate_filelist()
-                # assigns speaker_id=0 to ALL segments (single-speaker training).
-                # Applio extracts sid via: name.split("_")[0]
-                # Without prefix, "0000001" → sid=1 → multiple speaker IDs
-                # → CUDA assert when segment count > spk_embed_dim (109)
                 padded = f"0_{idx:07d}"
 
-                # Save at target sample rate — audio quality chain:
-                # 1. highpass@50Hz: remove ultra-low rumble/DC offset
-                # 2. soxr resample with precision=28: highest quality resampling
-                # NOTE: loudnorm 제거 — 1.5초 슬라이스에 loudnorm(LRA=7) 적용 시
-                #   가창 다이나믹스 파괴, 숨소리 과증폭, pumping 아티팩트 발생.
-                #   대신 numpy 피크 정규화(-1 dBFS)로 원곡 다이나믹스 보존.
                 gt_path = gt_dir / f"{padded}.wav"
                 run_ffmpeg([
                     "-i", str(sp),
@@ -1343,19 +1335,46 @@ def _rvc_preprocess(
                     str(gt_path),
                 ])
 
-                # 조용한 세그먼트 필터링만 수행 — per-slice 정규화는 하지 않음
-                # (글로벌 정규화는 루프 종료 후 일괄 적용 → 슬라이스 간 상대적 다이나믹스 보존)
-                import soundfile as _sf
                 _audio, _sr = _sf.read(str(gt_path))
+
+                # ── 품질 필터 1: 조용한 세그먼트 ──
                 _rms_db = 20 * np.log10(np.sqrt(np.mean(_audio ** 2)) + 1e-10)
                 if _rms_db < -45:
-                    # v8: -50→-45 — 조용한 잡음 세그먼트 더 적극적으로 제외
-                    # 가성/여린 노래는 -35~-40dBFS이므로 -45dBFS 이하는 실질적 무음
                     gt_path.unlink(missing_ok=True)
                     log.info(f"Skipped quiet segment ({_rms_db:.1f}dB): {padded}")
                     continue
 
-                # Save at 16kHz for F0 & feature extraction
+                # ── 품질 필터 2: 스펙트럴 평탄도 (v11 신규) ──
+                # 평탄도 > 0.4 → 노이즈에 가까운 세그먼트 (정상 음성은 0.01-0.2)
+                _S = np.abs(np.fft.rfft(_audio))
+                _S_power = _S ** 2 + 1e-20
+                _geo = np.exp(np.mean(np.log(_S_power)))
+                _arith = np.mean(_S_power)
+                _flatness = _geo / (_arith + 1e-20)
+                if _flatness > 0.4:
+                    gt_path.unlink(missing_ok=True)
+                    quality_skipped += 1
+                    log.info(f"Skipped noisy segment (flatness={_flatness:.3f}): {padded}")
+                    continue
+
+                # ── 품질 필터 3: SNR 추정 (v11 신규) ──
+                # 20ms 프레임 기반 SNR — 최하위 10% 프레임을 노이즈 기준으로 추정
+                _frame_sz = max(1, int(_sr * 0.02))
+                _n_fr = max(1, len(_audio) // _frame_sz)
+                _fr_rms = np.array([
+                    np.sqrt(np.mean(_audio[i * _frame_sz:(i + 1) * _frame_sz] ** 2))
+                    for i in range(_n_fr)
+                ])
+                _noise_rms = float(np.mean(np.sort(_fr_rms)[:max(1, _n_fr // 10)]))
+                _sig_rms = float(np.sqrt(np.mean(_audio ** 2)))
+                _snr = 20 * np.log10(max(_sig_rms, 1e-10) / max(_noise_rms, 1e-10))
+                if _snr < 10:
+                    gt_path.unlink(missing_ok=True)
+                    quality_skipped += 1
+                    log.info(f"Skipped low-SNR segment (SNR={_snr:.1f}dB): {padded}")
+                    continue
+
+                # 16kHz 버전
                 sr16k_path = sr16k_dir / f"{padded}.wav"
                 run_ffmpeg([
                     "-i", str(sp),
@@ -1374,62 +1393,201 @@ def _rvc_preprocess(
             log.warning(f"Failed to preprocess {audio_file.name}: {e}")
             continue
 
-    # Cleanup temp slices
     cleanup_dir(tmp_slices)
 
     if idx == 0:
         raise RuntimeError("전처리에 성공한 오디오 파일이 없습니다")
 
+    if quality_skipped > 0:
+        log.info(f"Quality filter: {quality_skipped} noisy/low-SNR segments skipped")
+
+    original_count = idx
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # v11: 고음 오버샘플링 — F0 분석 기반으로 고음 세그먼트 복제
+    # 학습 데이터의 고음(C5+) 비율이 2.3%로 극도로 부족 → 오버샘플링으로 10%+ 확보
+    # ══════════════════════════════════════════════════════════════════════════
+    _gt_originals = sorted(gt_dir.glob("*.wav"))
+    _oversampled = 0
+    _os_idx = idx
+
+    try:
+        import librosa as _lr
+
+        log.info(f"Analyzing pitch of {len(_gt_originals)} segments for oversampling...")
+        for _gf in _gt_originals:
+            try:
+                _a, _sr_a = _sf.read(str(_gf))
+                _f0, _, _ = _lr.pyin(
+                    _a.astype(np.float32), fmin=80, fmax=1200,
+                    sr=_sr_a, frame_length=2048,
+                )
+                _f0_v = _f0[~np.isnan(_f0)]
+                if len(_f0_v) < 3:
+                    continue
+                _f0_med = float(np.median(_f0_v))
+
+                # 복제 횟수 결정: 고음일수록 더 많이 복제
+                if _f0_med >= 440:      # A4+ → 3배 복제 (최우선)
+                    copies = 3
+                elif _f0_med >= 350:    # F4+ → 2배 복제
+                    copies = 2
+                elif _f0_med >= 300:    # D4+ → 1배 복제
+                    copies = 1
+                else:
+                    copies = 0
+
+                for _ in range(copies):
+                    _pad = f"0_{_os_idx:07d}"
+                    _dst_gt = gt_dir / f"{_pad}.wav"
+                    _dst_16k = sr16k_dir / f"{_pad}.wav"
+                    shutil.copy2(str(_gf), str(_dst_gt))
+                    _src_16k = sr16k_dir / _gf.name
+                    if _src_16k.exists():
+                        shutil.copy2(str(_src_16k), str(_dst_16k))
+                    _os_idx += 1
+                    _oversampled += 1
+            except Exception:
+                continue
+
+        if _oversampled > 0:
+            log.info(f"High-note oversampling: +{_oversampled} copies added "
+                     f"({original_count}→{_os_idx} segments)")
+    except ImportError:
+        log.warning("librosa not available, skipping high-note oversampling")
+    except Exception as _ose:
+        log.warning(f"Oversampling failed: {_ose}")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # v11: 피치 시프트 데이터 증강 — 중고음 세그먼트를 +2/+4 semitone 복사
+    # 중음(C4) 세그먼트를 +2/+4 시프트 → A4/C5 영역의 가상 고음 데이터 생성
+    # asetrate+aresample: FFmpeg 내장, 속도 변경 포함이나 학습에는 무방
+    # ══════════════════════════════════════════════════════════════════════════
+    _gt_for_aug = sorted(gt_dir.glob("*.wav"))
+    _augmented = 0
+    _aug_idx = _os_idx
+
+    try:
+        import librosa as _lr2
+
+        log.info(f"Pitch-shift augmentation: analyzing {len(_gt_for_aug)} segments...")
+        for _gf_aug in _gt_for_aug:
+            try:
+                _a_aug, _sr_aug = _sf.read(str(_gf_aug))
+                _f0_aug, _, _ = _lr2.pyin(
+                    _a_aug.astype(np.float32), fmin=80, fmax=1200,
+                    sr=_sr_aug, frame_length=2048,
+                )
+                _f0_aug_v = _f0_aug[~np.isnan(_f0_aug)]
+                if len(_f0_aug_v) < 3:
+                    continue
+                _f0_aug_med = float(np.median(_f0_aug_v))
+
+                # 피치 시프트 전략: 중고음만 위로 시프트
+                shifts = []
+                if _f0_aug_med >= 350:     # F4+ → +2 semitone (A4 영역으로)
+                    shifts = [2]
+                elif _f0_aug_med >= 280:   # C#4+ → +2, +4 semitone (F4~A4 영역으로)
+                    shifts = [2, 4]
+                elif _f0_aug_med >= 220:   # A3+ → +4 semitone만 (C4~E4 영역으로)
+                    shifts = [4]
+                # 220Hz 미만 (저음/중저음) → 시프트 안함
+
+                for _shift in shifts:
+                    _ratio = 2.0 ** (_shift / 12.0)
+                    _pad_a = f"0_{_aug_idx:07d}"
+                    _aug_gt = gt_dir / f"{_pad_a}.wav"
+                    _aug_16k = sr16k_dir / f"{_pad_a}.wav"
+                    try:
+                        run_ffmpeg([
+                            "-i", str(_gf_aug),
+                            "-af", (
+                                f"asetrate={sample_rate}*{_ratio:.6f},"
+                                f"aresample=resampler=soxr:precision=28:osr={sample_rate}"
+                            ),
+                            "-ac", "1", "-acodec", "pcm_s16le",
+                            str(_aug_gt),
+                        ])
+                        _src_16k_a = sr16k_dir / _gf_aug.name
+                        if _src_16k_a.exists():
+                            run_ffmpeg([
+                                "-i", str(_src_16k_a),
+                                "-af", (
+                                    f"asetrate=16000*{_ratio:.6f},"
+                                    f"aresample=resampler=soxr:precision=28:osr=16000"
+                                ),
+                                "-ac", "1", "-acodec", "pcm_s16le",
+                                str(_aug_16k),
+                            ])
+                        _aug_idx += 1
+                        _augmented += 1
+                    except Exception:
+                        # FFmpeg 실패 시 건너뜀 (이미 생성된 파일 정리)
+                        _aug_gt.unlink(missing_ok=True)
+                        _aug_16k.unlink(missing_ok=True)
+                        continue
+            except Exception:
+                continue
+
+        if _augmented > 0:
+            log.info(f"Pitch-shift augmentation: +{_augmented} copies added "
+                     f"(total: {_aug_idx} segments)")
+    except ImportError:
+        log.warning("librosa not available, skipping pitch-shift augmentation")
+    except Exception as _ase:
+        log.warning(f"Pitch-shift augmentation failed: {_ase}")
+
+    total_segments = len(list(gt_dir.glob("*.wav")))
+    log.info(f"Pre-normalization total: {total_segments} segments "
+             f"(original={original_count}, oversampled=+{_oversampled}, augmented=+{_augmented})")
+
     # ── 글로벌 정규화 ──────────────────────────────────────────────────────────
-    # per-slice 정규화(각 슬라이스를 독립적으로 -1dBFS)는 슬라이스 간 상대 다이나믹스를 파괴함:
-    #   • 조용한 숨소리 → -1dBFS로 과증폭 → 모델이 비정상적 숨소리 레벨 학습
-    #   • 크고 작은 슬라이스가 모두 같은 레벨 → 다이나믹스 없는 AI스러운 출력
-    # 글로벌 정규화: 전체 학습셋의 최대 피크 기준으로 모든 슬라이스에 동일 계수 적용
-    #   → 슬라이스 간 상대적 볼륨 관계 보존 → 자연스러운 다이나믹스 학습
-    import soundfile as _sf_g
+    # 전체 학습셋(원본 + 오버샘플 + 증강)의 최대 피크 기준으로 동일 계수 적용
+    # → 슬라이스 간 상대적 볼륨 관계 보존 → 자연스러운 다이나믹스 학습
+    # v11: -3→-4 dBFS (피치 시프트 증강 데이터의 피크 헤드룸 확보)
     _gt_files = sorted(gt_dir.glob("*.wav"))
     if _gt_files:
         _global_peak = 0.0
         for _gf in _gt_files:
             try:
-                _a, _ = _sf_g.read(str(_gf))
+                _a, _ = _sf.read(str(_gf))
                 _p = float(np.max(np.abs(_a)))
                 if _p > _global_peak:
                     _global_peak = _p
             except Exception:
                 continue
         if _global_peak > 0:
-            _TARGET = 10.0 ** (-3 / 20)  # -3 dBFS = 0.708 (v10: -6→-3, 볼륨 부족 해소, 학습 시 충분한 레벨)
+            _TARGET = 10.0 ** (-4 / 20)  # -4 dBFS = 0.631 (v11: -3→-4, 증강 헤드룸)
             _norm_factor = _TARGET / _global_peak
             log.info(
                 f"Global normalization: peak={_global_peak:.4f}, "
-                f"factor={_norm_factor:.4f} ({len(_gt_files)} slices)"
+                f"factor={_norm_factor:.4f}, target=-4dBFS ({len(_gt_files)} slices)"
             )
-            # GT 슬라이스 정규화
             for _gf in _gt_files:
                 try:
-                    _a, _sr_g = _sf_g.read(str(_gf))
-                    _sf_g.write(str(_gf), _a * _norm_factor, samplerate=_sr_g, subtype="PCM_16")
+                    _a, _sr_g = _sf.read(str(_gf))
+                    _sf.write(str(_gf), _a * _norm_factor, samplerate=_sr_g, subtype="PCM_16")
                 except Exception as _ne:
                     log.warning(f"Normalization failed for {_gf.name}: {_ne}")
-            # 16kHz 버전도 동일 팩터 적용 (F0 추출기 레벨 민감도 대응)
             for _gf16 in sorted(sr16k_dir.glob("*.wav")):
                 try:
-                    _a16, _sr16_g = _sf_g.read(str(_gf16))
+                    _a16, _sr16_g = _sf.read(str(_gf16))
                     if np.any(np.isnan(_a16)) or np.any(np.isinf(_a16)):
                         log.warning(f"Corrupted 16k file {_gf16.name}, deleting (+ matching gt)")
                         _gf16.unlink(missing_ok=True)
-                        # 대응하는 gt 파일도 삭제 (16k/gt 쌍 불일치 방지)
                         _matching_gt = gt_dir / _gf16.name
                         if _matching_gt.exists():
                             _matching_gt.unlink(missing_ok=True)
                         continue
-                    _sf_g.write(str(_gf16), _a16 * _norm_factor, samplerate=_sr16_g, subtype="PCM_16")
+                    _sf.write(str(_gf16), _a16 * _norm_factor, samplerate=_sr16_g, subtype="PCM_16")
                 except Exception as _ne16:
                     log.warning(f"Normalization failed for 16k {_gf16.name}: {_ne16}")
     # ──────────────────────────────────────────────────────────────────────────
 
-    log.info(f"RVC preprocess completed: {idx} sliced segments → {gt_dir} + {sr16k_dir}")
+    final_count = len(list(gt_dir.glob("*.wav")))
+    log.info(f"RVC preprocess v11 completed: {final_count} total segments "
+             f"(orig={original_count}, oversample=+{_oversampled}, augment=+{_augmented}) "
+             f"→ {gt_dir} + {sr16k_dir}")
 
     # Create config.json from Applio's sample-rate template
     config_src = APPLIO_ROOT / "rvc" / "configs" / f"{sample_rate}.json"
