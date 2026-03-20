@@ -1444,11 +1444,11 @@ def _rvc_preprocess(
                 _f0_med = float(np.median(_f0_v))
 
                 # 복제 횟수 결정: 고음일수록 더 많이 복제
-                if _f0_med >= 440:      # A4+ → 3배 복제 (최우선)
-                    copies = 3
-                elif _f0_med >= 350:    # F4+ → 2배 복제
+                # v12: 복제 횟수 절반으로 축소 (v11: 3/2/1 → v12: 2/1/0)
+                # 과도한 오버샘플링은 고음 세그먼트 과적합 유발 → 기계적 고음 재현
+                if _f0_med >= 440:      # A4+ → 2배 복제
                     copies = 2
-                elif _f0_med >= 300:    # D4+ → 1배 복제
+                elif _f0_med >= 350:    # F4+ → 1배 복제
                     copies = 1
                 else:
                     copies = 0
@@ -1500,14 +1500,13 @@ def _rvc_preprocess(
                 _f0_aug_med = float(np.median(_f0_aug_v))
 
                 # 피치 시프트 전략: 중고음만 위로 시프트
+                # v12: +4 semitone 제거 — asetrate는 템포/포먼트도 변형하므로
+                # 큰 시프트(+4)는 비현실적 학습 데이터 생성 → 기계적 고음의 원인
+                # +2 semitone만 유지: 포먼트 왜곡 최소 (~12% 속도 변화)
                 shifts = []
-                if _f0_aug_med >= 350:     # F4+ → +2 semitone (A4 영역으로)
+                if _f0_aug_med >= 300:     # D4+ → +2 semitone만
                     shifts = [2]
-                elif _f0_aug_med >= 280:   # C#4+ → +2, +4 semitone (F4~A4 영역으로)
-                    shifts = [2, 4]
-                elif _f0_aug_med >= 220:   # A3+ → +4 semitone만 (C4~E4 영역으로)
-                    shifts = [4]
-                # 220Hz 미만 (저음/중저음) → 시프트 안함
+                # 300Hz 미만 → 시프트 안함 (저/중음은 충분한 데이터 있음)
 
                 for _shift in shifts:
                     _ratio = 2.0 ** (_shift / 12.0)
@@ -2169,33 +2168,29 @@ def _post_process_vocal(
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
 ) -> None:
-    """Post-process converted vocal v11 — 자연스러움 최우선 + 볼륨 완전 복원.
+    """Post-process converted vocal v12 — 최소 개입 원칙.
 
-    ── v11 개편 근거 (v28 모델 + 기다릴게8/comethru2 분석) ──
-    v10에서 잔존한 문제:
-      1. 전 구간 -5~-7dB 볼륨 부족 (volume=1.45 = +3.2dB, 여전히 부족)
-      2. lowshelf 100Hz -2dB가 보컬 바디감(250-500Hz) 연쇄 손실 유발
-      3. 3kHz +1.5dB, 4.5kHz +1.0dB 과부스트 → AI 느낌의 날카로움
-      4. 디에서 단일 밴드(6.5kHz)로 RVC 치찰음 아티팩트 미흡
-      5. 코러스/화음 구간에서 피치점프 다발 (PJ 4-8/세그먼트)
+    ── v12 전면 개편 (v29 모델 + 기다릴게9/comethru3 실측 분석) ──
+    v11 핵심 문제 (기계음/마찰음/펌핑의 직접 원인):
+      1. volume=1.75(+4.9dB) + limiter=0.95 = 상시 게인 리덕션 → 펌핑/기계음
+      2. 5밴드 EQ 부스트(400,3k,4.5k,10k) + 2밴드 디에서 = 7개 위상변형 → 부자연스러움
+      3. acompressor threshold=0.3(-10.5dBFS) → 거의 모든 구간 압축 → 다이나믹스 파괴
+      4. 후처리 limiter + 믹싱 limiter = 이중 리미팅 → 추가 펌핑
+      5. 디에서 width=0.8(광대역) → 자연 치찰음/자음 포먼트(4-6kHz)까지 손실
 
-    v11 핵심 변경:
-      - lowshelf 100Hz -2dB 제거 → 보컬 바디감 복원
-      - 워밍 EQ 추가: 400Hz +1.0dB (AI 특유의 얇은 소리 보상)
-      - 프레즌스 완화: 3kHz +1.5→+0.8, 4.5kHz +1.0→+0.5 (날카로움 제거)
-      - 디에서 이중 밴드: 5.5kHz -2.0 + 7.5kHz -1.5 (RVC 아티팩트 포괄)
-      - 볼륨: 1.45→1.75 (~+4.9dB, 실효 ~6dB 보상)
-      - 부드러운 압축 추가: ratio 1.5:1 (다이나믹스 살짝 안정화)
-      - 고음모드 완화: 250Hz -1.5→-1.0 (과도한 바디 손실 방지)
+    v12 핵심 원칙: "아티팩트만 제거, 나머지 터치하지 않음"
+      - EQ 부스트 전부 제거 → RVC 출력의 자연스러운 음색 그대로 보존
+      - 압축 제거 → 원곡 다이나믹스(강약/비브라토) 완전 유지
+      - 볼륨 보상 제거 → 믹싱 단계에서 자동 RMS 레벨 매칭으로 대체
+      - 리미터 → 안전망 수준(limit=0.98, 거의 작동 안함)
+      - 디에서 → 좁은 밴드(width=0.4)로 HiFi-GAN 아티팩트만 정밀 타겟
 
-    ── 처리 순서 ──
-    1. adeclick — 클릭/팝 제거
+    ── 처리 순서 (4단계만) ──
+    1. adeclick — 클릭/팝 제거 (비파괴)
     2. highpass — 초저역 럼블 제거
-    3. 디에서 — 치찰음/마찰음 완화 (이중 밴드)
-    4. EQ — 워밍 + 프레즌스/에어 (최소한)
-    5. 부드러운 압축 — 다이나믹스 안정화
-    6. 볼륨 보상 + 리미터
-    7. (리버브) — 공간감 (선택)
+    3. 디에서 — HiFi-GAN 고역 아티팩트만 정밀 제거
+    4. 안전 리미터 — 클리핑 방지만 (일반적으로 작동하지 않음)
+    5. (리버브) — 공간감 (선택)
     """
     filters = []
 
@@ -2205,63 +2200,39 @@ def _post_process_vocal(
     )
 
     # ━━━ 2. 초저역 제거 ━━━
-    # 40Hz 이하 럼블만 제거 (보컬에 불필요한 초저역)
-    # v10의 lowshelf 100Hz -2dB 제거 — 보컬 바디감 손실의 원인이었음
-    filters.append("highpass=f=40:poles=2")
+    filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 3. 디에서 — 이중 밴드 (v11 신규) ━━━
-    # RVC HiFi-GAN 보코더의 치찰음/마찰음 아티팩트는 5-8kHz에 걸침
-    # 단일 밴드(v10: 6.5kHz -1.5)로는 커버 부족
-    # 5.5kHz: 치찰음(ㅅ,ㅆ,ㅈ,ㅊ) 중심 주파수 타겟
-    filters.append("equalizer=f=5500:width_type=o:width=0.8:g=-2.0")
-    # 7.5kHz: RVC 보코더 고역 아티팩트/마찰음 타겟
-    filters.append("equalizer=f=7500:width_type=o:width=0.7:g=-1.5")
+    # ━━━ 3. 디에서 — HiFi-GAN 아티팩트만 정밀 타겟 ━━━
+    # RVC HiFi-GAN 보코더는 7-8kHz 대역에서 금속성 고역 아티팩트 생성
+    # 좁은 밴드(width=0.4 옥타브)로 아티팩트만 제거, 자연 치찰음 보존
+    # v11의 5.5kHz(w=0.8) + 7.5kHz(w=0.7) = 광대역 → 자음 포먼트 파괴했음
+    filters.append("equalizer=f=7500:width_type=o:width=0.4:g=-2.5")
 
-    # ━━━ 4. EQ — 자연스러움 최우선 (v11) ━━━
-    # [워밍] 400Hz +1.0dB: AI 특유의 얇고 차가운 소리 보상, 보컬 바디감 복원
-    filters.append("equalizer=f=400:width_type=o:width=0.8:g=1.0")
-    # [프레즌스] 3kHz +0.8dB: 발음 명확도 (v10 +1.5에서 완화 — 날카로움 제거)
-    filters.append("equalizer=f=3000:width_type=o:width=1.0:g=0.8")
-    # [명확도] 4.5kHz +0.5dB: 자음 명확도 (v10 +1.0에서 완화)
-    filters.append("equalizer=f=4500:width_type=o:width=0.8:g=0.5")
-    # [공기감] 10kHz +0.5dB: 자연스러운 에어 (v10 9kHz +0.8에서 완화)
-    filters.append("highshelf=f=10000:width_type=o:width=1.0:g=0.5")
-
-    # ━━━ 고음/가성 모드 (v11: 완화) ━━━
+    # ━━━ 4. 고음/가성 모드 (경미한 저역 마스킹 제거) ━━━
     if high_note_mode:
-        # v10의 250Hz -1.5는 과도 → -1.0으로 완화 (바디감 보존)
-        filters.append("equalizer=f=250:width_type=o:width=0.8:g=-1.0")
+        filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
 
-    # ━━━ 5. 부드러운 압축 (v11 신규) ━━━
-    # ratio 1.5:1, attack 30ms, release 250ms — 살짝만 안정화
-    # 코러스/화음 구간의 갑작스러운 볼륨 변동을 매끄럽게 함
-    filters.append(
-        "acompressor=threshold=0.3:ratio=1.5:attack=30:release=250:"
-        "makeup=1.05:knee=10"
-    )
+    # ━━━ v12: EQ 부스트 없음, 압축 없음, 볼륨 부스트 없음 ━━━
+    # RVC 출력의 자연스러운 음색/다이나믹스를 있는 그대로 보존
+    # 볼륨 밸런스는 _mix_audio의 자동 RMS 레벨 매칭이 처리
 
-    # ━━━ 6. 볼륨 보상 + 리미터 ━━━
-    # v11 분석: 전 구간 -5~-7dB 볼륨 부족
-    # volume=1.75 ≈ +4.9dB 부스트 (리미터+압축과 함께 ~6dB 실효 보상)
-    filters.append("volume=1.75")
-    # 리미터: 투명 리미팅 — 트랜지언트 보존 + 펌핑 방지
-    filters.append(
-        "alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1"
-    )
+    # ━━━ 5. 안전 리미터 — 클리핑 방지만 ━━━
+    # limit=0.98: RVC 출력이 거의 0dBFS에 도달하지 않으므로 보통 비활성
+    # level=disabled: 자동 볼륨 조정 끔 → 순수 안전망
+    filters.append("alimiter=limit=0.98:attack=5:release=100:level=disabled")
 
-    # ━━━ 7. 리버브 (선택적) ━━━
+    # ━━━ 6. 리버브 (선택적) ━━━
     reverb_amount = max(0.0, min(0.5, float(reverb_amount)))
     if reverb_amount > 0.005:
-        # 8탭 초기 반사음 → 자연스러운 공간감 (에코가 아닌 실제 룸 시뮬레이션)
-        # 소수 딜레이 값: 7~83ms = 작은 룸~중간 룸 반사 시뮬레이션
-        c1 = reverb_amount * 0.75
-        c2 = reverb_amount * 0.60
-        c3 = reverb_amount * 0.45
-        c4 = reverb_amount * 0.33
-        c5 = reverb_amount * 0.24
-        c6 = reverb_amount * 0.16
-        c7 = reverb_amount * 0.10
-        c8 = reverb_amount * 0.05
+        # 8탭 초기 반사음 — 감쇠를 v11보다 빠르게 하여 울림 줄임
+        c1 = reverb_amount * 0.60
+        c2 = reverb_amount * 0.45
+        c3 = reverb_amount * 0.32
+        c4 = reverb_amount * 0.22
+        c5 = reverb_amount * 0.14
+        c6 = reverb_amount * 0.08
+        c7 = reverb_amount * 0.04
+        c8 = reverb_amount * 0.02
         filters.append(
             f"aecho=0.85:0.88:"
             f"7|13|23|31|41|53|67|83:"
@@ -2277,9 +2248,9 @@ def _post_process_vocal(
         str(output_path),
     ])
     log.info(
-        f"Vocal post-processed v11 → {output_path.name} "
-        f"(reverb={reverb_amount:.2f}, harmonic={harmonic_enhance}, "
-        f"high_note={high_note_mode}, filters={len(filters)})"
+        f"Vocal post-processed v12 → {output_path.name} "
+        f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
+        f"filters={len(filters)})"
     )
 
 
@@ -2290,36 +2261,71 @@ def _mix_audio(
     vocal_volume: float = 1.0,
     mr_volume: float = 1.0,
 ) -> None:
-    """Mix converted vocals with original accompaniment (MR) v11.
+    """Mix converted vocals with original accompaniment (MR) v12.
 
-    ── v11 믹싱 — 자연스러운 밸런스 + 투명 리미팅 ──
-    v10 분석 (기다릴게8, comethru2):
-      - MR *0.82가 과도 → 반주 공허감 유발
-      - 800Hz -1.5dB가 LoMid 250-500Hz까지 연쇄 손실 (-10%)
-      - 2500Hz -1.5dB가 인디/어쿠스틱 곡에서 반주 활기 제거
+    ── v12 믹싱 — 자동 RMS 레벨 매칭 + 단일 리미터 ──
+    v11 핵심 문제:
+      - 후처리 volume=1.75 + limiter + 믹싱 limiter = 이중 리미팅 → 펌핑/기계음
+      - 고정 volume 승수 → 곡마다 다른 레벨에 대응 불가 → 과/부족 일관 발생
 
-    v11 변경:
-      - MR 볼륨: *0.82 → *0.88 (반주 볼륨 복원)
-      - MR 800Hz: -1.5 → -1.0dB (보컬 공간 확보하되 저중역 보존)
-      - MR 2500Hz: -1.5 → -1.0dB (반주 프레즌스 보존)
-      - MR 저역: 80Hz -2.0 → -1.5dB (서브베이스 과잉만 교정)
+    v12 변경:
+      - 후처리에서 볼륨 보상 완전 제거 → 이중 리미팅 해소
+      - 자동 RMS 레벨 매칭: 보컬과 MR의 RMS 측정 → 보컬이 MR보다 +3.5dB 되도록 자동 조정
+      - 곡별 자동 밸런스: 각 곡의 실제 레벨에 맞춰 최적 밸런스
+      - MR 볼륨: *0.88 → *0.90 (반주 약간 더 보존)
+      - MR EQ: 보컬 공간 확보 유지하되 최소한으로
+      - 단일 리미터: 최종 출력에만 적용 (투명 리미팅)
     """
+    import soundfile as _sf_mix
+
+    # ── 자동 RMS 레벨 매칭 ──
+    # 보컬과 MR의 RMS를 실측하여 적절한 밸런스 자동 계산
+    # 타겟: 보컬 RMS = MR RMS × 1.5 (~+3.5dB, 팝/K-pop 보컬 프론트)
+    try:
+        _v_data, _v_sr = _sf_mix.read(str(vocal_path))
+        _m_data, _m_sr = _sf_mix.read(str(accomp_path))
+        if _v_data.ndim > 1:
+            _v_data = _v_data.mean(axis=1)
+        if _m_data.ndim > 1:
+            _m_data = _m_data.mean(axis=1)
+
+        _v_rms = float(np.sqrt(np.mean(_v_data ** 2)))
+        _m_rms = float(np.sqrt(np.mean(_m_data ** 2)))
+
+        if _v_rms > 1e-6 and _m_rms > 1e-6:
+            _target_ratio = 1.5  # 보컬이 MR보다 +3.5dB 크게
+            _auto_gain = (_m_rms * _target_ratio) / _v_rms
+            _auto_gain = max(0.5, min(6.0, _auto_gain))  # 안전 클램프
+            log.info(
+                f"Auto-balance: vocal_rms={20*np.log10(max(_v_rms,1e-10)):.1f}dBFS, "
+                f"mr_rms={20*np.log10(max(_m_rms,1e-10)):.1f}dBFS, "
+                f"auto_gain={_auto_gain:.2f} ({20*np.log10(_auto_gain):.1f}dB)"
+            )
+        else:
+            _auto_gain = 1.5
+            log.warning("RMS 측정 불가, 기본 auto_gain=1.5 사용")
+    except Exception as _bal_err:
+        _auto_gain = 1.5
+        log.warning(f"Auto-balance 실패: {_bal_err}, 기본 gain=1.5 사용")
+
+    _effective_vocal = vocal_volume * _auto_gain
+
     run_ffmpeg([
         "-i", str(vocal_path),
         "-i", str(accomp_path),
         "-filter_complex",
         # ── 보컬 체인 ──
-        # 후처리에서 EQ + volume=1.75 + 압축 + 리미터 완료 → 그대로 전달
-        f"[0:a]aresample=resampler=soxr,volume={vocal_volume},"
+        # v12: 후처리에서 볼륨 보상 제거 → 여기서 자동 레벨 매칭 적용
+        f"[0:a]aresample=resampler=soxr,volume={_effective_vocal:.3f},"
         f"aformat=channel_layouts=stereo,"
         f"stereotools=mlev=1.0:slev=0.05:sbal=0.0[v];"
         # ── MR 체인 ──
-        # 보컬 핵심 대역(800Hz, 2.5kHz) 완화된 컷 → 보컬 묻힘 방지 + 반주 보존
-        f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.88},"
+        # 보컬 핵심 대역 경미한 컷 → 보컬 공간 확보 + 반주 보존
+        f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.90:.3f},"
         f"lowshelf=f=80:width_type=o:width=0.8:g=-1.5,"
         f"equalizer=f=800:width_type=o:width=1.5:g=-1.0,"
         f"equalizer=f=2500:width_type=o:width=1.0:g=-1.0[m];"
-        # ── 최종 믹스 + 투명 리미팅 ──
+        # ── 최종 믹스 + 단일 리미터 ──
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
         f"alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1",
         "-acodec", "pcm_s24le",
@@ -2332,7 +2338,8 @@ def _mix_audio(
     out_size = output_path.stat().st_size
     if out_size < 10_000:
         raise RuntimeError(f"믹싱 출력 파일 크기 이상 ({out_size}바이트): {output_path}")
-    log.info(f"Mixed audio: {output_path.name} (vocal={vocal_volume}, mr={mr_volume}, "
+    log.info(f"Mixed audio v12: {output_path.name} (vocal_vol={vocal_volume}, "
+             f"auto_gain={_auto_gain:.2f}, mr_vol={mr_volume}, "
              f"size={out_size / 1024 / 1024:.1f}MB)")
 
 
@@ -2359,13 +2366,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 0.15: v9 — 모델 의존도 대폭 낮춤
-    # v8의 0.30에서도 MFCC 거리 50-75 (음색 왜곡 심각)
-    # 0.15: 원본 음색 85% + 학습 음색 15% → 원곡에 가까운 자연스러운 음색
+    # index_rate 0.35: v12 — 모델 음색 충분히 반영
+    # v9의 0.15: 모델 음색 15%만 반영 → 변환 목적 달성 못함 (원본 가수 음색 85% 잔존)
+    # v12 분석: 후처리 과다(7개 EQ+압축+volume=1.75)가 음색 왜곡의 진짜 원인이었음
+    # 후처리 최소화 후 index_rate 올려도 자연스러움 유지 → 0.35로 의미있는 변환
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.15))
+        index_rate: float = float(job_input.get("index_rate", 0.35))
     except (ValueError, TypeError):
-        index_rate = 0.15
+        index_rate = 0.35
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
     f0_method: str = job_input.get("f0_method", "rmvpe")
@@ -2377,13 +2385,13 @@ def task_convert(job_input: dict, job: dict) -> dict:
         filter_radius: int = int(job_input.get("filter_radius", 2))
     except (ValueError, TypeError):
         filter_radius = 2
-    # rms_mix_rate 0.05: v9 — 원곡 다이나믹스 95% 보존
-    # v8의 0.12: RVC가 볼륨 엔벨로프를 12% 왜곡 → 불자연스러운 강약
-    # 0.05: 사실상 원곡 다이나믹스 그대로 → 가장 자연스러운 볼륨 변화
+    # rms_mix_rate 0.10: v12 — 원곡 다이나믹스 90% 보존 + 약간의 균일화
+    # v9의 0.05: 사실상 RMS 미적용 → 모델 학습된 다이나믹스 전혀 반영 안됨
+    # 0.10: 원곡 강약 대부분 유지하면서 모델의 자연스러운 볼륨 패턴 10% 혼합
     try:
-        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.05))
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.10))
     except (ValueError, TypeError):
-        rms_mix_rate = 0.05
+        rms_mix_rate = 0.10
     # protect 0.50: 표준 자음/숨소리 보호
     # v5의 0.55: 과보호 → 음절 전환부에서 어색한 끊김 발생 가능
     # 0.50: Applio 권장 기본값, 충분한 보호 + 자연스러운 전환
@@ -2802,7 +2810,7 @@ def _rvc_infer(
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 5,
+    filter_radius: int = 2,
     rms_mix_rate: float = 0.10,
     split_audio: bool = True,
 ) -> None:
