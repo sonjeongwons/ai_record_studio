@@ -2300,13 +2300,90 @@ def _mix_audio(
              f"size={out_size / 1024 / 1024:.1f}MB)")
 
 
+def _fix_pitch_artifacts(
+    vocal_path: Path,
+    output_path: Path,
+    max_hz: float = 480.0,
+    min_duration_s: float = 0.8,
+) -> bool:
+    """RVC 변환 후 지속적인 고음역 아티팩트 감지·감쇠 (v14).
+
+    Demucs가 악기 신호(피아노/신스 고음역)를 보컬 트랙에 포함시킬 때
+    RVC가 해당 신호를 A5+(>480Hz) 괴성으로 변환하는 문제 수정.
+    테너 모델 정상 음역(B4=494Hz)을 초과하여 min_duration_s 이상 지속되는
+    구간을 -26dB 감쇠 (100ms fade-in/out 적용).
+    """
+    try:
+        import soundfile as _sf_pa
+        import numpy as _np_pa
+        import librosa as _lib_pa
+
+        y, sr = _sf_pa.read(str(vocal_path))
+        is_stereo = y.ndim > 1
+        y_mono = y.mean(axis=1) if is_stereo else y.copy()
+
+        hop = 512
+        f0, voiced, _ = _lib_pa.pyin(
+            y_mono, fmin=80, fmax=1200, sr=sr, frame_length=2048, hop_length=hop
+        )
+        artifact = voiced & ~_np_pa.isnan(f0) & (f0 > max_hz)
+
+        min_frames = max(1, int(min_duration_s * sr / hop))
+        gain = _np_pa.ones(len(f0), dtype=float)
+        suppressed_count = 0
+        i = 0
+        while i < len(artifact):
+            if artifact[i]:
+                j = i
+                while j < len(artifact) and artifact[j]:
+                    j += 1
+                if (j - i) >= min_frames:
+                    fade = max(1, int(0.1 * sr / hop))
+                    for k in range(i, j):
+                        if k < i + fade:
+                            gain[k] = max(0.05, 1.0 - (k - i) / fade * 0.95)
+                        elif k >= j - fade:
+                            gain[k] = max(0.05, 1.0 - (j - k) / fade * 0.95)
+                        else:
+                            gain[k] = 0.05  # ≈ -26 dB
+                    suppressed_count += 1
+                    log.info(
+                        f"Pitch artifact gate: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
+                        f"F0≈{float(_np_pa.nanmedian(f0[i:j])):.0f}Hz(>{max_hz:.0f}Hz) suppressed"
+                    )
+                i = j
+            else:
+                i += 1
+
+        if suppressed_count == 0:
+            return False
+
+        gain_audio = _np_pa.interp(
+            _np_pa.arange(len(y_mono)),
+            _np_pa.arange(len(gain)) * hop + hop // 2,
+            gain,
+        )
+        gain_audio = _np_pa.clip(gain_audio, 0.0, 1.0)
+        y_fixed = (y * gain_audio[:, _np_pa.newaxis]) if is_stereo else (y * gain_audio)
+        _sf_pa.write(str(output_path), y_fixed, sr)
+        log.info(f"Pitch artifact gate: {suppressed_count} segment(s) suppressed → {output_path.name}")
+        return True
+
+    except Exception as _pa_err:
+        log.warning(f"Pitch artifact gate failed (non-critical, skipping): {_pa_err}")
+        return False
+
+
 def task_convert(job_input: dict, job: dict) -> dict:
     """
     RVC v2 voice conversion (SVC pipeline):
       1) Decode model (.pth, .index) and input audio
       2) Demucs vocal separation → vocals + accompaniment (MR)
+      2c) [선택] vocal_pitch_pre_shift — 여성/고음 파트 사전 피치 조정
       3) RVC voice conversion on vocals only
+      3a-fix2) 피치 아티팩트 게이트 — A5+ 지속 구간 감쇠
       3b) Post-process vocals: EQ, compression, optional harmonic enhance + room reverb
+      3c) [선택] vocal_pitch_post_shift — 사전 조정 복원
       4) Mix post-processed vocals + original MR
       5) Return converted vocals + mixed output as base64
     """
@@ -2509,6 +2586,30 @@ def task_convert(job_input: dict, job: dict) -> dict:
         # 한국어 마찰음(ㅅ,ㅆ,ㅈ,ㅊ,ㅎ)의 에너지가 4-8kHz에 집중 → 이 대역 커팅은 발음 뭉개짐 유발
         # → 디에싱은 후처리에서 한 번만 적용 (9kHz 이상의 좁은 대역만 타겟)
 
+        # --- Step 2c: Vocal pitch pre-shift (듀엣/여성 파트 포함 곡 최적화) v14 ---
+        # 여성 목소리(F0 200-400Hz)를 남성 테너 모델(장이정, B3-C4 중심)에 맞게 사전 조정.
+        # pre-shift(-N st) → RVC 변환 → post-shift(+N st): 최종 출력 피치는 원본과 동일.
+        # 효과: 여성 목소리가 RVC 처리 시 남성 모델 학습 범위로 진입 → 가래낀 변환 아티팩트 감소.
+        # 권장값: -5 (여성 파트 200-300Hz → 115-175Hz, RVC가 더 자연스럽게 처리)
+        _vocal_pitch_pre_shift: int = max(-12, min(12, int(job_input.get("vocal_pitch_pre_shift", 0))))
+        if _vocal_pitch_pre_shift != 0 and rvc_input.exists():
+            try:
+                import soundfile as _sf_pps
+                import librosa as _lib_pps
+                _pps_y, _pps_sr = _sf_pps.read(str(rvc_input))
+                _pps_mono = _pps_y.mean(axis=1) if _pps_y.ndim > 1 else _pps_y
+                log.info(f"Vocal pitch pre-shift: {_vocal_pitch_pre_shift:+d} semitones")
+                _pps_shifted = _lib_pps.effects.pitch_shift(
+                    _pps_mono.astype(float), sr=_pps_sr, n_steps=_vocal_pitch_pre_shift
+                )
+                _pps_out = work / "vocal_pre_shifted.wav"
+                _sf_pps.write(str(_pps_out), _pps_shifted, _pps_sr)
+                rvc_input = _pps_out
+                log.info(f"Vocal pitch pre-shift saved: {rvc_input.name}")
+            except Exception as _pps_err:
+                log.warning(f"Vocal pitch pre-shift failed (skipping): {_pps_err}")
+                _vocal_pitch_pre_shift = 0  # post-shift 스킵
+
         # --- Step 3: RVC voice conversion on vocals ---
         runpod.serverless.progress_update(job, "Running voice conversion (RVC)... (3/4)")
 
@@ -2641,6 +2742,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
         except Exception as _vfy_err:
             log.warning(f"Output duration verification failed: {_vfy_err}")
 
+        # --- Step 3a-fix2: 피치 아티팩트 게이트 v14 ---
+        # Demucs가 악기 신호(피아노/신스 B5 ~587Hz)를 보컬 트랙에 누출시킬 때
+        # RVC가 해당 신호를 A5+(>480Hz) 괴성으로 변환하는 문제 자동 수정.
+        # 테너 모델 정상 한계(480Hz=B4) 초과 + 0.8초 이상 지속 구간만 감쇠.
+        _artifact_gated_path = work / "converted_vocals_gated.wav"
+        if _fix_pitch_artifacts(converted_vocals_path, _artifact_gated_path):
+            converted_vocals_path = _artifact_gated_path
+
         # --- Step 3b: Post-process converted vocals for naturalness ---
         # EQ + compression + optional harmonic saturation + optional room reverb
         # Reduces AI metallic/robotic artifacts → more human-sounding result
@@ -2661,6 +2770,27 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 log.warning("Post-processing produced empty/small output, using raw conversion")
         except Exception as pp_err:
             log.warning(f"Post-processing failed, using raw RVC output: {pp_err}")
+
+        # --- Step 3c: Vocal pitch post-shift (pre-shift 복원) v14 ---
+        # Step 2c에서 사전 피치 조정했다면 여기서 원래 피치로 복원.
+        # 최종 보컬 피치 = 원본과 동일 → MR과 완벽히 동기화 유지.
+        if _vocal_pitch_pre_shift != 0:
+            try:
+                import soundfile as _sf_ppr
+                import librosa as _lib_ppr
+                _ppr_y, _ppr_sr = _sf_ppr.read(str(converted_vocals_path))
+                _ppr_mono = _ppr_y.mean(axis=1) if _ppr_y.ndim > 1 else _ppr_y
+                log.info(f"Vocal pitch post-shift: {-_vocal_pitch_pre_shift:+d} semitones (restoring)")
+                _ppr_shifted = _lib_ppr.effects.pitch_shift(
+                    _ppr_mono.astype(float), sr=_ppr_sr, n_steps=-_vocal_pitch_pre_shift
+                )
+                _ppr_out = work / "converted_vocals_post_shifted.wav"
+                _sf_ppr.write(str(_ppr_out), _ppr_shifted, _ppr_sr)
+                if _ppr_out.exists() and _ppr_out.stat().st_size > 1000:
+                    converted_vocals_path = _ppr_out
+                    log.info("Vocal pitch post-shift applied: original pitch restored")
+            except Exception as _ppr_err:
+                log.warning(f"Vocal pitch post-shift failed (skipping): {_ppr_err}")
 
         # --- Step 4: Mix converted vocals + original accompaniment ---
         mixed_path = None

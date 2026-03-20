@@ -3011,9 +3011,10 @@ input[type="range"]::-moz-range-track {
           <input type="text" id="model-name" value="My Voice v1" placeholder="모델 이름" onfocus="this.select()" autocomplete="off">
         </div>
         <div>
-          <label class="label">에폭 수 <i class="tip" data-tip="AI가 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n🔢 추천값:\n• 300 = 빠른 결과 확인 (테스트용)\n• 500 = 소량 데이터(5~10분)에 적합\n• 800 = 5~15분 데이터 권장 (품질·비용 균형)\n• 1000+ = 15분 이상 고품질 학습 시\n\n📊 예상 소요 시간 (500에폭, RMVPE 기준):\n• 데이터 5분 → ~1시간, $2.50\n• 데이터 10분 → ~1.8시간, $4.90\n• 데이터 30분 → ~5.4시간, $14\n※ Crepe 사용 시 +20% / RTX 4090 실측 기준\n\n⚠️ 에폭이 너무 높으면 과학습으로 오히려 어색해집니다.\n💰 에폭 2배 = 비용 약 2배. 처음엔 800으로 결과 확인 후 재학습 여부 결정.">ⓘ</i></label>
+          <label class="label">에폭 수 <i class="tip" data-tip="AI가 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n🔢 추천값:\n• 300 = 빠른 결과 확인 (테스트용)\n• 400 = 소량 데이터 100~200 세그먼트 권장\n• 500 = 소량 데이터(5~10분)에 적합\n• 800 = 5~15분 데이터 권장 (품질·비용 균형)\n• 1000+ = 15분 이상 고품질 학습 시\n\n📊 예상 소요 시간 (500에폭, RMVPE 기준):\n• 데이터 5분 → ~1시간, $2.50\n• 데이터 10분 → ~1.8시간, $4.90\n• 데이터 30분 → ~5.4시간, $14\n※ Crepe 사용 시 +20% / RTX 4090 실측 기준\n\n⚠️ 에폭이 너무 높으면 과학습으로 오히려 어색해집니다.\n💰 에폭 2배 = 비용 약 2배. 처음엔 800으로 결과 확인 후 재학습 여부 결정.">ⓘ</i></label>
           <select id="train-epochs" onchange="estimateTrainingCost()">
             <option value="300">300 (테스트용 · 빠른 결과 확인)</option>
+            <option value="400">400 (소량 데이터 · 100~200 세그먼트 권장)</option>
             <option value="500">500 (소량 데이터 5분 이하)</option>
             <option value="800" selected>800 (권장 · 5~15분 데이터 최적)</option>
             <option value="1000">1000 (고품질 · 15분 이상 데이터)</option>
@@ -3281,6 +3282,12 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('indie')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="차분한 인디팝/R&B에 최적화. RMVPE + 부드러운 피치 안정화 + 공간감 리버브">
               🌙 인디/차분한 곡
             </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus_v2')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(251,146,60,0.4);color:#fb923c" title="그룹/화음곡 v2 — 발음 선명도 최우선 + 피치 아티팩트 자동 게이트. index 0.10으로 낮춰 자음 보존, filter 5로 B5 삑사리 방지 (기다릴게 최적화)">
+              🎤 화음 v2 (발음선명)
+            </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 전용 — 여성 파트 사전 피치 조정(-5st)으로 가래낀 변환 아티팩트 제거. index 0.15로 여성 음색 강제변환 최소화 (comethru 최적화)">
+              👫 남녀 듀엣곡
+            </button>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -3345,6 +3352,16 @@ input[type="range"]::-moz-range-track {
             </div>
             <input type="range" id="hop-slider" min="0" max="3" value="1" class="has-fill" aria-label="피치 해상도 (hop length)" oninput="var hops=[32,64,128,256];document.getElementById('hop-val').textContent=hops[this.value]; updateSliderFill(this)">
             <div style="font-size:11px;color:var(--text3);margin-top:2px">작을수록 정밀한 피치 감지 (32: 가성/고음 극대화, 64: 기본, 128: 안정형, 256: 저품질 원본)</div>
+          </div>
+
+          <!-- 보컬 사전 피치 조정 (듀엣/여성 파트 포함 곡용) -->
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">보컬 사전 피치 조정 <i class="tip" data-tip="듀엣곡이나 여성 파트가 포함된 곡에서 여성 목소리의 '가래낀 변환 아티팩트'를 제거하는 고급 설정.\n\n📖 원리:\n여성 목소리(F0 200-400Hz)를 남성 테너 모델에 맞게 사전 조정 후 RVC 변환.\n변환 후 자동으로 원래 피치로 복원 → 최종 출력 피치는 원본과 동일.\n\n🔢 설정 가이드:\n• 0 = 사용 안 함 (기본, 솔로 남성 곡)\n• -5 = 여성 파트 포함 듀엣곡 권장 (comethru 등)\n• -3 ~ -7 = 여성 목소리 비중에 따라 조절\n\n⚠️ 변환 시간 +30~60초 (librosa pitch shift 처리)\n💡 솔로 남성 곡에는 반드시 0 유지">ⓘ</i></span>
+              <span class="slider-value" id="vocal-pre-shift-val">0</span>
+            </div>
+            <input type="range" id="vocal-pre-shift-slider" min="-12" max="0" value="0" class="has-fill" aria-label="보컬 사전 피치 조정" oninput="document.getElementById('vocal-pre-shift-val').textContent=this.value; updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">0: 솔로 남성곡 (기본) | -5: 여성 파트 포함 듀엣곡 권장 | -7: 여성 비중 높음</div>
           </div>
 
           <!-- 공간감 (리버브) -->
@@ -4849,8 +4866,29 @@ function applyConvertPreset(preset) {
       f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
-      highNote: false,
+      highNote: false, vocalPreShift: 0,
       desc: '인디/차분한 곡 — 부드러운 밸런스, 자연스러운 공간감'
+    },
+    chorus_v2: {
+      // 화음/그룹 곡 v2 — 기다릴게 분석 기반 (발음 뭉개짐+삑사리 문제 수정)
+      // index 0.10: HFC 44% 손실 문제 해결 (발음 선명도 회복)
+      // filter 5: 피치 극단값(B5 artifact) 완화
+      // hop 128(index 2): 시간 평균화로 화음 변환 안정화
+      f0: 'rmvpe', protect: 45, rms: 8, filter: 5, hop: 2,
+      clean: false, cleanStr: 70, index: 10,
+      postReverb: 3, useReverb: false, harmonicEnhance: false,
+      highNote: false, vocalPreShift: 0,
+      desc: '화음 v2 — 발음 선명도 최우선, 피치 아티팩트 최소화 (기다릴게 최적)'
+    },
+    duet: {
+      // 남녀 듀엣곡 — comethru 분석 기반 (여성 파트 가래낀 변환 아티팩트 수정)
+      // index 0.15: 여성 음색 강제 변환 최소화 → 가래낀 소리 감소
+      // vocalPreShift -5: 여성 목소리 사전 피치 하향 → 남성 모델 학습 범위 진입
+      f0: 'rmvpe', protect: 45, rms: 8, filter: 3, hop: 1,
+      clean: false, cleanStr: 70, index: 15,
+      postReverb: 8, useReverb: true, harmonicEnhance: false,
+      highNote: false, vocalPreShift: -5,
+      desc: '듀엣 — 여성 파트 아티팩트 최소화, 사전 피치 조정 -5st (comethru 최적)'
     }
   };
   var p = presets[preset];
@@ -4899,6 +4937,11 @@ function applyConvertPreset(preset) {
   if (highNoteCb) {
     highNoteCb.checked = !!p.highNote;
     document.getElementById('high-note-val').textContent = p.highNote ? 'ON' : 'OFF';
+  }
+  var preShiftSlider = document.getElementById('vocal-pre-shift-slider');
+  if (preShiftSlider && p.vocalPreShift !== undefined) {
+    preShiftSlider.value = p.vocalPreShift;
+    document.getElementById('vocal-pre-shift-val').textContent = p.vocalPreShift;
   }
   // 모든 슬라이더 fill 업데이트 (JS로 value 변경 시 CSS fill이 자동 갱신되지 않음)
   document.querySelectorAll('#convert-panel input[type="range"].has-fill').forEach(function(el) {
@@ -6348,6 +6391,7 @@ async function startConversion() {
   form.append('harmonic_enhance', harmonicCb ? harmonicCb.checked : false);
   var highNoteCb = document.getElementById('high-note-cb');
   form.append('high_note_mode', highNoteCb ? highNoteCb.checked : false);
+  form.append('vocal_pitch_pre_shift', parseInt(getVal('vocal-pre-shift-slider', '0')));
   form.append('audio', convertFile);
 
   try {

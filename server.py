@@ -2389,6 +2389,7 @@ async def start_conversion(
     harmonic_enhance: str = Form("false"),
     high_note_mode: str = Form("false"),
     separate_vocals: str = Form("true"),
+    vocal_pitch_pre_shift: int = Form(0),
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2487,6 +2488,7 @@ async def start_conversion(
             "post_reverb": post_reverb,
             "harmonic_enhance": harmonic_enhance,
             "high_note_mode": high_note_mode,
+            "vocal_pitch_pre_shift": max(-12, min(12, vocal_pitch_pre_shift)),
             "bucket_name": r2_bucket,
         }
 
