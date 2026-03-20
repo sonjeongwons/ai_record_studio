@@ -1089,8 +1089,25 @@ def task_train(job_input: dict, job: dict) -> dict:
                 # (e.g., song.mp3 and song.flac → 0000_song.wav, 0001_song.wav)
                 out_wav = wav_dir / f"{wav_idx:04d}_{f.stem}.wav"
                 wav_idx += 1
+
+                # v13: MP3 소스 감지 시 HF 아티팩트 정리 필터 추가
+                # MP3 인코더(128~320kbps)는 15-16kHz 이상을 버리거나 노이즈/링잉으로 채움
+                # 이 HF 노이즈를 그대로 학습하면 모델이 "음색"으로 학습 → 금속성 고음 출력
+                # 해결: 15.5kHz brick-wall lowpass로 MP3 HF 인코딩 아티팩트 제거 후 변환
+                # (WAV/FLAC/AIFF 등 무손실 소스는 그대로 — lowpass 불필요)
+                if f.suffix.lower() in {".mp3", ".m4a", ".aac", ".wma", ".ogg"}:
+                    af_chain = (
+                        "highpass=f=60:poles=2,"          # 60Hz 이하 럼블 제거
+                        "lowpass=f=15500:poles=2,"         # MP3 HF 아티팩트 제거 (15.5kHz 이상 차단)
+                        f"aresample=resampler=soxr:precision=28:osr={sample_rate}"
+                    )
+                    log.info(f"MP3/lossy source detected: applying HF cleanup for {f.name}")
+                else:
+                    af_chain = f"aresample=resampler=soxr:precision=28:osr={sample_rate}"
+
                 run_ffmpeg([
                     "-i", str(f),
+                    "-af", af_chain,
                     "-acodec", "pcm_s16le",
                     "-ar", str(sample_rate),
                     "-ac", "1",
@@ -1287,7 +1304,7 @@ def _rvc_preprocess(
       - 피치 시프트 증강 (중고음 → +2/+4 semitone → 가상 고음역 데이터 생성)
       - 정규화 타겟 -3→-4 dBFS (증강 데이터 헤드룸 확보)
     """
-    SLICE_DURATION = 3.5  # seconds — 긴 슬라이스로 가창 비브라토, 한국어 음절 전환, 호흡 패턴 보존
+    SLICE_DURATION = 5.0  # seconds — v13: 3.5→5.0 (한국 가요 프레이즈 보존: 비브라토, 멜리스마, 호흡 패턴)
 
     gt_dir = ensure_dir(logs_dir / "sliced_audios")
     sr16k_dir = ensure_dir(logs_dir / "sliced_audios_16k")
@@ -1361,13 +1378,15 @@ def _rvc_preprocess(
                     continue
 
                 # ── 품질 필터 2: 스펙트럴 평탄도 (v11 신규) ──
-                # 평탄도 > 0.4 → 노이즈에 가까운 세그먼트 (정상 음성은 0.01-0.2)
+                # 평탄도 > 0.45 → 노이즈에 가까운 세그먼트 (정상 음성은 0.01-0.2)
+                # v13: 0.4→0.45 완화 — MP3 소스는 HF 노이즈로 인해 flatness가 다소 높게 측정
+                # 0.4 임계값으로는 유효한 MP3 보컬 세그먼트까지 제거될 수 있음
                 _S = np.abs(np.fft.rfft(_audio))
                 _S_power = _S ** 2 + 1e-20
                 _geo = np.exp(np.mean(np.log(_S_power)))
                 _arith = np.mean(_S_power)
                 _flatness = _geo / (_arith + 1e-20)
-                if _flatness > 0.4:
+                if _flatness > 0.45:
                     gt_path.unlink(missing_ok=True)
                     quality_skipped += 1
                     log.info(f"Skipped noisy segment (flatness={_flatness:.3f}): {padded}")
@@ -1444,14 +1463,13 @@ def _rvc_preprocess(
                 _f0_med = float(np.median(_f0_v))
 
                 # 복제 횟수 결정: 고음일수록 더 많이 복제
-                # v12: 복제 횟수 절반으로 축소 (v11: 3/2/1 → v12: 2/1/0)
-                # 과도한 오버샘플링은 고음 세그먼트 과적합 유발 → 기계적 고음 재현
-                if _f0_med >= 440:      # A4+ → 2배 복제
-                    copies = 2
-                elif _f0_med >= 350:    # F4+ → 1배 복제
+                # v13: 오버샘플링 추가 축소 (v12: 2/1/0 → v13: 1/0/0)
+                # 이유: MP3 소스처럼 아티팩트 있는 데이터는 오버샘플링 시
+                #       같은 아티팩트가 반복 학습 → 기계음 강화. 1회 복제로 최소화.
+                if _f0_med >= 440:      # A4+ → 1배 복제만 (C5 이상 고음 약간 보강)
                     copies = 1
                 else:
-                    copies = 0
+                    copies = 0          # 그 외 → 복제 없음
 
                 for _ in range(copies):
                     _pad = f"0_{_os_idx:07d}"
@@ -1475,82 +1493,17 @@ def _rvc_preprocess(
         log.warning(f"Oversampling failed: {_ose}")
 
     # ══════════════════════════════════════════════════════════════════════════
-    # v11: 피치 시프트 데이터 증강 — 중고음 세그먼트를 +2/+4 semitone 복사
-    # 중음(C4) 세그먼트를 +2/+4 시프트 → A4/C5 영역의 가상 고음 데이터 생성
-    # asetrate+aresample: FFmpeg 내장, 속도 변경 포함이나 학습에는 무방
+    # v13: 피치 시프트 증강 완전 제거
+    # 이전(v11/v12): asetrate 기반 +2 semitone 증강
+    # 문제: asetrate는 재생 속도를 변경한 뒤 리샘플 → 피치가 올라가지만 템포도 12% 빨라짐
+    #       즉 "빠른 노래"로 변형된 데이터를 "같은 노래의 고음"으로 학습 → 기계음 원인
+    #       모델이 "고음 = 빠른 발음"으로 잘못 학습 → 고음 구간에서 기계적 급격한 피치 변화
+    # 결론: asetrate 증강은 품질 개선이 아니라 기계음의 직접 원인 — 완전 제거
+    # 고음 데이터 부족 문제는 위의 oversampling(F0 기반 복제)으로 해결
     # ══════════════════════════════════════════════════════════════════════════
-    _gt_for_aug = sorted(gt_dir.glob("*.wav"))
     _augmented = 0
     _aug_idx = _os_idx
-
-    try:
-        import librosa as _lr2
-
-        log.info(f"Pitch-shift augmentation: analyzing {len(_gt_for_aug)} segments...")
-        for _gf_aug in _gt_for_aug:
-            try:
-                _a_aug, _sr_aug = _sf.read(str(_gf_aug))
-                _f0_aug, _, _ = _lr2.pyin(
-                    _a_aug.astype(np.float32), fmin=80, fmax=1200,
-                    sr=_sr_aug, frame_length=2048,
-                )
-                _f0_aug_v = _f0_aug[~np.isnan(_f0_aug)]
-                if len(_f0_aug_v) < 3:
-                    continue
-                _f0_aug_med = float(np.median(_f0_aug_v))
-
-                # 피치 시프트 전략: 중고음만 위로 시프트
-                # v12: +4 semitone 제거 — asetrate는 템포/포먼트도 변형하므로
-                # 큰 시프트(+4)는 비현실적 학습 데이터 생성 → 기계적 고음의 원인
-                # +2 semitone만 유지: 포먼트 왜곡 최소 (~12% 속도 변화)
-                shifts = []
-                if _f0_aug_med >= 300:     # D4+ → +2 semitone만
-                    shifts = [2]
-                # 300Hz 미만 → 시프트 안함 (저/중음은 충분한 데이터 있음)
-
-                for _shift in shifts:
-                    _ratio = 2.0 ** (_shift / 12.0)
-                    _pad_a = f"0_{_aug_idx:07d}"
-                    _aug_gt = gt_dir / f"{_pad_a}.wav"
-                    _aug_16k = sr16k_dir / f"{_pad_a}.wav"
-                    try:
-                        run_ffmpeg([
-                            "-i", str(_gf_aug),
-                            "-af", (
-                                f"asetrate={sample_rate}*{_ratio:.6f},"
-                                f"aresample=resampler=soxr:precision=28:osr={sample_rate}"
-                            ),
-                            "-ac", "1", "-acodec", "pcm_s16le",
-                            str(_aug_gt),
-                        ])
-                        _src_16k_a = sr16k_dir / _gf_aug.name
-                        if _src_16k_a.exists():
-                            run_ffmpeg([
-                                "-i", str(_src_16k_a),
-                                "-af", (
-                                    f"asetrate=16000*{_ratio:.6f},"
-                                    f"aresample=resampler=soxr:precision=28:osr=16000"
-                                ),
-                                "-ac", "1", "-acodec", "pcm_s16le",
-                                str(_aug_16k),
-                            ])
-                        _aug_idx += 1
-                        _augmented += 1
-                    except Exception:
-                        # FFmpeg 실패 시 건너뜀 (이미 생성된 파일 정리)
-                        _aug_gt.unlink(missing_ok=True)
-                        _aug_16k.unlink(missing_ok=True)
-                        continue
-            except Exception:
-                continue
-
-        if _augmented > 0:
-            log.info(f"Pitch-shift augmentation: +{_augmented} copies added "
-                     f"(total: {_aug_idx} segments)")
-    except ImportError:
-        log.warning("librosa not available, skipping pitch-shift augmentation")
-    except Exception as _ase:
-        log.warning(f"Pitch-shift augmentation failed: {_ase}")
+    log.info("Pitch-shift augmentation: DISABLED (v13 — asetrate tempo-distortion 제거)")
 
     total_segments = len(list(gt_dir.glob("*.wav")))
     log.info(f"Pre-normalization total: {total_segments} segments "
@@ -2195,8 +2148,12 @@ def _post_process_vocal(
     filters = []
 
     # ━━━ 1. 클릭/팝 아티팩트 제거 (비파괴적) ━━━
+    # v13: threshold 2→5, burst 2→4
+    # threshold=2(기존): 매우 민감 → 비브라토 진폭 변화, 자음 포먼트도 클릭으로 오탐 → 마찰음 유발
+    # threshold=5: 명백한 클릭/팝만 제거, 발성 트랜지언트는 보존
+    # burst=4: 4ms 이내 연속 클릭 → 단일 이벤트로 처리 (자음 자연스럽게 보존)
     filters.append(
-        "adeclick=window=55:overlap=75:arorder=8:threshold=2:burst=2"
+        "adeclick=window=55:overlap=75:arorder=8:threshold=5:burst=4"
     )
 
     # ━━━ 2. 초저역 제거 ━━━

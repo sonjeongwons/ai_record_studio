@@ -3275,23 +3275,26 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('studio')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(99,102,241,0.4);color:#818cf8" title="깨끗한 스튜디오 녹음에 최적화. 최소한의 후처리로 원본 품질 유지">
               🎧 스튜디오 품질
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(236,72,153,0.4);color:#ec4899" title="화음/코러스가 많은 곡에 최적화. 인덱스 최소화로 원곡 화음 구조 보존">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(236,72,153,0.4);color:#ec4899" title="화음/코러스가 많은 곡에 최적화. RMVPE 사용 필수 — Crepe는 화음 구간에서 피치 불안정. filter=3으로 피치 안정화. index 낮춰 원곡 화음 구조 보존">
               🎼 화음/코러스 곡
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('indie')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="차분한 인디팝/R&B에 최적화. 피치 안정화 + 낮은 인덱스 + 부드러운 공간감">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('indie')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="차분한 인디팝/R&B에 최적화. RMVPE + 부드러운 피치 안정화 + 공간감 리버브">
               🌙 인디/차분한 곡
             </button>
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">피치 추출 방식 <i class="tip" data-tip="AI가 노래의 음정을 어떤 방법으로 분석할지 선택합니다.\n\n🔢 추천:\n• Crepe = 고음·가성이 많은 노래에 적합 (정밀하지만 느림)\n• RMVPE = 빠르고 안정적 (일반적인 노래에 적합)\n• Crepe-tiny = Crepe의 가벼운 버전 (속도와 품질의 중간)\n\n💡 팁: 학습할 때 RMVPE를 사용했다면 변환할 때도 RMVPE를 쓰는 것이 좋습니다. 서로 다른 방식을 쓰면 음정이 미세하게 어긋날 수 있어요.\n\n💰 비용 영향:\n• RMVPE: 3분 노래 1곡 → 약 1분 → $0.04\n• Crepe: 3분 노래 1곡 → 약 2분 → $0.09\n→ Crepe가 약 2배 비싸지만 변환은 학습보다 훨씬 저렴합니다.">ⓘ</i></span>
+              <span class="slider-label">피치 추출 방식 <i class="tip" data-tip="AI가 노래의 음정을 어떤 방법으로 분석할지 선택합니다.\n\n✅ RMVPE (강력 권장):\n• 빠르고 안정적\n• 화음·코러스 곡에서도 피치 안정\n• 대부분의 곡에 최적\n\n⚠️ Crepe (주의):\n• 화음/코러스가 있는 곡에서 피치 불안정, 삑사리 유발\n• 반드시 솔로 보컬만 있는 곡에서만 사용\n• 속도가 2~3배 느리고 비용 2배\n\n⚠️ Crepe-tiny: Crepe의 경량판, 동일한 주의사항\n\n💡 학습 시 RMVPE 사용했다면 변환도 RMVPE 권장\n\n💰 비용:\n• RMVPE: 3분 1곡 → ~1분 → $0.04\n• Crepe: 3분 1곡 → ~2분 → $0.09">ⓘ</i></span>
             </div>
-            <select id="convert-f0" onchange="estimateConversionCost()" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px">
+            <select id="convert-f0" onchange="onF0MethodChange()" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px">
               <option value="rmvpe" selected>RMVPE (빠름 · 안정적 · 노래에 권장)</option>
-              <option value="crepe">Crepe (고음 정확 · 속도 느림)</option>
-              <option value="crepe-tiny">Crepe-tiny (Crepe 경량 버전 · 가장 빠름)</option>
+              <option value="crepe">Crepe ⚠️ (화음/코러스 곡 비권장 · 속도 느림)</option>
+              <option value="crepe-tiny">Crepe-tiny ⚠️ (Crepe 경량 버전)</option>
             </select>
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">RMVPE가 노래 변환에 가장 안정적입니다. 학습 시 사용한 방식과 동일하게 맞추면 더 자연스럽습니다</div>
+            <div id="crepe-warning" style="display:none;font-size:11px;color:#f59e0b;margin-top:4px;padding:5px 8px;background:rgba(245,158,11,0.08);border-radius:6px;border-left:2px solid #f59e0b">
+              ⚠️ <strong>Crepe 주의:</strong> 화음·코러스가 있는 곡에서 피치가 불안정해질 수 있습니다. 화음이 없는 솔로 보컬 곡에만 권장합니다. 일반적으로 <strong>RMVPE가 더 안정적</strong>입니다.
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">RMVPE가 노래 변환에 가장 안정적입니다. Crepe는 화음/코러스 곡에 음정 불안정 유발 가능</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4730,6 +4733,15 @@ function estimateTrainingCost() {
 }
 
 // ─── 변환 비용 추정 ───
+function onF0MethodChange() {
+  var val = document.getElementById('convert-f0').value;
+  var warning = document.getElementById('crepe-warning');
+  if (warning) {
+    warning.style.display = (val === 'crepe' || val === 'crepe-tiny') ? '' : 'none';
+  }
+  estimateConversionCost();
+}
+
 function estimateConversionCost() {
   var panel = document.getElementById('convert-cost-panel');
   if (!panel) return;
