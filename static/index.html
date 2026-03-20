@@ -3282,10 +3282,10 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('indie')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="차분한 인디팝/R&B에 최적화. RMVPE + 부드러운 피치 안정화 + 공간감 리버브">
               🌙 인디/차분한 곡
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus_v2')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(251,146,60,0.4);color:#fb923c" title="그룹/화음곡 v2 — 발음 선명도 최우선 + 피치 아티팩트 자동 게이트. index 0.10으로 낮춰 자음 보존, filter 5로 B5 삑사리 방지 (기다릴게 최적화)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus_v2')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(251,146,60,0.4);color:#fb923c" title="화음/그룹 곡 v2 — 발음 선명도 최우선 + 피치 아티팩트 게이트 v15. index 0.10, filter 3, 3.2kHz 프레즌스 EQ 자동 적용 (기다릴게 최적화)">
               🎤 화음 v2 (발음선명)
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 전용 — 여성 파트 사전 피치 조정(-5st)으로 가래낀 변환 아티팩트 제거. index 0.15로 여성 음색 강제변환 최소화 (comethru 최적화)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 v2 — index 0.08 여성 음색 강제변환 최소화, phase vocoder 기계음 방지 (comethru 최적화)">
               👫 남녀 듀엣곡
             </button>
           </div>
@@ -4871,24 +4871,24 @@ function applyConvertPreset(preset) {
     },
     chorus_v2: {
       // 화음/그룹 곡 v2 — 기다릴게 분석 기반 (발음 뭉개짐+삑사리 문제 수정)
-      // index 0.10: HFC 44% 손실 문제 해결 (발음 선명도 회복)
-      // filter 5: 피치 극단값(B5 artifact) 완화
+      // index 0.10: HFC 손실 완화 (발음 선명도 우선)
+      // filter 3: v15 HiFi-GAN 프레즌스 EQ로 명료도 복원 → 과도한 smoothing 불필요
       // hop 128(index 2): 시간 평균화로 화음 변환 안정화
-      f0: 'rmvpe', protect: 45, rms: 8, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 45, rms: 8, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0,
-      desc: '화음 v2 — 발음 선명도 최우선, 피치 아티팩트 최소화 (기다릴게 최적)'
+      desc: '화음 v2 — 발음 선명도 최우선, 피치 아티팩트 자동 게이트 v15 (기다릴게 최적)'
     },
     duet: {
-      // 남녀 듀엣곡 — comethru 분석 기반 (여성 파트 가래낀 변환 아티팩트 수정)
-      // index 0.15: 여성 음색 강제 변환 최소화 → 가래낀 소리 감소
-      // vocalPreShift -5: 여성 목소리 사전 피치 하향 → 남성 모델 학습 범위 진입
-      f0: 'rmvpe', protect: 45, rms: 8, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 15,
+      // 남녀 듀엣곡 v2 — comethru 분석 기반
+      // index 0.08: 여성 음색 강제 변환 최소화 (가래낀 소리 감소)
+      // vocalPreShift 0: phase vocoder 이중 적용 금지 (v15: 전곡 기계음 방지)
+      f0: 'rmvpe', protect: 50, rms: 8, filter: 3, hop: 1,
+      clean: false, cleanStr: 70, index: 8,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
-      highNote: false, vocalPreShift: -5,
-      desc: '듀엣 — 여성 파트 아티팩트 최소화, 사전 피치 조정 -5st (comethru 최적)'
+      highNote: false, vocalPreShift: 0,
+      desc: '듀엣 v2 — 여성 파트 timbre 강제변환 최소화, index 0.08 (comethru 최적)'
     }
   };
   var p = presets[preset];

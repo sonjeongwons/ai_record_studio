@@ -2165,6 +2165,13 @@ def _post_process_vocal(
     # v11의 5.5kHz(w=0.8) + 7.5kHz(w=0.7) = 광대역 → 자음 포먼트 파괴했음
     filters.append("equalizer=f=7500:width_type=o:width=0.4:g=-2.5")
 
+    # ━━━ 3b. HiFi-GAN 하모닉 손실 보상 (v15 신규) ━━━
+    # 실측: 변환곡 3-8kHz 에너지 -4.5dB (발음 뭉개짐/어눌함 원인).
+    # HiFi-GAN 보코더가 프레즌스(2-4kHz)와 에어(8kHz+) 대역 재구성 불완전.
+    # 좁은 부스트로 명료도·존재감·자음 선명도 복원.
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.8")   # 프레즌스/자음 선명도
+    filters.append("highshelf=f=7000:width_type=o:width=0.9:g=1.5")    # 에어/디테일 복원
+
     # ━━━ 4. 고음/가성 모드 (경미한 저역 마스킹 제거) ━━━
     if high_note_mode:
         filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
@@ -2303,15 +2310,23 @@ def _mix_audio(
 def _fix_pitch_artifacts(
     vocal_path: Path,
     output_path: Path,
-    max_hz: float = 480.0,
-    min_duration_s: float = 0.8,
+    max_hz: float = 490.0,
+    min_duration_s: float = 0.08,
+    gap_bridge_s: float = 0.30,
 ) -> bool:
-    """RVC 변환 후 지속적인 고음역 아티팩트 감지·감쇠 (v14).
+    """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v15).
 
     Demucs가 악기 신호(피아노/신스 고음역)를 보컬 트랙에 포함시킬 때
-    RVC가 해당 신호를 A5+(>480Hz) 괴성으로 변환하는 문제 수정.
-    테너 모델 정상 음역(B4=494Hz)을 초과하여 min_duration_s 이상 지속되는
-    구간을 -26dB 감쇠 (100ms fade-in/out 적용).
+    RVC가 해당 신호를 B4+(>490Hz) 괴성으로 변환하는 문제 수정.
+
+    v14 문제: min_duration_s=0.8s → 실측 아티팩트가 0.02-0.30s 짧은 버스트로
+    분산되어 모두 누락. (105s 0.30s, 106.9s 0.12s, 107.1s 0.23s 등)
+
+    v15 수정:
+      - min_duration_s: 0.8 → 0.08 (80ms 이상 버스트 감지)
+      - gap_bridge_s: 0.30s 이하 갭은 같은 아티팩트 이벤트로 연결
+        (짧은 갭으로 분산된 아티팩트들을 하나의 연속 이벤트로 처리)
+      - max_hz: 480 → 490 (B4=494Hz 경계 위 명확한 아티팩트만 대상)
     """
     try:
         import soundfile as _sf_pa
@@ -2327,6 +2342,29 @@ def _fix_pitch_artifacts(
             y_mono, fmin=80, fmax=1200, sr=sr, frame_length=2048, hop_length=hop
         )
         artifact = voiced & ~_np_pa.isnan(f0) & (f0 > max_hz)
+
+        # --- gap bridging: gap_bridge_s 이하 간격의 아티팩트 버스트를 연결 ---
+        gap_frames = max(1, int(gap_bridge_s * sr / hop))
+        bridged = artifact.copy()
+        i = 0
+        while i < len(bridged):
+            if bridged[i]:
+                # 현재 버스트 끝 찾기
+                j = i
+                while j < len(bridged) and bridged[j]:
+                    j += 1
+                # 다음 버스트 탐색 (gap_frames 이내)
+                k = j
+                while k < min(j + gap_frames, len(bridged)) and not bridged[k]:
+                    k += 1
+                if k < len(bridged) and bridged[k] and (k - j) <= gap_frames:
+                    bridged[j:k] = True  # 갭 채우기
+                    # 연결 후 현재 위치 유지 (확장된 버스트 재탐색)
+                    continue
+                i = j
+            else:
+                i += 1
+        artifact = bridged
 
         min_frames = max(1, int(min_duration_s * sr / hop))
         gain = _np_pa.ones(len(f0), dtype=float)
@@ -2348,7 +2386,7 @@ def _fix_pitch_artifacts(
                             gain[k] = 0.05  # ≈ -26 dB
                     suppressed_count += 1
                     log.info(
-                        f"Pitch artifact gate: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
+                        f"Pitch artifact gate v15: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
                         f"F0≈{float(_np_pa.nanmedian(f0[i:j])):.0f}Hz(>{max_hz:.0f}Hz) suppressed"
                     )
                 i = j
@@ -2586,13 +2624,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
         # 한국어 마찰음(ㅅ,ㅆ,ㅈ,ㅊ,ㅎ)의 에너지가 4-8kHz에 집중 → 이 대역 커팅은 발음 뭉개짐 유발
         # → 디에싱은 후처리에서 한 번만 적용 (9kHz 이상의 좁은 대역만 타겟)
 
-        # --- Step 2c: Vocal pitch pre-shift (듀엣/여성 파트 포함 곡 최적화) v14 ---
-        # 여성 목소리(F0 200-400Hz)를 남성 테너 모델(장이정, B3-C4 중심)에 맞게 사전 조정.
-        # pre-shift(-N st) → RVC 변환 → post-shift(+N st): 최종 출력 피치는 원본과 동일.
-        # 효과: 여성 목소리가 RVC 처리 시 남성 모델 학습 범위로 진입 → 가래낀 변환 아티팩트 감소.
-        # 권장값: -5 (여성 파트 200-300Hz → 115-175Hz, RVC가 더 자연스럽게 처리)
-        _vocal_pitch_pre_shift: int = max(-12, min(12, int(job_input.get("vocal_pitch_pre_shift", 0))))
-        if _vocal_pitch_pre_shift != 0 and rvc_input.exists():
+        # --- Step 2c: Vocal pitch pre-shift — DISABLED v15 ---
+        # librosa.effects.pitch_shift = STFT phase vocoder (formant non-preserving).
+        # pre(-N st) + post(+N st) 이중 적용 시 phase artifact 심화 → 전곡 기계음 유발.
+        # 실측 (comethru5): 위상 보코더 이중 손실로 "아예 사람이 부른게 아닌 것 같은" 결과.
+        # 향후 rubberband 등 formant-preserving 피치 시프터로 교체 시 재활성화.
+        # API 파라미터는 유지 (호환성), 실제 효과는 0으로 고정.
+        _vocal_pitch_pre_shift: int = 0  # DISABLED: 항상 0 (formant-preserving 미지원)
+        if False and _vocal_pitch_pre_shift != 0 and rvc_input.exists():  # noqa: disabled
             try:
                 import soundfile as _sf_pps
                 import librosa as _lib_pps
