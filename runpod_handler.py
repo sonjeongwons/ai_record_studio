@@ -2159,11 +2159,12 @@ def _post_process_vocal(
     # ━━━ 2. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 2b. 저역 탁함 보정 (v17 개선) ━━━
-    # 300Hz: RVC 보코더 특유의 '먹먹함/박스감' 제거 (커뮤니티 권장: 200-400Hz -1.5dB)
-    # 550Hz: 실측 +1.9dB 과다 중저역 (comethru 가래낀 소리 원인) 보정
-    filters.append("equalizer=f=300:width_type=o:width=0.8:g=-1.5")    # 저역 먹먹함 (HiFi-GAN 버릇)
-    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-1.5")    # 중저역 과다 보정
+    # ━━━ 2b. 저역 탁함 보정 (v18: -1.5dB→-1.0dB 완화) ━━━
+    # 300Hz: RVC 보코더 특유의 '먹먹함/박스감' 제거
+    # 550Hz: 과다 중저역 보정
+    # v18: -1.5dB→-1.0dB — 과도한 컷이 여성보컬/가성 음역 얇게 만들어 기계음 부각
+    filters.append("equalizer=f=300:width_type=o:width=0.8:g=-1.0")    # 저역 먹먹함 (v18: -1.5→-1.0)
+    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-1.0")    # 중저역 과다 보정 (v18: -1.5→-1.0)
 
     # ━━━ 3. 디에서 — HiFi-GAN 아티팩트만 정밀 타겟 ━━━
     # RVC HiFi-GAN 보코더는 7-8kHz 대역에서 금속성 고역 아티팩트 생성
@@ -2176,7 +2177,7 @@ def _post_process_vocal(
     # HiFi-GAN 보코더가 프레즌스(2-4kHz)와 에어(8kHz+) 대역 재구성 불완전.
     # v17: 하이셸프 시작점 9000Hz로 올림 (기존 7000Hz → 7.5kHz 노치와 간섭 문제 수정)
     #      16kHz 롤오프 추가: HiFi-GAN 16kHz 이상 잡음 제거 (커뮤니티 권장)
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=2.5")   # 프레즌스/자음 선명도
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.5")   # 프레즌스/자음 선명도 (v18: +2.5→+1.5: 여성보컬 거친 소리 완화)
     filters.append("highshelf=f=9000:width_type=o:width=0.9:g=1.5")    # 에어/디테일 복원 (7000→9000: 7.5kHz 노치 간섭 해소)
     filters.append("highshelf=f=16000:width_type=o:width=0.7:g=-3.0")  # HiFi-GAN 16kHz 이상 잡음 제거
 
@@ -2319,12 +2320,12 @@ def _mix_audio(
 def _fix_pitch_artifacts(
     vocal_path: Path,
     output_path: Path,
-    max_hz: float = 490.0,
-    min_duration_s: float = 0.08,
-    gap_bridge_s: float = 0.30,
-    vp_threshold: float = 0.12,
+    max_hz: float = 530.0,
+    min_duration_s: float = 0.20,
+    gap_bridge_s: float = 0.15,
+    vp_threshold: float = 0.06,
 ) -> bool:
-    """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v16).
+    """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v18).
 
     Demucs가 악기 신호(피아노/신스 고음역)를 보컬 트랙에 포함시킬 때
     RVC가 해당 신호를 괴성으로 변환하는 문제 수정.
@@ -2344,6 +2345,13 @@ def _fix_pitch_artifacts(
         (490Hz 임계값 이하라 기존 Zone1에서 누락되던 구간 보완)
       - 실제 가창 프레임: VP ≥ 0.20 (지속구간) → Zone2에 해당 없음
       - vp_threshold 파라미터로 민감도 조절 가능 (기본값 0.12)
+
+    v18 수정:
+      - max_hz: 490 → 530 (C5=523Hz: 여성보컬/남성가성 상한 보호, 여성보컬 F0 최대 504Hz)
+      - vp_threshold: 0.12 → 0.06 (실측: 실제 가성 VP=0.06~0.12, 악기 누화 VP<0.05)
+        기존 0.12 → 기다릴게 35-38s, 95-98s, 108-110s 가성 묵음 역효과 수정
+      - min_duration_s: 0.08 → 0.20 (200ms 미만 단발 버스트 보존: 짧은 가성 음절 보호)
+      - gap_bridge_s: 0.30 → 0.15 (과도한 버스트 연결 방지: 화음 영역 실제 가창 훼손 방지)
     """
     try:
         import soundfile as _sf_pa
