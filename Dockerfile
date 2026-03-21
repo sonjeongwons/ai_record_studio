@@ -227,13 +227,19 @@ RUN mkdir -p /app/Applio/rvc/models/predictors \
     && ln -sf /app/Applio/rvc/models/predictors/rmvpe.pt \
               /app/Applio/rvc/models/rmvpe/rmvpe.pt
 
-# -- Demucs htdemucs_ft Model (~800 MB) --
+# -- Demucs Models (~1.8 GB total) --
+# htdemucs_6s: 6-stem model (drums/bass/other/vocals/guitar/piano)
+#   v18: ft→6s — 피아노/기타 별도 분리 → 보컬 스템 누화 제거 → 화음 괴성 방지
+# htdemucs_ft: 보조 다운로드 (캐시 충돌 방지)
 ENV TORCH_HOME=/app/torch_hub
 RUN mkdir -p /app/torch_hub \
     && python -c "\
 from demucs.pretrained import get_model; \
-print('Downloading htdemucs_ft...'); \
-model = get_model('htdemucs_ft'); \
+print('Downloading htdemucs_6s (6-stem)...'); \
+model = get_model('htdemucs_6s'); \
+print('htdemucs_6s cached successfully.'); \
+print('Downloading htdemucs_ft (fallback)...'); \
+model2 = get_model('htdemucs_ft'); \
 print('htdemucs_ft cached successfully.'); \
 "
 

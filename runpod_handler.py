@@ -11,7 +11,7 @@ Docker 컨테이너 내부 /app/Applio/ 에 Applio 리포가 클론되어 있다
 
 Docker 이미지에 필요한 것:
   - Applio repo at /app/Applio/
-  - FFmpeg, Demucs (htdemucs_ft), noisereduce
+  - FFmpeg, Demucs (htdemucs_6s), noisereduce
   - pyannote-audio (optional, for speaker diarization — requires separate install)
   - CUDA 12.1+, PyTorch 2.x, FAISS-gpu
   - runpod SDK
@@ -186,7 +186,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
     Full preprocessing pipeline:
       1) Decode incoming audio/video files
       2) Extract audio from video (FFmpeg)
-      3) Vocal separation (Demucs htdemucs_ft)
+      3) Vocal separation (Demucs htdemucs_6s)
       4) Speaker diarization (pyannote, optional)
       5) Noise reduction (noisereduce)
       6) Segment into 3-12s clips
@@ -467,7 +467,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
 
 def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     """
-    Run Demucs htdemucs_ft model to separate vocals from accompaniment.
+    Run Demucs htdemucs_6s model to separate vocals from accompaniment (v18: 6-stem).
     Returns dict with:
       - "vocals": list of vocal-only WAV paths
       - "accompaniment": list of accompaniment (drums+bass+other) WAV paths
@@ -518,7 +518,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
         # seed 파라미터는 demucs 일부 버전에서 미지원 — 대신 torch.manual_seed로 재현성 확보
         torch.manual_seed(0)
         separator = demucs.api.Separator(
-            model="htdemucs_ft",
+            model="htdemucs_6s",    # v18: ft→6s — 피아노/기타 별도 스템 분리 → 보컬 누화 제거
             device=device,
             shifts=5,       # 5 random time shifts → average = dramatically better SDR
             overlap=0.6,    # 60% overlap between segments = smoother transitions, fewer artifacts
@@ -537,9 +537,11 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                     sf.write(str(vocal_wav), vocal_np, samplerate=44100, subtype="FLOAT")
                     vocal_paths.append(vocal_wav)
 
-                    # Build accompaniment = drums + bass + other (STEREO preserved)
+                    # Build accompaniment = drums + bass + other + guitar + piano (STEREO preserved)
+                    # v18: htdemucs_6s — guitar/piano 스템도 MR에 포함
+                    #      (보컬 스템에서 분리된 피아노/기타를 반주에 복원)
                     mr_stems = []
-                    for stem in ("drums", "bass", "other"):
+                    for stem in ("drums", "bass", "other", "guitar", "piano"):
                         if stem in separated:
                             mr_stems.append(separated[stem].cpu().numpy())
                     if mr_stems:
@@ -569,9 +571,9 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     from demucs.apply import apply_model
     from demucs.audio import AudioFile
 
-    model = get_model("htdemucs_ft")
+    model = get_model("htdemucs_6s")    # v18: ft→6s — 피아노/기타 별도 분리
     model.to(device)
-    # htdemucs_ft sources order: drums, bass, other, vocals
+    # htdemucs_6s sources order: drums, bass, other, vocals, guitar, piano
     source_names = model.sources
     vocals_idx = source_names.index("vocals") if "vocals" in source_names else -1
 
