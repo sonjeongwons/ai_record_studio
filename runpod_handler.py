@@ -767,9 +767,9 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
                 y=audio_data,
                 sr=sr,
                 prop_decrease=prop,
-                stationary=True,
-                n_fft=2048,     # 2048: 46ms 윈도우 — 고음 하모닉스 보존 (4096은 과도한 스펙트럼 평활화)
-                hop_length=128, # 128: 2.9ms → 더 세밀한 시간적 해상도
+                stationary=False,   # v17: True→False — 음악 소스는 비정상 노이즈 (커뮤니티 권장: 음악에 non-stationary가 적합)
+                n_fft=2048,         # 2048: 46ms 윈도우 — 고음 하모닉스 보존 (4096은 과도한 스펙트럼 평활화)
+                hop_length=128,     # 128: 2.9ms → 더 세밀한 시간적 해상도
             )
 
             sf.write(str(out_path), reduced, samplerate=sr, subtype="FLOAT")
@@ -1783,9 +1783,9 @@ def _rvc_train(
         str(sample_rate),         # 8
         "True",                   # 9: save_only_latest (avoid G_/D_ checkpoint bloat)
         "True",                   # 10: save_every_weights
-        "False",                  # 11: cache_data_in_gpu
+        "True",                   # 11: cache_data_in_gpu (RTX 4090 24GB VRAM → GPU 캐시로 훈련 속도 2× 향상)
         "True",                   # 12: overtraining_detector
-        "50",                     # 13: overtraining_threshold (30→50: 학습 충분히 허용 → 음색 특성 완전 학습)
+        "100",                    # 13: overtraining_threshold (50→100: 조기 중단 방지 — 50은 너무 공격적, 음색 학습 불완전 위험)
         "False",                  # 14: cleanup
         "HiFi-GAN",              # 15: vocoder
         "False",                  # 16: checkpointing
@@ -2159,11 +2159,11 @@ def _post_process_vocal(
     # ━━━ 2. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 2b. 중저역 과다 보정 (v16 신규) ━━━
-    # 실측: RVC 변환 보컬 400-800Hz +1.9dB 과다 (comethru6 vs 원곡)
-    # → 가래낀/탁한 음색(boxiness) 직접 원인
-    # width=0.9 옥타브: 약 390-780Hz 타겟, 자연스러운 중역 밸런스 복원
-    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-1.5")
+    # ━━━ 2b. 저역 탁함 보정 (v17 개선) ━━━
+    # 300Hz: RVC 보코더 특유의 '먹먹함/박스감' 제거 (커뮤니티 권장: 200-400Hz -1.5dB)
+    # 550Hz: 실측 +1.9dB 과다 중저역 (comethru 가래낀 소리 원인) 보정
+    filters.append("equalizer=f=300:width_type=o:width=0.8:g=-1.5")    # 저역 먹먹함 (HiFi-GAN 버릇)
+    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-1.5")    # 중저역 과다 보정
 
     # ━━━ 3. 디에서 — HiFi-GAN 아티팩트만 정밀 타겟 ━━━
     # RVC HiFi-GAN 보코더는 7-8kHz 대역에서 금속성 고역 아티팩트 생성
@@ -2171,12 +2171,14 @@ def _post_process_vocal(
     # v11의 5.5kHz(w=0.8) + 7.5kHz(w=0.7) = 광대역 → 자음 포먼트 파괴했음
     filters.append("equalizer=f=7500:width_type=o:width=0.4:g=-2.5")
 
-    # ━━━ 3b. HiFi-GAN 하모닉 손실 보상 (v15 신규) ━━━
+    # ━━━ 3b. HiFi-GAN 하모닉 손실 보상 (v17 개선) ━━━
     # 실측: 변환곡 3-8kHz 에너지 -4.5dB (발음 뭉개짐/어눌함 원인).
     # HiFi-GAN 보코더가 프레즌스(2-4kHz)와 에어(8kHz+) 대역 재구성 불완전.
-    # 좁은 부스트로 명료도·존재감·자음 선명도 복원.
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=2.5")   # 프레즌스/자음 선명도 (v16: 1.8→2.5, 실측 -3.9dB gap 보완)
-    filters.append("highshelf=f=7000:width_type=o:width=0.9:g=1.5")    # 에어/디테일 복원
+    # v17: 하이셸프 시작점 9000Hz로 올림 (기존 7000Hz → 7.5kHz 노치와 간섭 문제 수정)
+    #      16kHz 롤오프 추가: HiFi-GAN 16kHz 이상 잡음 제거 (커뮤니티 권장)
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=2.5")   # 프레즌스/자음 선명도
+    filters.append("highshelf=f=9000:width_type=o:width=0.9:g=1.5")    # 에어/디테일 복원 (7000→9000: 7.5kHz 노치 간섭 해소)
+    filters.append("highshelf=f=16000:width_type=o:width=0.7:g=-3.0")  # HiFi-GAN 16kHz 이상 잡음 제거
 
     # ━━━ 4. 고음/가성 모드 (경미한 저역 마스킹 제거) ━━━
     if high_note_mode:
@@ -2203,8 +2205,9 @@ def _post_process_vocal(
         c6 = reverb_amount * 0.08
         c7 = reverb_amount * 0.04
         c8 = reverb_amount * 0.02
+        # in_gain=1.0: 드라이 신호 감쇄 없음 (기존 0.85는 리버브 켤 때 드라이 -1.4dB 감소 버그)
         filters.append(
-            f"aecho=0.85:0.88:"
+            f"aecho=1.0:0.88:"
             f"7|13|23|31|41|53|67|83:"
             f"{c1:.4f}|{c2:.4f}|{c3:.4f}|{c4:.4f}|"
             f"{c5:.4f}|{c6:.4f}|{c7:.4f}|{c8:.4f}"
@@ -2286,9 +2289,9 @@ def _mix_audio(
         "-filter_complex",
         # ── 보컬 체인 ──
         # v12: 후처리에서 볼륨 보상 제거 → 여기서 자동 레벨 매칭 적용
+        # v17: stereotools 제거 — slev=0.05는 사실상 무음(+0.04dB), 불필요한 필터 레이턴시만 발생
         f"[0:a]aresample=resampler=soxr,volume={_effective_vocal:.3f},"
-        f"aformat=channel_layouts=stereo,"
-        f"stereotools=mlev=1.0:slev=0.05:sbal=0.0[v];"
+        f"aformat=channel_layouts=stereo[v];"
         # ── MR 체인 ──
         # 보컬 핵심 대역 경미한 컷 → 보컬 공간 확보 + 반주 보존
         f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.90:.3f},"
@@ -2482,20 +2485,22 @@ def task_convert(job_input: dict, job: dict) -> dict:
         filter_radius: int = int(job_input.get("filter_radius", 2))
     except (ValueError, TypeError):
         filter_radius = 2
-    # rms_mix_rate 0.10: v12 — 원곡 다이나믹스 90% 보존 + 약간의 균일화
-    # v9의 0.05: 사실상 RMS 미적용 → 모델 학습된 다이나믹스 전혀 반영 안됨
-    # 0.10: 원곡 강약 대부분 유지하면서 모델의 자연스러운 볼륨 패턴 10% 혼합
+    # rms_mix_rate 0.20: v17 — 원곡 다이나믹스 80% 보존 + 모델 다이나믹스 20% 혼합
+    # 0.10(기존): 너무 낮음 → 과도하게 플랫한 다이나믹스, 음악적 숨결/강약 소실
+    # 0.20: 커뮤니티 권장 0.20-0.25 범위 — 자연스러운 원곡 강약 유지 + 모델 보컬 특성 반영
+    # 0.25: 더 강한 보컬 개성, 원곡 다이나믹스 일부 희생 (향후 옵션)
     try:
-        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.10))
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.20))
     except (ValueError, TypeError):
-        rms_mix_rate = 0.10
-    # protect 0.50: 표준 자음/숨소리 보호
-    # v5의 0.55: 과보호 → 음절 전환부에서 어색한 끊김 발생 가능
-    # 0.50: Applio 권장 기본값, 충분한 보호 + 자연스러운 전환
+        rms_mix_rate = 0.20
+    # protect 0.40: v17 — 한국어 노래 최적화
+    # 0.50(기존): 과보호 → 유성음/무성음 경계에서 부자연스러운 전환, 자음 딱딱함
+    # 0.40: 커뮤니티 권장 0.33-0.40 범위 — 한국어 빈번한 유/무성 전환에 자연스러운 보컬
+    # 0.33: 더 자연스러운 전환, 다이나믹스 위험은 낮음 (향후 실험 가능)
     try:
-        protect: float = float(job_input.get("protect", 0.50))
+        protect: float = float(job_input.get("protect", 0.40))
     except (ValueError, TypeError):
-        protect = 0.50
+        protect = 0.40
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     try:
         hop_length: int = int(job_input.get("hop_length", 64))

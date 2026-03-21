@@ -867,7 +867,7 @@ def _is_job_cancelled(job_id: str) -> bool:
     try:
         with get_db() as db:
             row = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
-            return row and row["status"] in ("failed", "cancelled")
+            return row and row["status"] in ("failed", "cancelled", "paused")  # v17: paused 추가 — 일시정지 작업도 폴링 중단
     except Exception:
         return False
 
@@ -1930,7 +1930,7 @@ async def upload_chunk(
 async def start_training(
     model_name: str = Form(...),
     epochs: int = Form(800),           # 800: optimal for 5-15 min of training data
-    sample_rate: int = Form(48000),    # 48k: better for studio/high-quality recordings
+    sample_rate: int = Form(40000),    # v17: 48k→40k (RVC v2 커뮤니티 표준 — 40kHz 프리트레인이 더 검증됨)
     batch_size: int = Form(0),         # 0 = GPU auto-detect (RTX 4090 → 24)
     f0_method: str = Form("rmvpe"),
     file_ids: str = Form("")  # comma-separated
@@ -2381,8 +2381,8 @@ async def start_conversion(
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.50),
-    rms_mix_rate: float = Form(0.10),
+    protect: float = Form(0.40),        # v17: 0.50→0.40 (한국어 노래 커뮤니티 권장 0.33-0.40)
+    rms_mix_rate: float = Form(0.20),   # v17: 0.10→0.20 (커뮤니티 권장 0.20-0.25, 더 자연스러운 다이나믹스)
     filter_radius: int = Form(2),
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),

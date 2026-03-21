@@ -3024,8 +3024,8 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">샘플레이트 <i class="tip" data-tip="소리의 해상도(화질)입니다.\n\n🔢 추천:\n• 48kHz = 스튜디오 녹음·FLAC/WAV 고음질 원본 (권장)\n• 40kHz = 유튜브·스트리밍·MP3 일반 음원\n• 32kHz = 저화질 원본 또는 비용 절약 시\n\n⚠️ 원본보다 높게 설정해도 품질이 오르지 않습니다. 원본과 같게 맞추세요.\n💰 48kHz는 40kHz보다 학습 시간이 약 10~20% 늘어납니다.">ⓘ</i></label>
           <select id="train-sr" onchange="estimateTrainingCost()">
-            <option value="48000" selected>48 kHz (권장 · 스튜디오/고음질 소스)</option>
-            <option value="40000">40 kHz (일반 음악 · 유튜브/MP3 원본)</option>
+            <option value="40000" selected>40 kHz (권장 · RVC v2 커뮤니티 표준, 가장 안정적)</option>
+            <option value="48000">48 kHz (스튜디오/고음질 소스 · 48k 프리트레인 필요)</option>
             <option value="32000">32 kHz (저화질 원본 · 비용 절약)</option>
           </select>
         </div>
@@ -3324,18 +3324,18 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.50 = 기본값 (자음·가성 최대 보존, 추천!)\n• 0.40~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.35 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.45~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.50에서 조금씩 낮추기">ⓘ</i></span>
-              <span class="slider-value" id="protect-val">0.50</span>
+              <span class="slider-value" id="protect-val">0.40</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="50" value="50" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 자음·가성 원본 질감 보존 (0.40~0.50 권장)</div>
+            <input type="range" id="protect-slider" min="0" max="50" value="40" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 원본 질감 보존 (한국어 노래 권장: 0.33~0.40, 기본 0.40)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0~0.2 = 원본 음량 유지 (추천! 자연스러움)\n• 0.3~0.5 = AI가 적당히 음량 조절\n• 0.5 이상 = 강한 음량 조절 (부자연스러울 수 있음)\n\n💡 처음엔 기본값(0.05). 소리가 작거나 크면 0.1~0.2로 조절.">ⓘ</i></span>
-              <span class="slider-value" id="rms-val">0.10</span>
+              <span class="slider-value" id="rms-val">0.20</span>
             </div>
-            <input type="range" id="rms-slider" min="0" max="100" value="10" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (0.05 기본, 0.05~0.20 권장, 낮을수록 원본 음량 패턴 유지)</div>
+            <input type="range" id="rms-slider" min="0" max="100" value="20" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (기본 0.20, 권장 0.15~0.25, 낮을수록 원본 음량 패턴 유지)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4822,16 +4822,16 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default v12: 최소 개입 — 후처리 과다 제거, 자동 레벨 매칭
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 1,
+      // Default v17: protect 0.40, rms 0.20 (커뮤니티 권장값으로 업데이트)
+      f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 35,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false,
-      desc: 'v12 기본 — 최소 개입, 자동 레벨 매칭, 모델 음색 35% 반영'
+      desc: 'v17 기본 — protect 0.40, rms 0.20, 자동 레벨 매칭'
     },
     falsetto: {
       // 가성/고음: filter=1(비브라토 보존) + 고음모드
-      f0: 'rmvpe', protect: 50, rms: 8, filter: 1, hop: 0,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 1, hop: 0,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: true,
@@ -4839,7 +4839,7 @@ function applyConvertPreset(preset) {
     },
     natural: {
       // Natural: 최대 자연스러움 — 모든 이펙트 최소
-      f0: 'rmvpe', protect: 50, rms: 5, filter: 2, hop: 1,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false,
@@ -4847,7 +4847,7 @@ function applyConvertPreset(preset) {
     },
     studio: {
       // Studio: 깨끗한 원본에 최적화 — 안정적 + 미세 공간감
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 1,
+      f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 35,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false,
@@ -4855,7 +4855,7 @@ function applyConvertPreset(preset) {
     },
     chorus: {
       // 화음/코러스: filter 3(피치 안정화) + index 적당히
-      f0: 'rmvpe', protect: 50, rms: 8, filter: 3, hop: 1,
+      f0: 'rmvpe', protect: 40, rms: 18, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 20,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: false,
@@ -4863,7 +4863,7 @@ function applyConvertPreset(preset) {
     },
     indie: {
       // 차분한 인디팝/R&B — 부드러운 밸런스 + 공간감
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 1,
+      f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0,
@@ -4872,19 +4872,20 @@ function applyConvertPreset(preset) {
     chorus_v2: {
       // 화음/그룹 곡 v2 — 기다릴게 분석 기반 (발음 뭉개짐+삑사리 문제 수정)
       // index 0.10: HFC 손실 완화 (발음 선명도 우선)
-      // filter 3: v15 HiFi-GAN 프레즌스 EQ로 명료도 복원 → 과도한 smoothing 불필요
+      // filter 3: v17 HiFi-GAN 프레즌스 EQ로 명료도 복원 → 과도한 smoothing 불필요
       // hop 128(index 2): 시간 평균화로 화음 변환 안정화
-      f0: 'rmvpe', protect: 45, rms: 8, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0,
-      desc: '화음 v2 — 발음 선명도 최우선, 피치 아티팩트 자동 게이트 v15 (기다릴게 최적)'
+      desc: '화음 v2 — 발음 선명도 최우선, 피치 아티팩트 자동 게이트 v16 (기다릴게 최적)'
     },
     duet: {
       // 남녀 듀엣곡 v2 — comethru 분석 기반
       // index 0.08: 여성 음색 강제 변환 최소화 (가래낀 소리 감소)
-      // vocalPreShift 0: phase vocoder 이중 적용 금지 (v15: 전곡 기계음 방지)
-      f0: 'rmvpe', protect: 50, rms: 8, filter: 3, hop: 1,
+      // protect 0.45: 여성 파트 자음 보호를 약간 더 (0.40보다 높게 유지)
+      // vocalPreShift 0: phase vocoder 이중 적용 금지
+      f0: 'rmvpe', protect: 45, rms: 18, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 8,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0,
@@ -6377,8 +6378,8 @@ async function startConversion() {
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-  form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
-  form.append('rms_mix_rate', (getVal('rms-slider', '10') / 100).toFixed(2));
+  form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
+  form.append('rms_mix_rate', (getVal('rms-slider', '20') / 100).toFixed(2));
   form.append('filter_radius', getVal('filter-slider', '2'));
   var hopSteps = [32, 64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '1')] || 64);
@@ -6789,8 +6790,8 @@ async function startBatchConversion() {
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-      form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
-      form.append('rms_mix_rate', (getVal('rms-slider', '10') / 100).toFixed(2));
+      form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
+      form.append('rms_mix_rate', (getVal('rms-slider', '20') / 100).toFixed(2));
       form.append('filter_radius', getVal('filter-slider', '2'));
       var hopSteps2 = [32, 64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '1')] || 64);
