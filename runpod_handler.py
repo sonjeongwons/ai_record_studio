@@ -2159,6 +2159,12 @@ def _post_process_vocal(
     # ━━━ 2. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
+    # ━━━ 2b. 중저역 과다 보정 (v16 신규) ━━━
+    # 실측: RVC 변환 보컬 400-800Hz +1.9dB 과다 (comethru6 vs 원곡)
+    # → 가래낀/탁한 음색(boxiness) 직접 원인
+    # width=0.9 옥타브: 약 390-780Hz 타겟, 자연스러운 중역 밸런스 복원
+    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-1.5")
+
     # ━━━ 3. 디에서 — HiFi-GAN 아티팩트만 정밀 타겟 ━━━
     # RVC HiFi-GAN 보코더는 7-8kHz 대역에서 금속성 고역 아티팩트 생성
     # 좁은 밴드(width=0.4 옥타브)로 아티팩트만 제거, 자연 치찰음 보존
@@ -2169,7 +2175,7 @@ def _post_process_vocal(
     # 실측: 변환곡 3-8kHz 에너지 -4.5dB (발음 뭉개짐/어눌함 원인).
     # HiFi-GAN 보코더가 프레즌스(2-4kHz)와 에어(8kHz+) 대역 재구성 불완전.
     # 좁은 부스트로 명료도·존재감·자음 선명도 복원.
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.8")   # 프레즌스/자음 선명도
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=2.5")   # 프레즌스/자음 선명도 (v16: 1.8→2.5, 실측 -3.9dB gap 보완)
     filters.append("highshelf=f=7000:width_type=o:width=0.9:g=1.5")    # 에어/디테일 복원
 
     # ━━━ 4. 고음/가성 모드 (경미한 저역 마스킹 제거) ━━━
@@ -2313,11 +2319,12 @@ def _fix_pitch_artifacts(
     max_hz: float = 490.0,
     min_duration_s: float = 0.08,
     gap_bridge_s: float = 0.30,
+    vp_threshold: float = 0.12,
 ) -> bool:
-    """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v15).
+    """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v16).
 
     Demucs가 악기 신호(피아노/신스 고음역)를 보컬 트랙에 포함시킬 때
-    RVC가 해당 신호를 B4+(>490Hz) 괴성으로 변환하는 문제 수정.
+    RVC가 해당 신호를 괴성으로 변환하는 문제 수정.
 
     v14 문제: min_duration_s=0.8s → 실측 아티팩트가 0.02-0.30s 짧은 버스트로
     분산되어 모두 누락. (105s 0.30s, 106.9s 0.12s, 107.1s 0.23s 등)
@@ -2325,8 +2332,15 @@ def _fix_pitch_artifacts(
     v15 수정:
       - min_duration_s: 0.8 → 0.08 (80ms 이상 버스트 감지)
       - gap_bridge_s: 0.30s 이하 갭은 같은 아티팩트 이벤트로 연결
-        (짧은 갭으로 분산된 아티팩트들을 하나의 연속 이벤트로 처리)
       - max_hz: 480 → 490 (B4=494Hz 경계 위 명확한 아티팩트만 대상)
+
+    v16 수정:
+      - Zone 2 VP 기반 감지 추가: 430-490Hz 구간에서 PYIN 신뢰도(voiced_prob)
+        < vp_threshold(0.12)인 프레임도 아티팩트로 처리
+      - 실측: 기다릴게12 103-115s 괴성 구간 430-490Hz 아티팩트 VP=0.010~0.092
+        (490Hz 임계값 이하라 기존 Zone1에서 누락되던 구간 보완)
+      - 실제 가창 프레임: VP ≥ 0.20 (지속구간) → Zone2에 해당 없음
+      - vp_threshold 파라미터로 민감도 조절 가능 (기본값 0.12)
     """
     try:
         import soundfile as _sf_pa
@@ -2338,10 +2352,19 @@ def _fix_pitch_artifacts(
         y_mono = y.mean(axis=1) if is_stereo else y.copy()
 
         hop = 512
-        f0, voiced, _ = _lib_pa.pyin(
+        f0, voiced, voiced_prob = _lib_pa.pyin(
             y_mono, fmin=80, fmax=1200, sr=sr, frame_length=2048, hop_length=hop
         )
-        artifact = voiced & ~_np_pa.isnan(f0) & (f0 > max_hz)
+        # Zone 1: F0 > max_hz (확실한 아티팩트: 남성 가성 최상한 B4 이상)
+        zone1 = voiced & ~_np_pa.isnan(f0) & (f0 > max_hz)
+        # Zone 2: 430-490Hz 구간, PYIN 신뢰도 < vp_threshold (악기 아티팩트 시그니처)
+        # 실제 가창은 VP ≥ 0.20(지속), 악기 누화는 VP < 0.12
+        zone2 = (
+            voiced & ~_np_pa.isnan(f0)
+            & (f0 > 430.0) & (f0 <= max_hz)
+            & (voiced_prob < vp_threshold)
+        )
+        artifact = zone1 | zone2
 
         # --- gap bridging: gap_bridge_s 이하 간격의 아티팩트 버스트를 연결 ---
         gap_frames = max(1, int(gap_bridge_s * sr / hop))
@@ -2385,9 +2408,11 @@ def _fix_pitch_artifacts(
                         else:
                             gain[k] = 0.05  # ≈ -26 dB
                     suppressed_count += 1
+                    _med_f0 = float(_np_pa.nanmedian(f0[i:j]))
+                    _zone = "Z1" if _med_f0 > max_hz else "Z2(VP<0.12)"
                     log.info(
-                        f"Pitch artifact gate v15: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
-                        f"F0≈{float(_np_pa.nanmedian(f0[i:j])):.0f}Hz(>{max_hz:.0f}Hz) suppressed"
+                        f"Pitch artifact gate v16 [{_zone}]: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
+                        f"F0≈{_med_f0:.0f}Hz suppressed"
                     )
                 i = j
             else:
@@ -2404,7 +2429,7 @@ def _fix_pitch_artifacts(
         gain_audio = _np_pa.clip(gain_audio, 0.0, 1.0)
         y_fixed = (y * gain_audio[:, _np_pa.newaxis]) if is_stereo else (y * gain_audio)
         _sf_pa.write(str(output_path), y_fixed, sr)
-        log.info(f"Pitch artifact gate: {suppressed_count} segment(s) suppressed → {output_path.name}")
+        log.info(f"Pitch artifact gate v16: {suppressed_count} segment(s) suppressed → {output_path.name}")
         return True
 
     except Exception as _pa_err:
