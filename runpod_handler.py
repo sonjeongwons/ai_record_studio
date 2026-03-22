@@ -2179,8 +2179,8 @@ def _post_process_vocal(
     # HiFi-GAN 보코더가 프레즌스(2-4kHz)와 에어(8kHz+) 대역 재구성 불완전.
     # v17: 하이셸프 시작점 9000Hz로 올림 (기존 7000Hz → 7.5kHz 노치와 간섭 문제 수정)
     #      16kHz 롤오프 추가: HiFi-GAN 16kHz 이상 잡음 제거 (커뮤니티 권장)
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.5")   # 프레즌스/자음 선명도 (v18: +2.5→+1.5: 여성보컬 거친 소리 완화)
-    filters.append("highshelf=f=9000:width_type=o:width=0.9:g=1.5")    # 에어/디테일 복원 (7000→9000: 7.5kHz 노치 간섭 해소)
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.0")   # 프레즌스/자음 선명도 (v19: +1.5→+1.0: comethru 가래낀 소리 추가 완화)
+    filters.append("highshelf=f=9000:width_type=o:width=0.9:g=1.0")    # 에어/디테일 복원 (v19: +1.5→+1.0: 과도한 고역 부스트 완화)
     filters.append("highshelf=f=16000:width_type=o:width=0.7:g=-3.0")  # HiFi-GAN 16kHz 이상 잡음 제거
 
     # ━━━ 4. 고음/가성 모드 (경미한 저역 마스킹 제거) ━━━
@@ -2322,12 +2322,12 @@ def _mix_audio(
 def _fix_pitch_artifacts(
     vocal_path: Path,
     output_path: Path,
-    max_hz: float = 530.0,
+    max_hz: float = 1200.0,
     min_duration_s: float = 0.20,
     gap_bridge_s: float = 0.15,
-    vp_threshold: float = 0.06,
+    vp_threshold: float = 0.03,
 ) -> bool:
-    """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v18).
+    """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v19).
 
     Demucs가 악기 신호(피아노/신스 고음역)를 보컬 트랙에 포함시킬 때
     RVC가 해당 신호를 괴성으로 변환하는 문제 수정.
@@ -2354,6 +2354,19 @@ def _fix_pitch_artifacts(
         기존 0.12 → 기다릴게 35-38s, 95-98s, 108-110s 가성 묵음 역효과 수정
       - min_duration_s: 0.08 → 0.20 (200ms 미만 단발 버스트 보존: 짧은 가성 음절 보호)
       - gap_bridge_s: 0.30 → 0.15 (과도한 버스트 연결 방지: 화음 영역 실제 가창 훼손 방지)
+
+    v19 수정 (기다릴게14 HPSS 실측 분석 기반):
+      - max_hz: 530 → 1200 (Zone 1 사실상 비활성화)
+        실측: 기다릴게 가성 F0=519-809Hz → max_hz=530이 C5+(523Hz) 이상 가성 전체 게이팅
+        35-38s: 519-543Hz, 95-98s: 480-540Hz, 108-110s: 530-613Hz, 115-118s: 596-809Hz
+        htdemucs_6s 전환으로 피아노/기타 누화 감소 → Zone 1의 존재 이유 희박
+        1200Hz 이상은 인간 음성으로 나올 수 없으므로 실질적 아티팩트만 게이팅
+      - vp_threshold: 0.06 → 0.03 (더 보수적 Zone 2)
+        실측: 변환 보컬 가성 구간 VP가 원곡보다 낮을 수 있어 0.06이 실제 가성도 게이팅
+        vp_threshold=0.03: 확실한 악기 누화 아티팩트(VP=0.01~0.02)만 게이팅
+      - Zone 2 범위 고정: 430-530Hz (max_hz와 독립)
+        max_hz=1200으로 올려도 Zone 2가 430-1200Hz로 확대되는 것 방지
+        530Hz+ 가성 영역은 Zone 2에서 제외 (실제 가성 보호)
     """
     try:
         import soundfile as _sf_pa
@@ -2368,13 +2381,17 @@ def _fix_pitch_artifacts(
         f0, voiced, voiced_prob = _lib_pa.pyin(
             y_mono, fmin=80, fmax=1200, sr=sr, frame_length=2048, hop_length=hop
         )
-        # Zone 1: F0 > max_hz (확실한 아티팩트: 남성 가성 최상한 B4 이상)
+        # Zone 1: F0 > max_hz (v19: 1200Hz — 인간 목소리 최상한 이상의 극한 아티팩트만)
+        # htdemucs_6s로 피아노/기타 분리 후 Zone 1 필요성 감소
         zone1 = voiced & ~_np_pa.isnan(f0) & (f0 > max_hz)
-        # Zone 2: 430-490Hz 구간, PYIN 신뢰도 < vp_threshold (악기 아티팩트 시그니처)
-        # 실제 가창은 VP ≥ 0.20(지속), 악기 누화는 VP < 0.12
+        # Zone 2: 430-530Hz 고정 범위, PYIN 신뢰도 < vp_threshold (악기 아티팩트 시그니처)
+        # v19: 범위를 430-530Hz로 고정 (max_hz와 독립) — 530Hz+ 가성 영역 보호
+        # 실측: 기다릴게 가성 F0=519-809Hz, VP=0.06~0.83 → vp_threshold=0.03으로 실제 가성 통과
+        # 악기 누화 특성: VP=0.01~0.02 (확실한 아티팩트만 게이팅)
+        _zone2_max_hz = 530.0  # max_hz와 독립적인 Zone 2 상한 (고정)
         zone2 = (
             voiced & ~_np_pa.isnan(f0)
-            & (f0 > 430.0) & (f0 <= max_hz)
+            & (f0 > 430.0) & (f0 <= _zone2_max_hz)
             & (voiced_prob < vp_threshold)
         )
         artifact = zone1 | zone2
@@ -2422,7 +2439,7 @@ def _fix_pitch_artifacts(
                             gain[k] = 0.05  # ≈ -26 dB
                     suppressed_count += 1
                     _med_f0 = float(_np_pa.nanmedian(f0[i:j]))
-                    _zone = "Z1" if _med_f0 > max_hz else "Z2(VP<0.12)"
+                    _zone = "Z1" if _med_f0 > max_hz else f"Z2(VP<{vp_threshold})"
                     log.info(
                         f"Pitch artifact gate v16 [{_zone}]: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
                         f"F0≈{_med_f0:.0f}Hz suppressed"
