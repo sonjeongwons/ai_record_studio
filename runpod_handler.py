@@ -979,17 +979,19 @@ def task_train(job_input: dict, job: dict) -> dict:
         sample_rate: int = int(job_input.get("sample_rate", 40000))
     except (ValueError, TypeError):
         sample_rate = 40000  # 40k recommended for SVC
+    # v23: 500→300 (Applio 기본 200, RVC 위키 권장 200. 800/500은 오버트레이닝 위험)
     try:
-        epochs: int = int(job_input.get("epochs", 500))
+        epochs: int = int(job_input.get("epochs", 300))
     except (ValueError, TypeError):
-        epochs = 500
+        epochs = 300
     try:
         batch_size: int = int(job_input.get("batch_size", 0))
     except (ValueError, TypeError):
         batch_size = 0  # 0 = auto-detect
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    save_every_epoch: int = max(1, int(job_input.get("save_every_epoch", 50)))
+    # v23: 50→25 — 더 세밀한 체크포인트로 최적 epoch 식별
+    save_every_epoch: int = max(1, int(job_input.get("save_every_epoch", 25)))
 
     if not audio_files and not audio_urls:
         raise ValueError("No audio_files or audio_urls provided for training")
@@ -1787,7 +1789,7 @@ def _rvc_train(
         "True",                   # 10: save_every_weights
         "True",                   # 11: cache_data_in_gpu (RTX 4090 24GB VRAM → GPU 캐시로 훈련 속도 2× 향상)
         "True",                   # 12: overtraining_detector
-        "100",                    # 13: overtraining_threshold (50→100: 조기 중단 방지 — 50은 너무 공격적, 음색 학습 불완전 위험)
+        "50",                     # 13: overtraining_threshold (v23: 100→50 Applio 기본값 복원 — 50 epoch 무개선 시 조기 중단)
         "False",                  # 14: cleanup
         "HiFi-GAN",              # 15: vocoder
         "False",                  # 16: checkpointing

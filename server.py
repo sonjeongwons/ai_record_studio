@@ -1929,7 +1929,7 @@ async def upload_chunk(
 @app.post("/api/train")
 async def start_training(
     model_name: str = Form(...),
-    epochs: int = Form(800),           # 800: optimal for 5-15 min of training data
+    epochs: int = Form(300),           # v23: 800→300 (Applio 기본 200, 위키 권장 200-300. 800은 심각한 오버트레이닝)
     sample_rate: int = Form(40000),    # v17: 48k→40k (RVC v2 커뮤니티 표준 — 40kHz 프리트레인이 더 검증됨)
     batch_size: int = Form(0),         # 0 = GPU auto-detect (RTX 4090 → 24)
     f0_method: str = Form("rmvpe"),
