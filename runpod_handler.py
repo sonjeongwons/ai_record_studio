@@ -1529,7 +1529,7 @@ def _rvc_preprocess(
             except Exception:
                 continue
         if _global_peak > 0:
-            _TARGET = 10.0 ** (-4 / 20)  # -4 dBFS = 0.631 (v11: -3→-4, 증강 헤드룸)
+            _TARGET = 10.0 ** (-1 / 20)  # -1 dBFS = 0.891 (v24: -4→-1, 자연 다이나믹스 최대 보존)
             _norm_factor = _TARGET / _global_peak
             log.info(
                 f"Global normalization: peak={_global_peak:.4f}, "
@@ -2125,37 +2125,29 @@ def _post_process_vocal(
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
 ) -> None:
-    """Post-process converted vocal v12 — 최소 개입 원칙.
+    """Post-process converted vocal v24 — 자연스러움 최우선.
 
-    ── v12 전면 개편 (v29 모델 + 기다릴게9/comethru3 실측 분석) ──
-    v11 핵심 문제 (기계음/마찰음/펌핑의 직접 원인):
-      1. volume=1.75(+4.9dB) + limiter=0.95 = 상시 게인 리덕션 → 펌핑/기계음
-      2. 5밴드 EQ 부스트(400,3k,4.5k,10k) + 2밴드 디에서 = 7개 위상변형 → 부자연스러움
-      3. acompressor threshold=0.3(-10.5dBFS) → 거의 모든 구간 압축 → 다이나믹스 파괴
-      4. 후처리 limiter + 믹싱 limiter = 이중 리미팅 → 추가 펌핑
-      5. 디에서 width=0.8(광대역) → 자연 치찰음/자음 포먼트(4-6kHz)까지 손실
+    ── v24 개선 (v31 모델 최적화) ──
+    v12 원칙 유지 + 미세 조정:
+      - 디에서 6kHz 추가: RVC 치찰음(ㅅ,ㅆ) 과도 재구성 타겟 제거
+      - EQ 완화: 300/550Hz 컷 -1.0→-0.7dB (자연 음색 보존)
+      - 소프트 새츄레이션: 미세한 아날로그 워밍 (HiFi-GAN 디지털감 완화)
+      - 프레즌스/에어: +1.0→+0.8dB (과부스팅 방지)
 
-    v12 핵심 원칙: "아티팩트만 제거, 나머지 터치하지 않음"
-      - EQ 부스트 전부 제거 → RVC 출력의 자연스러운 음색 그대로 보존
-      - 압축 제거 → 원곡 다이나믹스(강약/비브라토) 완전 유지
-      - 볼륨 보상 제거 → 믹싱 단계에서 자동 RMS 레벨 매칭으로 대체
-      - 리미터 → 안전망 수준(limit=0.98, 거의 작동 안함)
-      - 디에서 → 좁은 밴드(width=0.4)로 HiFi-GAN 아티팩트만 정밀 타겟
-
-    ── 처리 순서 (4단계만) ──
-    1. adeclick — 클릭/팝 제거 (비파괴)
-    2. highpass — 초저역 럼블 제거
-    3. 디에서 — HiFi-GAN 고역 아티팩트만 정밀 제거
-    4. 안전 리미터 — 클리핑 방지만 (일반적으로 작동하지 않음)
-    5. (리버브) — 공간감 (선택)
+    ── 처리 순서 ──
+    1. adeclick — 클릭/팝 제거
+    2. highpass — 초저역 제거
+    3. 디에서 6kHz — 치찰음 타겟 제거
+    4. 디에서 7.5kHz — HiFi-GAN 금속 아티팩트 제거
+    5. 저역 EQ 보정 — 먹먹함 최소 보정
+    6. 프레즌스/에어 복원 — HiFi-GAN 하모닉 손실 보상
+    7. 소프트 새츄레이션 — 디지털감 완화
+    8. 안전 리미터
+    9. (리버브) — 공간감 (선택)
     """
     filters = []
 
     # ━━━ 1. 클릭/팝 아티팩트 제거 (비파괴적) ━━━
-    # v13: threshold 2→5, burst 2→4
-    # threshold=2(기존): 매우 민감 → 비브라토 진폭 변화, 자음 포먼트도 클릭으로 오탐 → 마찰음 유발
-    # threshold=5: 명백한 클릭/팝만 제거, 발성 트랜지언트는 보존
-    # burst=4: 4ms 이내 연속 클릭 → 단일 이벤트로 처리 (자음 자연스럽게 보존)
     filters.append(
         "adeclick=window=55:overlap=75:arorder=8:threshold=5:burst=4"
     )
@@ -2163,43 +2155,34 @@ def _post_process_vocal(
     # ━━━ 2. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 2b. 저역 탁함 보정 (v18: -1.5dB→-1.0dB 완화) ━━━
-    # 300Hz: RVC 보코더 특유의 '먹먹함/박스감' 제거
-    # 550Hz: 과다 중저역 보정
-    # v18: -1.5dB→-1.0dB — 과도한 컷이 여성보컬/가성 음역 얇게 만들어 기계음 부각
-    filters.append("equalizer=f=300:width_type=o:width=0.8:g=-1.0")    # 저역 먹먹함 (v18: -1.5→-1.0)
-    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-1.0")    # 중저역 과다 보정 (v18: -1.5→-1.0)
-
-    # ━━━ 3. 디에서 — HiFi-GAN 아티팩트만 정밀 타겟 ━━━
-    # RVC HiFi-GAN 보코더는 7-8kHz 대역에서 금속성 고역 아티팩트 생성
-    # 좁은 밴드(width=0.4 옥타브)로 아티팩트만 제거, 자연 치찰음 보존
-    # v11의 5.5kHz(w=0.8) + 7.5kHz(w=0.7) = 광대역 → 자음 포먼트 파괴했음
+    # ━━━ 3. 디에서 — 치찰음 + HiFi-GAN 아티팩트 정밀 제거 ━━━
+    # v24: 6kHz 디에서 추가 — RVC가 치찰음(ㅅ,ㅆ,ㅈ,ㅊ) 과도 재구성
+    # width=1.5옥타브: 4-9kHz 범위의 치찰음 에너지 타겟
+    filters.append("equalizer=f=6000:width_type=o:width=1.5:g=-2.5")
+    # 7.5kHz: HiFi-GAN 금속성 아티팩트 (기존 유지)
     filters.append("equalizer=f=7500:width_type=o:width=0.4:g=-2.5")
 
-    # ━━━ 3b. HiFi-GAN 하모닉 손실 보상 (v17 개선) ━━━
-    # 실측: 변환곡 3-8kHz 에너지 -4.5dB (발음 뭉개짐/어눌함 원인).
-    # HiFi-GAN 보코더가 프레즌스(2-4kHz)와 에어(8kHz+) 대역 재구성 불완전.
-    # v17: 하이셸프 시작점 9000Hz로 올림 (기존 7000Hz → 7.5kHz 노치와 간섭 문제 수정)
-    #      16kHz 롤오프 추가: HiFi-GAN 16kHz 이상 잡음 제거 (커뮤니티 권장)
-    # v21: v19 EQ 복원 — v20 중립화가 역효과 (기다릴게v16 기계음 악화)
-    # 실측: v20(+0.5dB/없음)은 v19(+1.0dB/+1.0dB) 대비 발음선명도·고역디테일 저하
-    # v15(v19 EQ)의 Presence/Air가 원곡보다 약간 높았으나 자연스러운 범위 내
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.0")   # 프레즌스/자음 선명도 (v19 복원)
-    filters.append("highshelf=f=9000:width_type=o:width=0.9:g=1.0")    # 에어/디테일 복원 (v19 복원)
-    filters.append("highshelf=f=16000:width_type=o:width=0.7:g=-3.0")  # HiFi-GAN 16kHz 이상 잡음 제거
+    # ━━━ 4. 저역 탁함 보정 (v24: -1.0→-0.7dB 완화) ━━━
+    # v24: 과도한 저역 컷이 음색을 얇게 만드는 문제 완화
+    filters.append("equalizer=f=300:width_type=o:width=0.8:g=-0.7")
+    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-0.7")
 
-    # ━━━ 4. 고음/가성 모드 (경미한 저역 마스킹 제거) ━━━
-    # v21: v19 상태 복원 — high_note_mode는 저역 마스킹 제거만 수행
+    # ━━━ 5. HiFi-GAN 하모닉 손실 보상 (v24: 약간 완화) ━━━
+    # v24: +1.0→+0.8dB — 과부스팅 시 AI스러운 밝기 유발 방지
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=0.8")
+    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=0.8")
+    filters.append("highshelf=f=16000:width_type=o:width=0.7:g=-3.0")
+
+    # ━━━ 6. 고음/가성 모드 ━━━
     if high_note_mode:
         filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
 
-    # ━━━ v12: EQ 부스트 없음, 압축 없음, 볼륨 부스트 없음 ━━━
-    # RVC 출력의 자연스러운 음색/다이나믹스를 있는 그대로 보존
-    # 볼륨 밸런스는 _mix_audio의 자동 RMS 레벨 매칭이 처리
+    # ━━━ 7. 소프트 새츄레이션 — 디지털감 완화 ━━━
+    # v24 신규: HiFi-GAN의 과도하게 깨끗한 디지털 출력에 미세 워밍
+    # threshold=0.88: 거의 피크에서만 작동, 일반 구간은 투명
+    filters.append("asoftclip=type=tanh:threshold=0.88:output=0.96")
 
-    # ━━━ 5. 안전 리미터 — 클리핑 방지만 ━━━
-    # limit=0.98: RVC 출력이 거의 0dBFS에 도달하지 않으므로 보통 비활성
-    # level=disabled: 자동 볼륨 조정 끔 → 순수 안전망
+    # ━━━ 8. 안전 리미터 ━━━
     filters.append("alimiter=limit=0.98:attack=5:release=100:level=disabled")
 
     # ━━━ 6. 리버브 (선택적) ━━━
@@ -2230,7 +2213,7 @@ def _post_process_vocal(
         str(output_path),
     ])
     log.info(
-        f"Vocal post-processed v12 → {output_path.name} "
+        f"Vocal post-processed v24 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
         f"filters={len(filters)})"
     )
@@ -2593,14 +2576,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
         filter_radius: int = int(job_input.get("filter_radius", 2))
     except (ValueError, TypeError):
         filter_radius = 2
-    # rms_mix_rate 0.20: v17 — 원곡 다이나믹스 80% 보존 + 모델 다이나믹스 20% 혼합
+    # rms_mix_rate 0.15: v24 — 원곡 다이나믹스 85% 보존 (v17: 0.20→v24: 0.15, 더 자연스러운 강약)
     # 0.10(기존): 너무 낮음 → 과도하게 플랫한 다이나믹스, 음악적 숨결/강약 소실
     # 0.20: 커뮤니티 권장 0.20-0.25 범위 — 자연스러운 원곡 강약 유지 + 모델 보컬 특성 반영
     # 0.25: 더 강한 보컬 개성, 원곡 다이나믹스 일부 희생 (향후 옵션)
     try:
-        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.20))
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
     except (ValueError, TypeError):
-        rms_mix_rate = 0.20
+        rms_mix_rate = 0.15
     # protect 0.40: v17 — 한국어 노래 최적화
     # 0.50(기존): 과보호 → 유성음/무성음 경계에서 부자연스러운 전환, 자음 딱딱함
     # 0.40: 커뮤니티 권장 0.33-0.40 범위 — 한국어 빈번한 유/무성 전환에 자연스러운 보컬

@@ -3331,10 +3331,10 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0~0.2 = 원본 음량 유지 (추천! 자연스러움)\n• 0.3~0.5 = AI가 적당히 음량 조절\n• 0.5 이상 = 강한 음량 조절 (부자연스러울 수 있음)\n\n💡 처음엔 기본값(0.05). 소리가 작거나 크면 0.1~0.2로 조절.">ⓘ</i></span>
-              <span class="slider-value" id="rms-val">0.20</span>
+              <span class="slider-value" id="rms-val">0.15</span>
             </div>
-            <input type="range" id="rms-slider" min="0" max="100" value="20" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (기본 0.20, 권장 0.15~0.25, 낮을수록 원본 음량 패턴 유지)</div>
+            <input type="range" id="rms-slider" min="0" max="100" value="15" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (기본 0.15, 권장 0.10~0.25, 낮을수록 원본 음량 패턴 유지)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4831,12 +4831,12 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default v23: index 0.50 (커뮤니티 권장 0.50-0.75)
-      f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
+      // Default v24: rms 0.15 (원곡 다이나믹스 85% 보존)
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 50,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: 'v23 기본 — index 0.50, protect 0.40, rms 0.20'
+      desc: 'v24 기본 — index 0.50, protect 0.40, rms 0.15'
     },
     falsetto: {
       // 가성/고음: filter=1(비브라토 보존) + 고음모드
@@ -4856,7 +4856,7 @@ function applyConvertPreset(preset) {
     },
     studio: {
       // Studio: 깨끗한 원본에 최적화 — 안정적 + 미세 공간감
-      f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 50,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4872,7 +4872,7 @@ function applyConvertPreset(preset) {
     },
     indie: {
       // 차분한 인디팝/R&B — 부드러운 밸런스 + 공간감
-      f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -6394,7 +6394,7 @@ async function startConversion() {
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
   form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
-  form.append('rms_mix_rate', (getVal('rms-slider', '20') / 100).toFixed(2));
+  form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
   form.append('filter_radius', getVal('filter-slider', '2'));
   var hopSteps = [32, 64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '1')] || 64);
@@ -6808,7 +6808,7 @@ async function startBatchConversion() {
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
       form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
-      form.append('rms_mix_rate', (getVal('rms-slider', '20') / 100).toFixed(2));
+      form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
       form.append('filter_radius', getVal('filter-slider', '2'));
       var hopSteps2 = [32, 64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '1')] || 64);

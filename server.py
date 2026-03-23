@@ -2382,7 +2382,7 @@ async def start_conversion(
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
     protect: float = Form(0.40),        # v17: 0.50→0.40 (한국어 노래 커뮤니티 권장 0.33-0.40)
-    rms_mix_rate: float = Form(0.20),   # v17: 0.10→0.20 (커뮤니티 권장 0.20-0.25, 더 자연스러운 다이나믹스)
+    rms_mix_rate: float = Form(0.15),   # v24: 0.20→0.15 (원곡 다이나믹스 85% 보존, 더 자연스러운 강약)
     filter_radius: int = Form(2),
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),
