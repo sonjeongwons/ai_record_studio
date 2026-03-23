@@ -3250,9 +3250,9 @@ input[type="range"]::-moz-range-track {
       <div class="slider-group">
         <div class="slider-header">
           <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (기본값 0.15)\n• 0.20~0.40 = 자연스러운 AI 목소리\n• 0.45~0.65 = 강한 AI 적용 (추천 범위)\n• 0.70~1.0 = AI 목소리 최대\n\n⚠️ 높을수록 기계적/인공적으로 들릴 수 있습니다.\n💡 기본값 0.15는 원본 발성을 최대한 보존하면서 AI를 적용합니다.">ⓘ</i></span>
-          <span class="slider-value" id="index-val">0.35</span>
+          <span class="slider-value" id="index-val">0.50</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="35" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+        <input type="range" id="index-slider" min="0" max="100" value="50" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
         <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.45~0.65 권장)</div>
       </div>
       <!-- Advanced settings (collapsible) -->
@@ -4832,12 +4832,12 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default v17: protect 0.40, rms 0.20 (커뮤니티 권장값으로 업데이트)
+      // Default v23: index 0.50 (커뮤니티 권장 0.50-0.75)
       f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
-      clean: false, cleanStr: 70, index: 35,
+      clean: false, cleanStr: 70, index: 50,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: 'v17 기본 — protect 0.40, rms 0.20, 자동 레벨 매칭'
+      desc: 'v23 기본 — index 0.50, protect 0.40, rms 0.20'
     },
     falsetto: {
       // 가성/고음: filter=1(비브라토 보존) + 고음모드
@@ -4858,7 +4858,7 @@ function applyConvertPreset(preset) {
     studio: {
       // Studio: 깨끗한 원본에 최적화 — 안정적 + 미세 공간감
       f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
-      clean: false, cleanStr: 70, index: 35,
+      clean: false, cleanStr: 70, index: 50,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
       desc: '스튜디오 품질 — 기본 + 미세한 공간감'
@@ -6388,7 +6388,7 @@ async function startConversion() {
   var form = new FormData();
   form.append('model_id', selectedModelId);
   form.append('pitch_shift', getVal('pitch-slider', '0'));
-  form.append('index_rate', (getVal('index-slider', '35') / 100).toFixed(2));
+  form.append('index_rate', (getVal('index-slider', '50') / 100).toFixed(2));
   form.append('f0_method', getVal('convert-f0', 'rmvpe'));
   form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
@@ -6802,7 +6802,7 @@ async function startBatchConversion() {
       var form = new FormData();
       form.append('model_id', selectedModelId);
       form.append('pitch_shift', getVal('pitch-slider', '0'));
-      form.append('index_rate', (getVal('index-slider', '35') / 100).toFixed(2));
+      form.append('index_rate', (getVal('index-slider', '50') / 100).toFixed(2));
       form.append('f0_method', getVal('convert-f0', 'rmvpe'));
       form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));

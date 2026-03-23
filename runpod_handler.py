@@ -2572,14 +2572,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 0.35: v12 — 모델 음색 충분히 반영
-    # v9의 0.15: 모델 음색 15%만 반영 → 변환 목적 달성 못함 (원본 가수 음색 85% 잔존)
-    # v12 분석: 후처리 과다(7개 EQ+압축+volume=1.75)가 음색 왜곡의 진짜 원인이었음
-    # 후처리 최소화 후 index_rate 올려도 자연스러움 유지 → 0.35로 의미있는 변환
+    # index_rate 0.50: v23 — 커뮤니티 권장 0.50-0.75 범위로 상향
+    # v12(0.35): 후처리 최소화 후에도 모델 음색이 35%만 반영 → 변환 목적 미흡
+    # v23: 0.50으로 상향 — 모델 음색 50% 반영 + 원곡 특성 50% 보존 (균형점)
+    # 너무 높으면(0.9+) 아티팩트/버징, 너무 낮으면(<0.3) 모델 음색 부족
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.35))
+        index_rate: float = float(job_input.get("index_rate", 0.50))
     except (ValueError, TypeError):
-        index_rate = 0.35
+        index_rate = 0.50
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
     f0_method: str = job_input.get("f0_method", "rmvpe")

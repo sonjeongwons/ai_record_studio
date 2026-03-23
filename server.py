@@ -2375,7 +2375,7 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.35),
+    index_rate: float = Form(0.50),
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
