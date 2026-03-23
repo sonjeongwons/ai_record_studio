@@ -2328,20 +2328,16 @@ def _pre_filter_vocal_harmony(
     output_path: Path,
     strength: float = 0.5,
 ) -> bool:
-    """v22: Pre-RVC 보컬 스템 화음 억제 — HPSS 기반 지배적 멜로디 추출.
+    """v22: Pre-RVC 보컬 화음 억제 — HPSS 기반 (⚠️ v23에서 기본 비활성).
 
-    RVC는 모노포닉 변환기로, 다성부(화음/코러스) 입력 시 피치 카오스 발생.
-    Demucs 보컬 스템에서 HPSS로 하모닉 성분을 추출하여:
-    - 배경 화음/코러스 보컬 억제
-    - 퍼커시브 노이즈(숨소리, 입술 마찰) 감소
-    - 지배적 멜로디 라인만 남겨 RVC F0 트래킹 안정화
+    ⚠️ v23 분석 결과: HPSS는 harmonic/percussive 분리이므로 보컬의 자음/숨소리/
+    발음(percussive 성분)까지 제거하여 웅얼웅얼 발음 + 기계음 심화 확인됨.
+    - ZCR -17%, Presence -2dB, Air -2.3dB 손실 → 발음 인식 불가 수준
+    - 모든 프리셋에서 harmonyFilter=0 으로 비활성화됨
+    - 향후 대안: 리드 보컬 분리 모델 (Demucs lead vocal stem) 검토 필요
 
     strength:
-      0.0 = 비활성 (bypass)
-      0.3 = 경미한 필터 (솔로곡, 약간의 노이즈 감소만)
-      0.5 = 중간 (화음 있는 곡 — 기다릴게 등)
-      0.8 = 강력 (듀엣/코러스 곡 — comethru 등)
-      1.0 = 최강 (대규모 코러스, 실험적)
+      0.0 = 비활성 (bypass) ← v23 기본값
     """
     try:
         import soundfile as _sf_hf
@@ -2644,10 +2640,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # 고음/가성 최적화 모드: 후처리 EQ를 가성 친화적으로 조정
     high_note_mode_raw = job_input.get("high_note_mode", False)
     high_note_mode: bool = high_note_mode_raw in (True, "true", "True", "1", 1)
-    # v22: Pre-RVC 보컬 화음 필터 — Demucs 보컬 스템에서 배경화음을 HPSS로 억제
-    # RVC는 모노포닉 변환기 → 다성부 입력 시 피치 카오스/괴성 발생
-    # HPSS harmonic 추출로 지배적 멜로디만 남기고 배경화음 억제
-    # 0.0=비활성, 0.5=경미(solo곡), 1.0=강력(화음곡)
+    # v22: Pre-RVC 화음 필터 (HPSS) — v23에서 기본 비활성
+    # ⚠️ HPSS는 자음/숨소리(percussive)까지 제거하여 발음 파괴 확인됨
+    # 0.0=비활성(기본), UI에서 수동 활성화 가능하나 비권장
     try:
         harmony_filter: float = float(job_input.get("harmony_filter", 0.0))
     except (ValueError, TypeError):
@@ -2768,10 +2763,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
         else:
             rvc_input = input_wav
 
-        # --- Step 2b: Pre-RVC 화음 필터 (v22) ---
-        # RVC는 모노포닉 변환기 — 다성부 입력 시 피치 카오스/괴성 발생
-        # HPSS로 지배적 멜로디만 추출, 배경 화음 억제
+        # --- Step 2b: Pre-RVC 화음 필터 (v22, v23 기본 비활성) ---
+        # ⚠️ HPSS는 자음/발음(percussive)을 파괴 → v23에서 모든 프리셋 0.0
+        # 사용자가 UI에서 수동 활성화한 경우에만 실행
         if harmony_filter > 0.01 and rvc_input.exists():
+            log.warning(f"⚠️ HPSS harmony filter activated (strength={harmony_filter:.2f})"
+                        " — v23에서 비권장: 자음/발음 파괴 위험")
             _hf_out = work / "vocal_harmony_filtered.wav"
             if _pre_filter_vocal_harmony(rvc_input, _hf_out, strength=harmony_filter):
                 rvc_input = _hf_out

@@ -4864,12 +4864,12 @@ function applyConvertPreset(preset) {
       desc: '스튜디오 품질 — 기본 + 미세한 공간감'
     },
     chorus: {
-      // 화음/코러스: filter 3(피치 안정화) + index 적당히
+      // 화음/코러스: filter 3(피치 안정화) + index 낮춤
       f0: 'rmvpe', protect: 40, rms: 18, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 20,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
-      highNote: false, harmonyFilter: 30,
-      desc: '화음/코러스 곡 — 피치 안정화(filter 3), 인덱스 낮춤, 화음 필터 0.3'
+      highNote: false, harmonyFilter: 0,
+      desc: '화음/코러스 곡 — 피치 안정화(filter 3), 인덱스 낮춤'
     },
     indie: {
       // 차분한 인디팝/R&B — 부드러운 밸런스 + 공간감
@@ -4884,22 +4884,22 @@ function applyConvertPreset(preset) {
       // index 0.10: HFC 손실 완화 (발음 선명도 우선)
       // filter 3: v21 복원 — v20 filter=5가 RVC 합성 상호작용 시 역효과 확인
       // hop 128(index 2): 시간 평균화로 화음 변환 안정화
-      // v22: harmonyFilter 0.5 — Pre-RVC HPSS로 배경화음 억제
+      // v23: HPSS 제거 — 자음/발음 파괴 확인됨
       f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
-      highNote: false, vocalPreShift: 0, harmonyFilter: 50,
-      desc: '화음 v2 — v22: Pre-RVC 화음필터 + EQ 복원 (기다릴게 최적)'
+      highNote: false, vocalPreShift: 0, harmonyFilter: 0,
+      desc: '화음 v2 (발음선명) — index↓, hop↑, filter 3 (기다릴게 최적)'
     },
     duet: {
-      // 남녀 듀엣곡 v2 — comethru 분석 기반
+      // 남녀 듀엣곡 — comethru 분석 기반
       // index 0.08: 여성 음색 강제 변환 최소화 (가래낀 소리 감소)
-      // v22: harmonyFilter 0.8 — 듀엣 곡은 더 강한 화음 억제 필요
+      // v23: HPSS 제거 — 자음/발음 파괴 확인됨
       f0: 'rmvpe', protect: 45, rms: 18, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 8,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
-      highNote: false, vocalPreShift: 0, harmonyFilter: 80,
-      desc: '듀엣 v2 — v22: 강한 화음필터 + 여성 timbre 보호 (comethru 최적)'
+      highNote: false, vocalPreShift: 0, harmonyFilter: 0,
+      desc: '듀엣곡 — 여성 timbre 보호, index↓ (comethru 최적)'
     }
   };
   var p = presets[preset];
