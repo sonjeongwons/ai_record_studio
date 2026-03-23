@@ -2179,23 +2179,17 @@ def _post_process_vocal(
     # HiFi-GAN 보코더가 프레즌스(2-4kHz)와 에어(8kHz+) 대역 재구성 불완전.
     # v17: 하이셸프 시작점 9000Hz로 올림 (기존 7000Hz → 7.5kHz 노치와 간섭 문제 수정)
     #      16kHz 롤오프 추가: HiFi-GAN 16kHz 이상 잡음 제거 (커뮤니티 권장)
-    # v20: 실측 분석 기반 EQ 재조정
-    # v15 Presence(4-8k)=3.3dB vs 원곡=1.3dB (+2.0dB 과도) → 기계음 원인
-    # v15 Air(8k+)=-5.8dB vs 원곡=-12.6dB (+6.8dB 과도) → 인공적 고역
-    # → 기본 EQ를 중립적으로 낮추고, high_note_mode ON 시 추가 부스트 제공
-    #   기다릴게(남성 솔로): high_note_mode=OFF → 자연스러운 밸런스
-    #   comethru(여성 포함 듀엣): high_note_mode=ON → 프레즌스/에어 보강
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=0.5")    # 프레즌스 (v20: +1.0→+0.5dB: 기본 중립화)
+    # v21: v19 EQ 복원 — v20 중립화가 역효과 (기다릴게v16 기계음 악화)
+    # 실측: v20(+0.5dB/없음)은 v19(+1.0dB/+1.0dB) 대비 발음선명도·고역디테일 저하
+    # v15(v19 EQ)의 Presence/Air가 원곡보다 약간 높았으나 자연스러운 범위 내
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.0")   # 프레즌스/자음 선명도 (v19 복원)
+    filters.append("highshelf=f=9000:width_type=o:width=0.9:g=1.0")    # 에어/디테일 복원 (v19 복원)
     filters.append("highshelf=f=16000:width_type=o:width=0.7:g=-3.0")  # HiFi-GAN 16kHz 이상 잡음 제거
 
-    # ━━━ 4. 고음/가성 모드 — 프레즌스/에어 추가 부스트 ━━━
-    # v20: high_note_mode=ON 시 9kHz 에어 +1.0dB + 3.2kHz 프레즌스 +0.5dB 추가
-    # 기다릴게(male solo): OFF 권장 → 3200Hz=+0.5dB, 9kHz 없음 (중립)
-    # comethru(여성 포함): ON 권장 → 3200Hz=+1.0dB, 9kHz=+1.0dB (여성보컬 고역 보상)
+    # ━━━ 4. 고음/가성 모드 (경미한 저역 마스킹 제거) ━━━
+    # v21: v19 상태 복원 — high_note_mode는 저역 마스킹 제거만 수행
     if high_note_mode:
-        filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")   # 저역 마스킹 제거
-        filters.append("equalizer=f=3200:width_type=o:width=0.8:g=0.5")   # 프레즌스 +0.5dB 추가 (총 +1.0dB)
-        filters.append("highshelf=f=9000:width_type=o:width=0.9:g=1.0")   # 에어 +1.0dB (여성보컬 고역 보상)
+        filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
 
     # ━━━ v12: EQ 부스트 없음, 압축 없음, 볼륨 부스트 없음 ━━━
     # RVC 출력의 자연스러운 음색/다이나믹스를 있는 그대로 보존
@@ -2378,13 +2372,11 @@ def _fix_pitch_artifacts(
         max_hz=1200으로 올려도 Zone 2가 430-1200Hz로 확대되는 것 방지
         530Hz+ 가성 영역은 Zone 2에서 제외 (실제 가성 보호)
 
-    v20 수정 (기다릴게15·comethru9 실측 분석 기반):
-      - Zone 3 추가: 피치 카오스 억제 (화음 아티팩트 부드러운 감쇠)
-        실측: v15 피치급변(>50Hz) 136건/곡 vs 원곡 43건 (3.2배 많음)
-        원인: htdemucs가 분리한 보컬 스템에 화음이 잔존 → RVC가 여러 피치 동시 변환
-        Zone 3: voiced 프레임 중 1초 내 F0 급변(>80Hz) 4회 이상 = 카오스 패턴
-        억제 수준: -10dB (Zone1/2의 -26dB와 달리 완전 묵음 없음 — 자연스러운 감쇠)
-        의도적 멜리스마(2-3회/초)는 영향 없음; 화음 괴성(4회+/초)만 타겟
+    v20 수정 → v21에서 되돌림:
+      - Zone 3 삭제: 80Hz/4회 파라미터가 원곡에서도 38.1% 오탐 발생
+        v16에서 voiced 프레임의 57.7%를 -10dB 억제 → 전체 곡 품질 파괴
+        화음 구간 괴성은 RVC 아키텍처 한계 — 후처리 게이팅으로 해결 불가
+      - EQ v19 복원: v20 중립화(+0.5dB/없음)가 발음선명도·고역디테일 저하
     """
     try:
         import soundfile as _sf_pa
@@ -2414,27 +2406,9 @@ def _fix_pitch_artifacts(
         )
         artifact = zone1 | zone2
 
-        # Zone 3: 피치 카오스 감지 — 다성부 입력(화음)으로 인한 폭발적 피치 변동 (v20)
-        # htdemucs가 분리한 보컬 스템에 화음이 포함될 때 RVC가 여러 피치를 동시 변환 →
-        # F0가 1초 내에 여러 차례 80Hz+ 급변하는 "카오스" 패턴 = 화음 괴성의 원인
-        # Zone1/2와 달리 완전 게이팅(-26dB)이 아닌 부드러운 억제(-10dB)만 적용
-        # (의도적 멜리스마는 보통 초당 2-3회 급변; 카오스는 4회 이상)
-        _f0_for_diff = _np_pa.where(_np_pa.isnan(f0), 0.0, f0)
-        _f0_diff = _np_pa.abs(_np_pa.diff(_f0_for_diff))          # len = len(f0)-1
-        _chaos_jump_hz = 80.0                                       # 80Hz = ~3반음 급변
-        _chaos_window_frames = max(5, int(1.0 * sr / hop))         # 1초 슬라이딩 윈도우
-        _chaos_min_jumps = 4                                        # 1초 내 4회 이상 급변
-        # numpy 슬라이딩 윈도우: cumsum으로 O(n) 계산
-        _big_jump_arr = _np_pa.concatenate([[0.0], (_f0_diff > _chaos_jump_hz).astype(float)])
-        _cumsum = _np_pa.cumsum(_big_jump_arr)
-        _half_w = _chaos_window_frames // 2
-        _idx = _np_pa.arange(len(f0))
-        _left  = _np_pa.maximum(0, _idx - _half_w)
-        _right = _np_pa.minimum(len(_big_jump_arr), _idx + _half_w)
-        _jump_count = _cumsum[_right] - _cumsum[_left]
-        _chaos_frame = _jump_count >= _chaos_min_jumps
-        # Zone 3: voiced + 카오스 패턴 + Zone1/2 미해당
-        zone3 = voiced & ~_np_pa.isnan(f0) & _chaos_frame & ~artifact
+        # v21: Zone 3 제거 — 80Hz/4회 파라미터가 원곡에서 38.1% 오탐
+        # v16에서 voiced 57.7%를 -10dB 억제하여 전체 곡 파괴
+        # 화음 괴성은 RVC 다성부 입력 한계 — 후처리 게이팅으로 해결 불가
 
         # --- gap bridging: gap_bridge_s 이하 간격의 아티팩트 버스트를 연결 ---
         gap_frames = max(1, int(gap_bridge_s * sr / hop))
@@ -2459,52 +2433,37 @@ def _fix_pitch_artifacts(
                 i += 1
         artifact = bridged
 
-        # Zone3 최소 지속 시간: artifact보다 짧게 (100ms) — 짧은 카오스 버스트도 잡기
+        # v21: Zone3 제거됨 — Zone1/2만 억제 (v19 동작 복원)
         min_frames = max(1, int(min_duration_s * sr / hop))
-        min_frames_chaos = max(1, int(0.10 * sr / hop))  # 100ms
-        # 전체 억제 대상: Zone1/2(artifact) + Zone3(chaos)
-        all_suppress = artifact | zone3
         gain = _np_pa.ones(len(f0), dtype=float)
         suppressed_count = 0
-        chaos_count = 0
         i = 0
-        while i < len(all_suppress):
-            if all_suppress[i]:
+        while i < len(artifact):
+            if artifact[i]:
                 j = i
-                while j < len(all_suppress) and all_suppress[j]:
+                while j < len(artifact) and artifact[j]:
                     j += 1
-                # 현 버스트가 Zone3(chaos)인지 Zone1/2(hard artifact)인지 판별
-                _is_chaos = (zone3[i:j].any() and not artifact[i:j].any())
-                _gain_floor = 0.32 if _is_chaos else 0.05   # -10dB vs -26dB
-                _min_f     = min_frames_chaos if _is_chaos else min_frames
-                if (j - i) >= _min_f:
+                if (j - i) >= min_frames:
                     fade = max(1, int(0.1 * sr / hop))
                     for k in range(i, j):
                         if k < i + fade:
-                            gain[k] = max(_gain_floor, 1.0 - (k - i) / fade * (1.0 - _gain_floor))
+                            gain[k] = max(0.05, 1.0 - (k - i) / fade * 0.95)
                         elif k >= j - fade:
-                            gain[k] = max(_gain_floor, 1.0 - (j - k) / fade * (1.0 - _gain_floor))
+                            gain[k] = max(0.05, 1.0 - (j - k) / fade * 0.95)
                         else:
-                            gain[k] = _gain_floor
+                            gain[k] = 0.05  # ≈ -26 dB
                     _med_f0 = float(_np_pa.nanmedian(f0[i:j]))
-                    if _is_chaos:
-                        chaos_count += 1
-                        log.info(
-                            f"Pitch chaos gate v20 [Z3]: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
-                            f"F0≈{_med_f0:.0f}Hz -10dB (polyphonic)"
-                        )
-                    else:
-                        suppressed_count += 1
-                        _zone = "Z1" if _med_f0 > max_hz else f"Z2(VP<{vp_threshold})"
-                        log.info(
-                            f"Pitch artifact gate v16 [{_zone}]: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
-                            f"F0≈{_med_f0:.0f}Hz suppressed"
-                        )
+                    _zone = "Z1" if _med_f0 > max_hz else f"Z2(VP<{vp_threshold})"
+                    log.info(
+                        f"Pitch artifact gate v21 [{_zone}]: {i*hop/sr:.2f}s–{j*hop/sr:.2f}s "
+                        f"F0≈{_med_f0:.0f}Hz suppressed"
+                    )
+                    suppressed_count += 1
                 i = j
             else:
                 i += 1
 
-        if suppressed_count == 0 and chaos_count == 0:
+        if suppressed_count == 0:
             return False
 
         gain_audio = _np_pa.interp(
@@ -2515,7 +2474,7 @@ def _fix_pitch_artifacts(
         gain_audio = _np_pa.clip(gain_audio, 0.0, 1.0)
         y_fixed = (y * gain_audio[:, _np_pa.newaxis]) if is_stereo else (y * gain_audio)
         _sf_pa.write(str(output_path), y_fixed, sr)
-        log.info(f"Pitch artifact gate v16: {suppressed_count} segment(s) suppressed → {output_path.name}")
+        log.info(f"Pitch artifact gate v21: {suppressed_count} segment(s) suppressed → {output_path.name}")
         return True
 
     except Exception as _pa_err:

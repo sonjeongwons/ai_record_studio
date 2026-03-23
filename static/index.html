@@ -4872,15 +4872,13 @@ function applyConvertPreset(preset) {
     chorus_v2: {
       // 화음/그룹 곡 v2 — 기다릴게 분석 기반 (발음 뭉개짐+삑사리 문제 수정)
       // index 0.10: HFC 손실 완화 (발음 선명도 우선)
-      // filter 5: v20 — 커뮤니티 2024-2025 권장: 가성/고음 많은 곡 filter_radius=5
-      //           실측: v15 Jitter=3.47Hz(원곡의 3배) → 5-point median filter로 안정화
+      // filter 3: v21 복원 — v20 filter=5가 RVC 합성 상호작용 시 역효과 확인
       // hop 128(index 2): 시간 평균화로 화음 변환 안정화
-      // highNote: false — v20 EQ 중립화로 기본 Presence=+0.5dB(과도 방지)
-      f0: 'rmvpe', protect: 40, rms: 15, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0,
-      desc: '화음 v2 — filter 5(가성 안정화), 피치 카오스 억제 v20 (기다릴게 최적)'
+      desc: '화음 v2 — v21: Zone3 제거 + EQ/filter 복원 (기다릴게 최적)'
     },
     duet: {
       // 남녀 듀엣곡 v2 — comethru 분석 기반
