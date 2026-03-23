@@ -2323,6 +2323,74 @@ def _mix_audio(
              f"size={out_size / 1024 / 1024:.1f}MB)")
 
 
+def _pre_filter_vocal_harmony(
+    vocal_path: Path,
+    output_path: Path,
+    strength: float = 0.5,
+) -> bool:
+    """v22: Pre-RVC 보컬 스템 화음 억제 — HPSS 기반 지배적 멜로디 추출.
+
+    RVC는 모노포닉 변환기로, 다성부(화음/코러스) 입력 시 피치 카오스 발생.
+    Demucs 보컬 스템에서 HPSS로 하모닉 성분을 추출하여:
+    - 배경 화음/코러스 보컬 억제
+    - 퍼커시브 노이즈(숨소리, 입술 마찰) 감소
+    - 지배적 멜로디 라인만 남겨 RVC F0 트래킹 안정화
+
+    strength:
+      0.0 = 비활성 (bypass)
+      0.3 = 경미한 필터 (솔로곡, 약간의 노이즈 감소만)
+      0.5 = 중간 (화음 있는 곡 — 기다릴게 등)
+      0.8 = 강력 (듀엣/코러스 곡 — comethru 등)
+      1.0 = 최강 (대규모 코러스, 실험적)
+    """
+    try:
+        import soundfile as _sf_hf
+        import numpy as _np_hf
+        import librosa as _lib_hf
+
+        if strength <= 0.01:
+            return False
+
+        y, sr = _sf_hf.read(str(vocal_path))
+        is_stereo = y.ndim > 1
+        y_mono = y.mean(axis=1) if is_stereo else y.copy()
+
+        hop = 512
+        n_fft = 2048
+        S = _lib_hf.stft(y_mono.astype(float), n_fft=n_fft, hop_length=hop)
+
+        # HPSS: margin은 strength에 비례 (1.5~4.0)
+        # margin 높을수록 harmonic/percussive 분리가 공격적
+        margin = 1.5 + strength * 2.5  # 0.3→2.25, 0.5→2.75, 0.8→3.5, 1.0→4.0
+        H, P = _lib_hf.decompose.hpss(S, margin=margin)
+
+        # HPSS harmonic만 사용 → 배경 화음의 percussive/noise 성분 제거
+        y_filtered = _lib_hf.istft(H, hop_length=hop, length=len(y_mono))
+
+        # 원본 RMS에 맞게 레벨 매칭 (HPSS로 에너지 손실 보상)
+        rms_orig = _np_hf.sqrt(_np_hf.mean(y_mono ** 2))
+        rms_filt = _np_hf.sqrt(_np_hf.mean(y_filtered ** 2))
+        if rms_filt > 1e-10:
+            y_filtered *= rms_orig / rms_filt
+
+        # 스테레오 원본이면 mono 결과를 양 채널에 복사
+        if is_stereo:
+            y_out = _np_hf.column_stack([y_filtered, y_filtered])
+        else:
+            y_out = y_filtered
+
+        _sf_hf.write(str(output_path), y_out, sr)
+        log.info(
+            f"Pre-RVC harmony filter v22: strength={strength:.2f} margin={margin:.1f} "
+            f"→ {output_path.name}"
+        )
+        return True
+
+    except Exception as _hf_err:
+        log.warning(f"Pre-RVC harmony filter failed (non-critical, skipping): {_hf_err}")
+        return False
+
+
 def _fix_pitch_artifacts(
     vocal_path: Path,
     output_path: Path,
@@ -2576,6 +2644,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # 고음/가성 최적화 모드: 후처리 EQ를 가성 친화적으로 조정
     high_note_mode_raw = job_input.get("high_note_mode", False)
     high_note_mode: bool = high_note_mode_raw in (True, "true", "True", "1", 1)
+    # v22: Pre-RVC 보컬 화음 필터 — Demucs 보컬 스템에서 배경화음을 HPSS로 억제
+    # RVC는 모노포닉 변환기 → 다성부 입력 시 피치 카오스/괴성 발생
+    # HPSS harmonic 추출로 지배적 멜로디만 남기고 배경화음 억제
+    # 0.0=비활성, 0.5=경미(solo곡), 1.0=강력(화음곡)
+    try:
+        harmony_filter: float = float(job_input.get("harmony_filter", 0.0))
+    except (ValueError, TypeError):
+        harmony_filter = 0.0
 
     # 파라미터 범위 클램프
     pitch_shift = max(-24, min(24, pitch_shift))
@@ -2588,6 +2664,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     hop_length = max(1, min(512, hop_length))
     vocal_volume = max(0.0, min(2.0, vocal_volume))
     mr_volume = max(0.0, min(2.0, mr_volume))
+    harmony_filter = max(0.0, min(1.0, harmony_filter))
 
     if not pth_b64 and not pth_url:
         raise ValueError("No model provided (pth_data or pth_url required)")
@@ -2691,7 +2768,18 @@ def task_convert(job_input: dict, job: dict) -> dict:
         else:
             rvc_input = input_wav
 
-        # --- Step 2b: Pre-RVC 디에서 제거됨 ---
+        # --- Step 2b: Pre-RVC 화음 필터 (v22) ---
+        # RVC는 모노포닉 변환기 — 다성부 입력 시 피치 카오스/괴성 발생
+        # HPSS로 지배적 멜로디만 추출, 배경 화음 억제
+        if harmony_filter > 0.01 and rvc_input.exists():
+            _hf_out = work / "vocal_harmony_filtered.wav"
+            if _pre_filter_vocal_harmony(rvc_input, _hf_out, strength=harmony_filter):
+                rvc_input = _hf_out
+                log.info(f"Pre-RVC harmony filter applied: strength={harmony_filter:.2f}")
+            else:
+                log.info("Pre-RVC harmony filter skipped (no change)")
+
+        # --- Step 2b-old: Pre-RVC 디에서 제거됨 ---
         # 이전: 7kHz Q=3 -2dB + 후처리 8.5kHz -1dB = 이중 디에싱 → 한국어 자음 포먼트(4-8kHz) 파괴
         # 한국어 마찰음(ㅅ,ㅆ,ㅈ,ㅊ,ㅎ)의 에너지가 4-8kHz에 집중 → 이 대역 커팅은 발음 뭉개짐 유발
         # → 디에싱은 후처리에서 한 번만 적용 (9kHz 이상의 좁은 대역만 타겟)

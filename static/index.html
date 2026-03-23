@@ -3407,6 +3407,16 @@ input[type="range"]::-moz-range-track {
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">가성·고음의 AI 기계음 완화 — 프레즌스·공기감 보정 (가성 많은 곡에 ON 권장)</div>
           </div>
+
+          <!-- v22: 화음 필터 -->
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">화음 필터 <i class="tip" data-tip="원곡에 화음/코러스/듀엣이 있을 때 변환 전 배경 화음을 억제합니다.\n\n📖 원리:\nAI(RVC)는 한 목소리만 변환 가능합니다.\n여러 목소리가 동시에 들어오면 '괴성'이나 음정 뒤죽박죽이 발생합니다.\n이 필터는 변환 전에 메인 멜로디만 남기고 배경 화음을 줄입니다.\n\n🔢 설정 가이드:\n• 0.0 = 필터 없음 (솔로 노래에 적합)\n• 0.3 = 약한 필터 (약간의 화음만 있는 곡)\n• 0.5 = 중간 필터 (화음/코러스 있는 곡 — 권장)\n• 0.8 = 강한 필터 (듀엣/합창 곡)\n\n⚠️ 높은 값은 음색이 약간 변할 수 있습니다.\n💡 화음 구간에서 괴성이 나오면 0.5~0.8을 시도하세요.">ⓘ</i></span>
+              <span class="slider-value" id="harmony-filter-val">0.0</span>
+            </div>
+            <input type="range" id="harmony-filter-slider" min="0" max="100" value="0" class="has-fill" aria-label="화음 필터 강도" oninput="document.getElementById('harmony-filter-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">화음/코러스 곡에서 배경화음 억제 → 괴성/피치카오스 감소 (0.5 권장)</div>
+          </div>
         </div>
       </div>
 
@@ -4826,7 +4836,7 @@ function applyConvertPreset(preset) {
       f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 35,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
-      highNote: false,
+      highNote: false, harmonyFilter: 0,
       desc: 'v17 기본 — protect 0.40, rms 0.20, 자동 레벨 매칭'
     },
     falsetto: {
@@ -4834,7 +4844,7 @@ function applyConvertPreset(preset) {
       f0: 'rmvpe', protect: 40, rms: 15, filter: 1, hop: 0,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
-      highNote: true,
+      highNote: true, harmonyFilter: 0,
       desc: '가성/고음 최적화 — 피치 스무딩 최소, 비브라토 보존, 고음모드 ON'
     },
     natural: {
@@ -4842,7 +4852,7 @@ function applyConvertPreset(preset) {
       f0: 'rmvpe', protect: 40, rms: 15, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
-      highNote: false,
+      highNote: false, harmonyFilter: 0,
       desc: '최대 자연스러움 — 리버브 없음, 원곡 다이나믹스 최대 보존'
     },
     studio: {
@@ -4850,7 +4860,7 @@ function applyConvertPreset(preset) {
       f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 35,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
-      highNote: false,
+      highNote: false, harmonyFilter: 0,
       desc: '스튜디오 품질 — 기본 + 미세한 공간감'
     },
     chorus: {
@@ -4858,15 +4868,15 @@ function applyConvertPreset(preset) {
       f0: 'rmvpe', protect: 40, rms: 18, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 20,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
-      highNote: false,
-      desc: '화음/코러스 곡 — 피치 안정화(filter 3), 인덱스 낮춤, 화음 보존'
+      highNote: false, harmonyFilter: 30,
+      desc: '화음/코러스 곡 — 피치 안정화(filter 3), 인덱스 낮춤, 화음 필터 0.3'
     },
     indie: {
       // 차분한 인디팝/R&B — 부드러운 밸런스 + 공간감
       f0: 'rmvpe', protect: 40, rms: 20, filter: 2, hop: 1,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
-      highNote: false, vocalPreShift: 0,
+      highNote: false, vocalPreShift: 0, harmonyFilter: 0,
       desc: '인디/차분한 곡 — 부드러운 밸런스, 자연스러운 공간감'
     },
     chorus_v2: {
@@ -4874,22 +4884,22 @@ function applyConvertPreset(preset) {
       // index 0.10: HFC 손실 완화 (발음 선명도 우선)
       // filter 3: v21 복원 — v20 filter=5가 RVC 합성 상호작용 시 역효과 확인
       // hop 128(index 2): 시간 평균화로 화음 변환 안정화
+      // v22: harmonyFilter 0.5 — Pre-RVC HPSS로 배경화음 억제
       f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 3, useReverb: false, harmonicEnhance: false,
-      highNote: false, vocalPreShift: 0,
-      desc: '화음 v2 — v21: Zone3 제거 + EQ/filter 복원 (기다릴게 최적)'
+      highNote: false, vocalPreShift: 0, harmonyFilter: 50,
+      desc: '화음 v2 — v22: Pre-RVC 화음필터 + EQ 복원 (기다릴게 최적)'
     },
     duet: {
       // 남녀 듀엣곡 v2 — comethru 분석 기반
       // index 0.08: 여성 음색 강제 변환 최소화 (가래낀 소리 감소)
-      // protect 0.45: 여성 파트 자음 보호를 약간 더 (0.40보다 높게 유지)
-      // vocalPreShift 0: phase vocoder 이중 적용 금지
+      // v22: harmonyFilter 0.8 — 듀엣 곡은 더 강한 화음 억제 필요
       f0: 'rmvpe', protect: 45, rms: 18, filter: 3, hop: 1,
       clean: false, cleanStr: 70, index: 8,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
-      highNote: false, vocalPreShift: 0,
-      desc: '듀엣 v2 — 여성 파트 timbre 강제변환 최소화, index 0.08 (comethru 최적)'
+      highNote: false, vocalPreShift: 0, harmonyFilter: 80,
+      desc: '듀엣 v2 — v22: 강한 화음필터 + 여성 timbre 보호 (comethru 최적)'
     }
   };
   var p = presets[preset];
@@ -4943,6 +4953,12 @@ function applyConvertPreset(preset) {
   if (preShiftSlider && p.vocalPreShift !== undefined) {
     preShiftSlider.value = p.vocalPreShift;
     document.getElementById('vocal-pre-shift-val').textContent = p.vocalPreShift;
+  }
+  // v22: harmony filter
+  var harmonySlider = document.getElementById('harmony-filter-slider');
+  if (harmonySlider && p.harmonyFilter !== undefined) {
+    harmonySlider.value = p.harmonyFilter;
+    document.getElementById('harmony-filter-val').textContent = (p.harmonyFilter / 100).toFixed(2);
   }
   // 모든 슬라이더 fill 업데이트 (JS로 value 변경 시 CSS fill이 자동 갱신되지 않음)
   document.querySelectorAll('#convert-panel input[type="range"].has-fill').forEach(function(el) {
@@ -6393,6 +6409,8 @@ async function startConversion() {
   var highNoteCb = document.getElementById('high-note-cb');
   form.append('high_note_mode', highNoteCb ? highNoteCb.checked : false);
   form.append('vocal_pitch_pre_shift', parseInt(getVal('vocal-pre-shift-slider', '0')));
+  // v22: harmony filter
+  form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
   form.append('audio', convertFile);
 
   try {
@@ -6804,6 +6822,8 @@ async function startBatchConversion() {
       form.append('harmonic_enhance', batchHarmonicCb ? batchHarmonicCb.checked : false);
       var batchHighNoteCb = document.getElementById('high-note-cb');
       form.append('high_note_mode', batchHighNoteCb ? batchHighNoteCb.checked : false);
+      // v22: harmony filter
+      form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
       form.append('audio', batchResults[i].file);
 
       var res = await api('/convert', { method: 'POST', body: form, noTimeout: true });

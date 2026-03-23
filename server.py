@@ -2388,6 +2388,7 @@ async def start_conversion(
     post_reverb: float = Form(0.05),
     harmonic_enhance: str = Form("false"),
     high_note_mode: str = Form("false"),
+    harmony_filter: float = Form(0.0),
     separate_vocals: str = Form("true"),
     vocal_pitch_pre_shift: int = Form(0),
     audio: UploadFile = File(...)
@@ -2488,6 +2489,7 @@ async def start_conversion(
             "post_reverb": post_reverb,
             "harmonic_enhance": harmonic_enhance,
             "high_note_mode": high_note_mode,
+            "harmony_filter": max(0.0, min(1.0, harmony_filter)),
             "vocal_pitch_pre_shift": max(-12, min(12, vocal_pitch_pre_shift)),
             "bucket_name": r2_bucket,
         }
