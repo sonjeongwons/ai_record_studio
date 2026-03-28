@@ -976,9 +976,9 @@ def task_train(job_input: dict, job: dict) -> dict:
     audio_files: list[dict] = job_input.get("audio_files", [])
     audio_urls: list[dict] = job_input.get("audio_urls", [])
     try:
-        sample_rate: int = int(job_input.get("sample_rate", 40000))
+        sample_rate: int = int(job_input.get("sample_rate", 48000))
     except (ValueError, TypeError):
-        sample_rate = 40000  # 40k recommended for SVC
+        sample_rate = 48000  # v31: 48k for full 24kHz bandwidth (air/breathiness)
     # v23: 500→300 (Applio 기본 200, RVC 위키 권장 200. 800/500은 오버트레이닝 위험)
     try:
         epochs: int = int(job_input.get("epochs", 300))
@@ -1005,8 +1005,8 @@ def task_train(job_input: dict, job: dict) -> dict:
 
     # Validate parameters — Applio only supports 32k, 40k, 48k
     if sample_rate not in (32000, 40000, 48000):
-        log.warning(f"Invalid sample_rate {sample_rate}, defaulting to 40000")
-        sample_rate = 40000
+        log.warning(f"Invalid sample_rate {sample_rate}, defaulting to 48000")
+        sample_rate = 48000
     epochs = max(1, min(epochs, 10000))
 
     # Auto-detect optimal batch_size from GPU VRAM if not specified

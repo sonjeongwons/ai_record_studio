@@ -3023,8 +3023,8 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">샘플레이트 <i class="tip" data-tip="소리의 해상도(화질)입니다.\n\n🔢 추천:\n• 48kHz = 스튜디오 녹음·FLAC/WAV 고음질 원본 (권장)\n• 40kHz = 유튜브·스트리밍·MP3 일반 음원\n• 32kHz = 저화질 원본 또는 비용 절약 시\n\n⚠️ 원본보다 높게 설정해도 품질이 오르지 않습니다. 원본과 같게 맞추세요.\n💰 48kHz는 40kHz보다 학습 시간이 약 10~20% 늘어납니다.">ⓘ</i></label>
           <select id="train-sr" onchange="estimateTrainingCost()">
-            <option value="40000" selected>40 kHz (권장 · RVC v2 커뮤니티 표준, 가장 안정적)</option>
-            <option value="48000">48 kHz (스튜디오/고음질 소스 · 48k 프리트레인 필요)</option>
+            <option value="48000" selected>48 kHz (권장 · 24kHz까지 학습, 에어/숨소리 보존)</option>
+            <option value="40000">40 kHz (일반 MP3/스트리밍 소스)</option>
             <option value="32000">32 kHz (저화질 원본 · 비용 절약)</option>
           </select>
         </div>
@@ -4690,7 +4690,7 @@ function estimateTrainingCost() {
   var totalMins = totalSecs / 60;
   var epochs = parseInt(document.getElementById('train-epochs').value) || 300;
   var batch  = parseInt(document.getElementById('train-batch').value)  || 0;
-  var sr     = parseInt(document.getElementById('train-sr').value)     || 40000;
+  var sr     = parseInt(document.getElementById('train-sr').value)     || 48000;
   var f0     = (document.getElementById('train-f0').value || 'rmvpe').toLowerCase();
 
   // 배치 팩터 (클수록 빠름) — RTX 4090 기준 실측
@@ -4724,7 +4724,7 @@ function estimateTrainingCost() {
 
   // ── 배치·SR 행 업데이트 ──
   var batchLabels = { 0:'자동 (기본 속도 1.0×)', 8:'8 (기본 속도 1.0×)', 16:'16 (1.5× 빠름)', 24:'24 (2.2× 빠름)' };
-  var srLabel = sr === 48000 ? '48 kHz (권장 · 스튜디오/고음질)' : (sr === 40000 ? '40 kHz (일반 음악)' : '32 kHz (저화질)');
+  var srLabel = sr === 48000 ? '48 kHz (권장 · 에어/숨소리 보존)' : (sr === 40000 ? '40 kHz (일반 MP3)' : '32 kHz (저화질)');
   var bEl = document.getElementById('cost-train-batch');
   var srEl = document.getElementById('cost-train-sr');
   if (bEl) bEl.textContent = batchLabels[batch] || ('배치 ' + batch);
@@ -4735,7 +4735,7 @@ function estimateTrainingCost() {
   var timeStr = _formatGpuTimeShort(minSec) + '~' + _formatGpuTimeShort(maxSec);
   var hints = [];
   if (f0 === 'crepe')           hints.push('Crepe → RMVPE로 바꾸면 특징 추출 시간을 60~70% 줄일 수 있습니다');
-  if (sr === 40000 && totalMins >= 5) hints.push('원본이 스튜디오 녹음/FLAC/WAV라면 48kHz로 설정하면 더 자연스러운 결과를 얻을 수 있습니다');
+  if (sr === 32000 && totalMins >= 5) hints.push('32kHz는 고역이 제한됩니다. 원본이 MP3 이상이면 48kHz를 권장합니다');
   if (batch === 0 || batch === 8) hints.push('배치 16 이상 설정 시 학습 속도가 약 30% 빨라집니다');
   var hintStr = hints.length ? '<br>💡 <b>단축 팁:</b> ' + hints.join(' / ') : '';
   var warnMsg, warnLevel;
