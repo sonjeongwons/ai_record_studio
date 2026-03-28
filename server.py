@@ -1930,7 +1930,7 @@ async def upload_chunk(
 async def start_training(
     model_name: str = Form(...),
     epochs: int = Form(300),           # v23: 800→300 (Applio 기본 200, 위키 권장 200-300. 800은 심각한 오버트레이닝)
-    sample_rate: int = Form(48000),    # v31: 40k→48k (24kHz 대역까지 학습 — 에어/숨소리 보존, 48k 소스 최적)
+    sample_rate: int = Form(40000),    # v32: 48k→40k 복원 (48k 보코더 기계음 — RVC Issue #119/#514, 커뮤니티 표준 40k)
     batch_size: int = Form(0),         # 0 = GPU auto-detect (RTX 4090 → 24)
     f0_method: str = Form("rmvpe"),
     file_ids: str = Form("")  # comma-separated
