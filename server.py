@@ -758,8 +758,6 @@ _poll_errors_lock = threading.Lock()
 
 # 작업 유형별 타임아웃 (초)
 _JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 1800}  # convert: 30분
-# IN_QUEUE 전용 타임아웃: GPU 할당 대기가 이 시간을 초과하면 자동 취소 (비용 낭비 방지)
-_QUEUE_TIMEOUT = 600  # 10분
 
 
 def _get_r2_client():
@@ -1081,22 +1079,17 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                 return
 
             elif status == "IN_QUEUE":
-                # IN_QUEUE 전용 타임아웃: GPU 할당이 10분 넘으면 자동 취소 + 재시도 안내
-                if elapsed > _QUEUE_TIMEOUT:
-                    logger.warning("[Poll] job %s IN_QUEUE %d초 초과 — 자동 취소", job_id, elapsed)
-                    # RunPod 작업 취소 (GPU 과금 중지)
-                    try:
-                        runpod_client.cancel_runpod_job(runpod_job_id)
-                    except Exception:
-                        logger.debug("RunPod cancel failed for %s", runpod_job_id, exc_info=True)
-                    _mark_job_failed_with_conversion(
-                        job_id, job_type,
-                        f"GPU 할당 대기 {elapsed // 60}분 초과 — RunPod 서버가 혼잡합니다. 잠시 후 다시 시도해 주세요."
-                    )
-                    return
+                # RunPod 콜드 스타트: GPU 할당 후 Docker 이미지 풀링 + 컨테이너 시작 중
+                # 이 단계에서 GPU 과금이 시작되지만, 핸들러 실행 전이므로 IN_QUEUE 유지됨
+                # 대형 이미지(CUDA+Applio+Demucs)는 5~15분 소요 가능 → 타임아웃 없음 (전체 job 타임아웃이 보호)
                 mins = elapsed // 60
                 secs = elapsed % 60
-                queue_msg = f"GPU 할당 대기 중... ({mins}분 {secs}초)" if mins > 0 else f"GPU 할당 대기 중... ({elapsed}초)"
+                if mins >= 5:
+                    queue_msg = f"GPU 콜드 스타트 중... ({mins}분 {secs}초) — Docker 이미지 로딩 중"
+                elif mins >= 1:
+                    queue_msg = f"GPU 할당 완료, 컨테이너 시작 중... ({mins}분 {secs}초)"
+                else:
+                    queue_msg = f"GPU 할당 대기 중... ({elapsed}초)"
                 update_job(job_id, status="running",
                           progress=min(5, elapsed // 12),
                           message=queue_msg)
