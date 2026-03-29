@@ -2425,8 +2425,12 @@ async def start_conversion(
         raise HTTPException(400, f"피치는 -24~24 사이여야 합니다. (입력: {pitch_shift})")
     if not (0.0 <= index_rate <= 1.0):
         raise HTTPException(400, f"인덱스 비율은 0.0~1.0 사이여야 합니다. (입력: {index_rate})")
-    if not (0.0 <= protect <= 0.5):
-        raise HTTPException(400, f"Protect는 0.0~0.5 사이여야 합니다. (입력: {protect})")
+    # Protect 범위 초과 시 자동 클램프 (이전 버전 호환 + 슬라이더 오차 허용)
+    if protect > 0.5:
+        logger.info("[Convert] protect 값 %.2f → 0.50 으로 클램프", protect)
+        protect = 0.5
+    if protect < 0.0:
+        protect = 0.0
     if not (0.0 <= rms_mix_rate <= 1.0):
         raise HTTPException(400, f"RMS Mix는 0.0~1.0 사이여야 합니다. (입력: {rms_mix_rate})")
     if not (0 <= filter_radius <= 12):
@@ -2470,14 +2474,17 @@ async def start_conversion(
         try:
             pth_url = refresh_presigned_url(model["pth_url"])
         except Exception as e:
-            logger.error("[Convert] pth presigned URL 갱신 실패: %s, 원본 URL 사용", e)
-            pth_url = model["pth_url"]
+            logger.error("[Convert] pth presigned URL 갱신 실패: %s", e)
+            # 만료된 URL을 그대로 사용하면 RunPod에서 403 Forbidden 발생 → 즉시 실패 처리
+            update_job(job_id, status="failed",
+                      message=f"모델 파일 URL 갱신 실패: {e}")
+            raise HTTPException(500, f"모델 파일 URL 갱신 실패 (R2 설정 확인 필요): {e}")
     if model["index_url"]:
         try:
             index_url = refresh_presigned_url(model["index_url"])
         except Exception as e:
-            logger.error("[Convert] index presigned URL 갱신 실패: %s, 원본 URL 사용", e)
-            index_url = model["index_url"]
+            logger.warning("[Convert] index presigned URL 갱신 실패: %s, index 없이 진행", e)
+            # index는 선택사항이므로 없이 진행 (pth와 달리 치명적이지 않음)
 
     # Job + 변환 기록 동시 생성 (원자성: RunPod 제출 전에 모든 DB 레코드 삽입)
     job_id = uuid.uuid4().hex[:12]
