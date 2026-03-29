@@ -2155,23 +2155,22 @@ def _post_process_vocal(
     # ━━━ 2. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 3. 디에서 — 치찰음 + HiFi-GAN 아티팩트 정밀 제거 ━━━
-    # v24: 6kHz 디에서 추가 — RVC가 치찰음(ㅅ,ㅆ,ㅈ,ㅊ) 과도 재구성
-    # width=1.5옥타브: 4-9kHz 범위의 치찰음 에너지 타겟
-    filters.append("equalizer=f=6000:width_type=o:width=1.5:g=-2.5")
-    # 7.5kHz: HiFi-GAN 금속성 아티팩트 (기존 유지)
-    filters.append("equalizer=f=7500:width_type=o:width=0.4:g=-2.5")
+    # ━━━ 3. 디에서 — 치찰음 최소 보정 ━━━
+    # v33: 6kHz -2.5→-1.0, width 1.5→0.7 (v24의 과도한 고역 커팅이 발음 불명확 원인)
+    # v32 분석: Presence -7~-15dB 손실, Air -3~-12dB 손실 → 디에서 과다가 주범
+    filters.append("equalizer=f=6500:width_type=o:width=0.7:g=-1.0")
+    # 7.5kHz: HiFi-GAN 금속성만 최소 보정 (v24 -2.5→v33 -1.0)
+    filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-1.0")
 
-    # ━━━ 4. 저역 탁함 보정 (v24: -1.0→-0.7dB 완화) ━━━
-    # v24: 과도한 저역 컷이 음색을 얇게 만드는 문제 완화
-    filters.append("equalizer=f=300:width_type=o:width=0.8:g=-0.7")
-    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-0.7")
+    # ━━━ 4. 저역 탁함 보정 (최소한) ━━━
+    filters.append("equalizer=f=300:width_type=o:width=0.8:g=-0.5")
+    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-0.5")
 
-    # ━━━ 5. HiFi-GAN 하모닉 손실 보상 (v24: 약간 완화) ━━━
-    # v24: +1.0→+0.8dB — 과부스팅 시 AI스러운 밝기 유발 방지
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=0.8")
-    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=0.8")
-    filters.append("highshelf=f=16000:width_type=o:width=0.7:g=-3.0")
+    # ━━━ 5. Presence/Air 보상 강화 ━━━
+    # v33: 3.2kHz +0.8→+1.5, 10kHz +0.8→+1.5 (발음 선명도 + 숨소리 복원)
+    # 16kHz 커팅 제거 (에어 대역 보존)
+    filters.append("equalizer=f=3200:width_type=o:width=1.0:g=1.5")
+    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=1.5")
 
     # ━━━ 6. 고음/가성 모드 ━━━
     if high_note_mode:
@@ -2562,9 +2561,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # v23: 0.50으로 상향 — 모델 음색 50% 반영 + 원곡 특성 50% 보존 (균형점)
     # 너무 높으면(0.9+) 아티팩트/버징, 너무 낮으면(<0.3) 모델 음색 부족
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.50))
+        index_rate: float = float(job_input.get("index_rate", 0.65))
     except (ValueError, TypeError):
-        index_rate = 0.50
+        index_rate = 0.65
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
     f0_method: str = job_input.get("f0_method", "rmvpe")
@@ -2573,17 +2572,17 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # 2: 미세한 피치 중앙값 필터 → 코러스 안정화 + 비브라토 보존
     # (솔로 구간에서도 자연스러움 유지되는 최소 스무딩)
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 2))
+        filter_radius: int = int(job_input.get("filter_radius", 3))
     except (ValueError, TypeError):
-        filter_radius = 2
+        filter_radius = 3
     # rms_mix_rate 0.15: v24 — 원곡 다이나믹스 85% 보존 (v17: 0.20→v24: 0.15, 더 자연스러운 강약)
     # 0.10(기존): 너무 낮음 → 과도하게 플랫한 다이나믹스, 음악적 숨결/강약 소실
     # 0.20: 커뮤니티 권장 0.20-0.25 범위 — 자연스러운 원곡 강약 유지 + 모델 보컬 특성 반영
     # 0.25: 더 강한 보컬 개성, 원곡 다이나믹스 일부 희생 (향후 옵션)
     try:
-        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.25))
     except (ValueError, TypeError):
-        rms_mix_rate = 0.15
+        rms_mix_rate = 0.25
     # protect 0.40: v17 — 한국어 노래 최적화
     # 0.50(기존): 과보호 → 유성음/무성음 경계에서 부자연스러운 전환, 자음 딱딱함
     # 0.40: 커뮤니티 권장 0.33-0.40 범위 — 한국어 빈번한 유/무성 전환에 자연스러운 보컬
