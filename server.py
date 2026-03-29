@@ -97,6 +97,9 @@ _preprocess_lock = threading.Lock()  # preprocess_file_map 동시성 보호
 
 # RunPod 폴링 에러 카운터 (job_id별 추적)
 _poll_error_counts: dict[str, int] = {}
+# 활성 폴링 스레드 추적 (job_id → Thread) — 중복 스레드 방지
+_active_poll_threads: dict[str, threading.Thread] = {}
+_poll_threads_lock = threading.Lock()
 
 
 def _cleanup_stale_chunk_uploads():
@@ -754,7 +757,9 @@ _training_lock = threading.Lock()  # _training_file_map 동시성 보호
 _poll_errors_lock = threading.Lock()
 
 # 작업 유형별 타임아웃 (초)
-_JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 3600}  # convert: 30분→60분
+_JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 1800}  # convert: 30분
+# IN_QUEUE 전용 타임아웃: GPU 할당 대기가 이 시간을 초과하면 자동 취소 (비용 낭비 방지)
+_QUEUE_TIMEOUT = 600  # 10분
 
 
 def _get_r2_client():
@@ -885,9 +890,10 @@ def _is_job_cancelled(job_id: str) -> bool:
     try:
         with get_db() as db:
             row = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
-            return row and row["status"] in ("failed", "cancelled", "paused")  # v17: paused 추가 — 일시정지 작업도 폴링 중단
-    except Exception:
-        return False
+            return row and row["status"] in ("failed", "cancelled", "paused")
+    except Exception as e:
+        logger.warning("[Poll] _is_job_cancelled DB 오류 (job %s): %s — 안전하게 취소 처리", job_id, e)
+        return True  # DB 오류 시 폴링 중단 (무한 폴링 방지)
 
 
 def _extract_progress_info(result: dict, job_type: str, elapsed: int) -> tuple:
@@ -967,14 +973,32 @@ def _mark_job_failed_with_conversion(job_id: str, job_type: str, message: str):
 
 
 def _spawn_polling_thread(job_id: str, runpod_job_id: str, job_type: str):
-    """RunPod 폴링 데몬 스레드 생성 — start_training/conversion/preprocess 공통"""
+    """RunPod 폴링 데몬 스레드 생성 — start_training/conversion/preprocess 공통.
+    동일 job_id에 대해 기존 스레드가 살아있으면 새 스레드를 생성하지 않음."""
+    with _poll_threads_lock:
+        existing = _active_poll_threads.get(job_id)
+        if existing and existing.is_alive():
+            logger.warning("[Poll] job %s 에 이미 활성 폴링 스레드 존재 — 중복 생성 방지", job_id)
+            return existing
     t = threading.Thread(
-        target=poll_runpod_job,
+        target=_poll_thread_wrapper,
         args=(job_id, runpod_job_id, job_type),
-        daemon=True
+        daemon=True,
+        name=f"poll-{job_type}-{job_id[:8]}"
     )
+    with _poll_threads_lock:
+        _active_poll_threads[job_id] = t
     t.start()
     return t
+
+
+def _poll_thread_wrapper(job_id: str, runpod_job_id: str, job_type: str):
+    """폴링 스레드 래퍼: 완료 시 _active_poll_threads에서 자동 제거."""
+    try:
+        poll_runpod_job(job_id, runpod_job_id, job_type)
+    finally:
+        with _poll_threads_lock:
+            _active_poll_threads.pop(job_id, None)
 
 
 def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
@@ -1057,9 +1081,25 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                 return
 
             elif status == "IN_QUEUE":
+                # IN_QUEUE 전용 타임아웃: GPU 할당이 10분 넘으면 자동 취소 + 재시도 안내
+                if elapsed > _QUEUE_TIMEOUT:
+                    logger.warning("[Poll] job %s IN_QUEUE %d초 초과 — 자동 취소", job_id, elapsed)
+                    # RunPod 작업 취소 (GPU 과금 중지)
+                    try:
+                        runpod_client.cancel_runpod_job(runpod_job_id)
+                    except Exception:
+                        logger.debug("RunPod cancel failed for %s", runpod_job_id, exc_info=True)
+                    _mark_job_failed_with_conversion(
+                        job_id, job_type,
+                        f"GPU 할당 대기 {elapsed // 60}분 초과 — RunPod 서버가 혼잡합니다. 잠시 후 다시 시도해 주세요."
+                    )
+                    return
+                mins = elapsed // 60
+                secs = elapsed % 60
+                queue_msg = f"GPU 할당 대기 중... ({mins}분 {secs}초)" if mins > 0 else f"GPU 할당 대기 중... ({elapsed}초)"
                 update_job(job_id, status="running",
-                          progress=min(10, elapsed // 6),
-                          message=f"GPU 대기 중... ({elapsed}초)")
+                          progress=min(5, elapsed // 12),
+                          message=queue_msg)
 
             elif status == "IN_PROGRESS":
                 pct, msg = _extract_progress_info(result, job_type, elapsed)
@@ -2695,9 +2735,19 @@ async def cancel_job(job_id: str):
             (datetime.now().isoformat(), job_id)
         )
 
+    # 활성 폴링 스레드 종료 대기 (최대 6초 — 폴링 주기 5초 + 여유 1초)
+    with _poll_threads_lock:
+        poll_thread = _active_poll_threads.get(job_id)
+    if poll_thread and poll_thread.is_alive():
+        poll_thread.join(timeout=6)
+        if poll_thread.is_alive():
+            logger.warning("[Cancel] 폴링 스레드 %s 가 6초 내 종료되지 않음", job_id)
+
     # 활성 상태 정리
     with _poll_errors_lock:
         _poll_error_counts.pop(job_id, None)
+    with _poll_threads_lock:
+        _active_poll_threads.pop(job_id, None)
     with _preprocess_lock:
         preprocess_file_map.pop(job_id, None)
     with _training_lock:

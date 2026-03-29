@@ -120,7 +120,8 @@ def _download_with_retries(
     requests_mod, url: str, dest: Path, label: str = "파일",
     timeout: int = 120, retries: int = 5
 ) -> None:
-    """Download a file from URL with retry logic for transient network/HTTP errors."""
+    """Download a file from URL with retry logic for transient network/HTTP errors.
+    403/404 등 영구적 HTTP 오류는 재시도하지 않고 즉시 실패."""
     for attempt in range(retries):
         try:
             resp = requests_mod.get(url, timeout=timeout)
@@ -129,9 +130,22 @@ def _download_with_retries(
             with open(dest, "wb") as f:
                 f.write(resp.content)
             return
-        except (requests_mod.exceptions.Timeout, requests_mod.exceptions.ConnectionError,
-                requests_mod.exceptions.HTTPError) as e:
-            # Timeout, 연결 오류, HTTP 오류 (400/500 등 R2 일시적 오류 포함) 모두 재시도
+        except requests_mod.exceptions.HTTPError as e:
+            status_code = getattr(e.response, "status_code", 0) if hasattr(e, "response") else 0
+            # 403/404/401 = 영구적 오류 (만료 URL, 삭제된 파일 등) → 재시도 무의미, 즉시 실패
+            if status_code in (401, 403, 404):
+                raise RuntimeError(
+                    f"{label} 다운로드 실패 (HTTP {status_code}): URL이 만료되었거나 파일이 존재하지 않습니다. "
+                    f"모델을 다시 학습하거나 R2 설정을 확인하세요."
+                ) from e
+            # 그 외 HTTP 오류 (429, 500, 502 등) = 일시적 → 재시도
+            if attempt < retries - 1:
+                wait = min(2 ** attempt, 10)
+                log.warning(f"{label} 다운로드 재시도 {attempt + 1}/{retries} (HTTP {status_code}, {wait}초 후): {e}")
+                time.sleep(wait)
+            else:
+                raise RuntimeError(f"{label} 다운로드 {retries}회 실패 (HTTP {status_code}): {e}") from e
+        except (requests_mod.exceptions.Timeout, requests_mod.exceptions.ConnectionError) as e:
             if attempt < retries - 1:
                 wait = min(2 ** attempt, 10)
                 log.warning(f"{label} 다운로드 재시도 {attempt + 1}/{retries} ({wait}초 후): {e}")
@@ -1059,12 +1073,28 @@ def task_train(job_input: dict, job: dict) -> dict:
                     log.info(f"Downloaded training file: {fname} ({len(resp.content) / 1024:.1f} KB)")
                     last_err = None
                     break
-                except (_req.exceptions.Timeout, _req.exceptions.ConnectionError,
-                        _req.exceptions.HTTPError) as dl_err:
-                    # Timeout, 연결 오류, HTTP 오류 (400/500 등) 모두 재시도
+                except _req.exceptions.HTTPError as dl_err:
+                    status_code = getattr(dl_err.response, "status_code", 0) if hasattr(dl_err, "response") else 0
+                    # 403/404/401 = 영구적 오류 → 재시도 무의미
+                    if status_code in (401, 403, 404):
+                        raise RuntimeError(
+                            f"학습 파일 다운로드 실패 ({fname}, HTTP {status_code}): "
+                            f"URL이 만료되었거나 파일이 존재하지 않습니다."
+                        ) from dl_err
                     last_err = dl_err
                     if attempt < max_retries - 1:
-                        wait = min(2 ** attempt, 10)  # 1s, 2s, 4s, 8s
+                        wait = min(2 ** attempt, 10)
+                        log.warning(f"다운로드 재시도 {attempt + 1}/{max_retries} ({fname}, HTTP {status_code}), "
+                                    f"{wait}초 후: {dl_err}")
+                        time.sleep(wait)
+                    else:
+                        raise RuntimeError(
+                            f"학습 파일 다운로드 {max_retries}회 실패 ({fname}): {dl_err}"
+                        ) from dl_err
+                except (_req.exceptions.Timeout, _req.exceptions.ConnectionError) as dl_err:
+                    last_err = dl_err
+                    if attempt < max_retries - 1:
+                        wait = min(2 ** attempt, 10)
                         log.warning(f"다운로드 재시도 {attempt + 1}/{max_retries} ({fname}), "
                                     f"{wait}초 후: {dl_err}")
                         time.sleep(wait)
@@ -2661,7 +2691,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
 
     try:
         # --- Step 1: Decode files ---
-        runpod.serverless.progress_update(job, "Decoding model and audio files... (1/4)")
+        runpod.serverless.progress_update(job, "모델·오디오 파일 다운로드 중... (1/4)")
 
         # Model: download from URL or decode base64
         if pth_url:
