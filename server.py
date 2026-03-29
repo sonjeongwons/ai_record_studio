@@ -16,6 +16,8 @@ import webbrowser
 import uuid
 import re
 import subprocess
+import logging
+import logging.handlers
 from datetime import datetime
 from pathlib import Path
 from contextlib import contextmanager
@@ -56,7 +58,32 @@ CONFIG_PATH = DATA_DIR / "config.json"
 # 청크 업로드 제한: 최대 2GB
 MAX_CHUNK_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 로깅 설정
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+logger = logging.getLogger("voice-studio")
+logger.setLevel(logging.DEBUG)
+
+# 콘솔 핸들러
+_console_handler = logging.StreamHandler(sys.stdout)
+_console_handler.setLevel(logging.DEBUG)
+_console_handler.setFormatter(logging.Formatter(
+    "[%(asctime)s] %(levelname)-7s %(message)s", datefmt="%H:%M:%S"
+))
+logger.addHandler(_console_handler)
+
+# 파일 핸들러 (DATA_DIR 확정 후 설정)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+_log_file = DATA_DIR / "server.log"
+_file_handler = logging.handlers.RotatingFileHandler(
+    _log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
+_file_handler.setLevel(logging.DEBUG)
+_file_handler.setFormatter(logging.Formatter(
+    "[%(asctime)s] %(levelname)-7s %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+))
+logger.addHandler(_file_handler)
+
 for d in [UPLOAD_DIR, MODEL_DIR, OUTPUT_DIR, CHUNK_DIR, PREPROCESSED_DIR]:
     d.mkdir(exist_ok=True)
 
@@ -84,7 +111,7 @@ def _cleanup_stale_chunk_uploads():
         chunk_dir = CHUNK_DIR / uid
         shutil.rmtree(chunk_dir, ignore_errors=True)
     if stale_ids:
-        print(f"[ChunkCleanup] {len(stale_ids)}개 미완료 업로드 정리")
+        logger.info("[ChunkCleanup] %d개 미완료 업로드 정리", len(stale_ids))
 
 def _list_preprocessed_files() -> list[Path]:
     """전처리된 오디오 파일 목록 (WAV + MP3 + FLAC)."""
@@ -276,7 +303,7 @@ def load_config():
             # 손상된 config 백업 후 초기화
             backup = CONFIG_PATH.with_suffix(".json.bak")
             shutil.copy2(str(CONFIG_PATH), str(backup))
-            print(f"[Warning] config.json 손상 → 백업: {backup}")
+            logger.warning("config.json 손상 → 백업: %s", backup)
     return cfg
 
 def save_config(config):
@@ -408,10 +435,10 @@ def recover_orphan_jobs_on_startup():
         """).fetchall()
 
     if not stale_rows:
-        print("[Startup] 복구할 진행 중 작업 없음")
+        logger.info("[Startup] 복구할 진행 중 작업 없음")
         return
 
-    print(f"[Startup] 진행 중 작업 {len(stale_rows)}개 발견 — RunPod 상태 확인 중...")
+    logger.info("[Startup] 진행 중 작업 %d개 발견 — RunPod 상태 확인 중...", len(stale_rows))
 
     recovered = 0
     completed_on_runpod = 0
@@ -441,30 +468,24 @@ def recover_orphan_jobs_on_startup():
             result = runpod_client.check_status(runpod_job_id)
             rp_status = result.get("status", "UNKNOWN")
         except Exception as e:
-            print(f"[Startup] RunPod 상태 확인 실패 ({job_id}): {e}")
+            logger.warning("[Startup] RunPod 상태 확인 실패 (%s): %s", job_id, e)
             # 네트워크 문제일 수 있으므로 폴링 스레드를 시작하여 나중에 재시도
-            print(f"[Startup] 폴링 스레드 재시작 (네트워크 복구 대기): {job_id}")
-            t = threading.Thread(target=poll_runpod_job,
-                                args=(job_id, runpod_job_id, job_type),
-                                daemon=True)
-            t.start()
+            logger.info("[Startup] 폴링 스레드 재시작 (네트워크 복구 대기): %s", job_id)
+            _spawn_polling_thread(job_id, runpod_job_id, job_type)
             recovered += 1
             continue
 
         if rp_status in ("IN_PROGRESS", "IN_QUEUE"):
             # 아직 실행 중 → 폴링 스레드 재시작
-            print(f"[Startup] RunPod 작업 진행 중 → 폴링 복구: {job_id} (type={job_type}, rp={rp_status})")
+            logger.info("[Startup] RunPod 작업 진행 중 → 폴링 복구: %s (type=%s, rp=%s)", job_id, job_type, rp_status)
             update_job(job_id, status="running",
                       message=f"서버 재시작 후 자동 복구 (RunPod: {rp_status})")
-            t = threading.Thread(target=poll_runpod_job,
-                                args=(job_id, runpod_job_id, job_type),
-                                daemon=True)
-            t.start()
+            _spawn_polling_thread(job_id, runpod_job_id, job_type)
             recovered += 1
 
         elif rp_status == "COMPLETED":
             # RunPod에서 이미 완료 → 결과 수거
-            print(f"[Startup] RunPod 작업 완료됨 → 결과 수거: {job_id}")
+            logger.info("[Startup] RunPod 작업 완료됨 → 결과 수거: %s", job_id)
             output = result.get("output", {})
             if output:
                 try:
@@ -492,14 +513,11 @@ def recover_orphan_jobs_on_startup():
 
         else:
             # 알 수 없는 상태 → 폴링 스레드 시작하여 추적 계속
-            print(f"[Startup] RunPod 상태 불명({rp_status}) → 폴링 복구: {job_id}")
-            t = threading.Thread(target=poll_runpod_job,
-                                args=(job_id, runpod_job_id, job_type),
-                                daemon=True)
-            t.start()
+            logger.info("[Startup] RunPod 상태 불명(%s) → 폴링 복구: %s", rp_status, job_id)
+            _spawn_polling_thread(job_id, runpod_job_id, job_type)
             recovered += 1
 
-    print(f"[Startup] 작업 복구 완료: 폴링 재시작={recovered}, 결과 수거={completed_on_runpod}, 실패 정리={failed_cleanup}")
+    logger.info("[Startup] 작업 복구 완료: 폴링 재시작=%d, 결과 수거=%d, 실패 정리=%d", recovered, completed_on_runpod, failed_cleanup)
 
     # conversions 테이블 동기화 — orphan 'processing' 레코드 정리
     with get_db() as db:
@@ -529,7 +547,7 @@ def cleanup_stale_jobs():
                 try:
                     runpod_client.cancel_runpod_job(row["runpod_job_id"])
                 except Exception:
-                    pass
+                    logger.debug("Silent exception in %s", __name__, exc_info=True)
         stale = db.execute("""
             UPDATE jobs
             SET status='failed',
@@ -539,7 +557,7 @@ def cleanup_stale_jobs():
               AND updated_at < datetime('now', 'localtime', '-1 hour')
         """, (datetime.now().isoformat(),))
         if stale.rowcount > 0:
-            print(f"  정리된 멈춘 작업: {stale.rowcount}개")
+            logger.info("정리된 멈춘 작업: %d개", stale.rowcount)
 
 
 # 주기적 정리 스로틀 (30분 간격)
@@ -590,7 +608,7 @@ def classify_runpod_error(exc: Exception, response=None) -> str:
             if "insufficient" in body or "balance" in body or "funds" in body:
                 return RUNPOD_ERROR_MESSAGES["funds"]
         except Exception:
-            pass
+            logger.debug("Silent exception in %s", __name__, exc_info=True)
         return RUNPOD_ERROR_MESSAGES["unknown"].format(
             detail=f"HTTP {status}: {response.text[:200]}"
         )
@@ -707,10 +725,10 @@ class RunPodClient:
                 headers=self.headers,
                 timeout=30
             )
-            print(f"[RunPod] Cancel {runpod_job_id}: HTTP {resp.status_code}")
+            logger.info("[RunPod] Cancel %s: HTTP %d", runpod_job_id, resp.status_code)
             return resp.status_code in (200, 201, 202)
         except Exception as e:
-            print(f"[RunPod] Cancel failed for {runpod_job_id}: {e}")
+            logger.error("[RunPod] Cancel failed for %s: %s", runpod_job_id, e)
             return False
 
     def encode_files(self, file_paths: list) -> list:
@@ -790,7 +808,7 @@ def upload_to_r2(file_path: Path, key: str, s3_client=None, bucket_name=None) ->
             ExpiresIn=604800,  # 7일 (R2 최대 허용)
         )
     except Exception as e:
-        print(f"[R2 Upload Error] {type(e).__name__}: {e}")
+        logger.error("R2 Upload Error: %s: %s", type(e).__name__, e)
         raise HTTPException(500, f"R2 업로드 실패: {type(e).__name__}: {e}")
 
     return presigned_url
@@ -818,7 +836,7 @@ def refresh_presigned_url(old_url: str) -> str:
         Params={"Bucket": bucket, "Key": key},
         ExpiresIn=604800,
     )
-    print(f"[R2] Refreshed presigned URL for key: {key}")
+    logger.info("[R2] Refreshed presigned URL for key: %s", key)
     return new_url
 
 
@@ -859,7 +877,7 @@ def update_job(job_id: str, **kwargs):
                     f"UPDATE jobs SET {sets}, updated_at=? WHERE id=? "
                     f"AND status NOT IN ('cancelled', 'failed', 'completed')", vals)
     except Exception as e:
-        print(f"[update_job] DB 업데이트 실패 (job_id={job_id}): {e}")
+        logger.error("DB 업데이트 실패 (job_id=%s): %s", job_id, e)
 
 
 def _is_job_cancelled(job_id: str) -> bool:
@@ -870,6 +888,93 @@ def _is_job_cancelled(job_id: str) -> bool:
             return row and row["status"] in ("failed", "cancelled", "paused")  # v17: paused 추가 — 일시정지 작업도 폴링 중단
     except Exception:
         return False
+
+
+def _extract_progress_info(result: dict, job_type: str, elapsed: int) -> tuple:
+    """RunPod 응답에서 진행률(%)과 메시지를 추출.
+    Returns: (pct: int 5-95, message: str)"""
+    pct = None
+    msg = None
+
+    # output 필드에서 progress 텍스트 추출
+    progress_text = ""
+    output_field = result.get("output")
+    if isinstance(output_field, str) and output_field:
+        progress_text = output_field
+    elif isinstance(output_field, dict):
+        progress_text = output_field.get("progress", "")
+
+    # stream 필드 폴백
+    if not progress_text:
+        stream = result.get("stream") or []
+        if isinstance(stream, list):
+            for entry in reversed(stream):
+                text = entry.get("output", "") if isinstance(entry, dict) else str(entry)
+                if text:
+                    progress_text = text
+                    break
+
+    if progress_text:
+        # "Training epoch 50/300 (16%)" 파싱
+        m = re.search(r'\((\d+)%\)', progress_text)
+        if m:
+            pct = int(m.group(1))
+        else:
+            m2 = re.search(r'(\d+)\s*/\s*(\d+)', progress_text)
+            if m2 and int(m2.group(2)) > 0:
+                pct = min(95, int(int(m2.group(1)) / int(m2.group(2)) * 100))
+
+        # 한국어 메시지 변환
+        if "epoch" in progress_text.lower():
+            m3 = re.search(r'epoch\s+(\d+)\s*/\s*(\d+)', progress_text, re.IGNORECASE)
+            if m3:
+                msg = f"학습 중... 에폭 {m3.group(1)}/{m3.group(2)}"
+        elif "(" in progress_text and "/" in progress_text:
+            m4 = re.search(r'\((\d+)/(\d+)\)', progress_text)
+            if m4 and int(m4.group(2)) > 0:
+                step, total_steps = int(m4.group(1)), int(m4.group(2))
+                pct = min(90, int(step / total_steps * 90))
+                msg = progress_text
+
+    if pct is None:
+        # 경과 시간 기반 추정
+        _EST_TIMES = {"train": 900, "preprocess": 600, "convert": 300}
+        est_total = _EST_TIMES.get(job_type, 600)
+        pct = min(90, int((elapsed / est_total) * 100))
+
+    pct = min(95, max(5, pct))
+    _TYPE_LABELS = {"train": "학습", "preprocess": "전처리", "convert": "변환"}
+    label = _TYPE_LABELS.get(job_type, job_type)
+    mins = elapsed // 60
+    time_str = f"{mins}분 경과" if mins >= 1 else f"{elapsed}초"
+    default_msg = f"{label} 중... ({time_str})"
+
+    return pct, msg or default_msg
+
+
+def _mark_job_failed_with_conversion(job_id: str, job_type: str, message: str):
+    """작업 실패 마킹 + convert인 경우 conversions 테이블도 업데이트"""
+    try:
+        update_job(job_id, status="failed", message=message)
+    except Exception:
+        logger.error("Failed to mark job %s as failed", job_id)
+    if job_type == "convert":
+        try:
+            with get_db() as db:
+                db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
+        except Exception:
+            logger.debug("Silent exception in %s", __name__, exc_info=True)
+
+
+def _spawn_polling_thread(job_id: str, runpod_job_id: str, job_type: str):
+    """RunPod 폴링 데몬 스레드 생성 — start_training/conversion/preprocess 공통"""
+    t = threading.Thread(
+        target=poll_runpod_job,
+        args=(job_id, runpod_job_id, job_type),
+        daemon=True
+    )
+    t.start()
+    return t
 
 
 def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
@@ -901,7 +1006,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             with get_db() as db:
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
-                            pass
+                            logger.debug("Silent exception in %s", __name__, exc_info=True)
                     with _poll_errors_lock:
                         _poll_error_counts.pop(job_id, None)
                     return
@@ -915,7 +1020,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             with get_db() as db:
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
-                            pass
+                            logger.debug("Silent exception in %s", __name__, exc_info=True)
                     with _poll_errors_lock:
                         _poll_error_counts.pop(job_id, None)
                 return
@@ -948,7 +1053,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                         with get_db() as db:
                             db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                     except Exception:
-                        pass
+                        logger.debug("Silent exception in %s", __name__, exc_info=True)
                 return
 
             elif status == "IN_QUEUE":
@@ -957,70 +1062,8 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                           message=f"GPU 대기 중... ({elapsed}초)")
 
             elif status == "IN_PROGRESS":
-                # RunPod progress_update 메시지에서 실제 진행률 추출
-                pct = None
-                msg = None
-
-                # progress_update → output 필드 (IN_PROGRESS 상태)
-                # 또는 stream 배열에서 최신 메시지 확인
-                progress_text = ""
-                output_field = result.get("output")
-                if isinstance(output_field, str) and output_field:
-                    progress_text = output_field
-                elif isinstance(output_field, dict):
-                    progress_text = output_field.get("progress", "")
-
-                # stream 필드도 확인
-                if not progress_text:
-                    stream = result.get("stream") or []
-                    if isinstance(stream, list):
-                        for entry in reversed(stream):
-                            text = entry.get("output", "") if isinstance(entry, dict) else str(entry)
-                            if text:
-                                progress_text = text
-                                break
-
-                if progress_text:
-                    # "Training epoch 50/300 (16%)" 파싱
-                    m = re.search(r'\((\d+)%\)', progress_text)
-                    if m:
-                        pct = int(m.group(1))
-                    else:
-                        m2 = re.search(r'(\d+)\s*/\s*(\d+)', progress_text)
-                        if m2 and int(m2.group(2)) > 0:
-                            pct = min(95, int(int(m2.group(1)) / int(m2.group(2)) * 100))
-
-                    # 한국어 메시지 변환
-                    if "epoch" in progress_text.lower():
-                        m3 = re.search(r'epoch\s+(\d+)\s*/\s*(\d+)', progress_text, re.IGNORECASE)
-                        if m3:
-                            msg = f"학습 중... 에폭 {m3.group(1)}/{m3.group(2)}"
-                    elif "(" in progress_text and "/" in progress_text:
-                        # "(3/5)" 스텝 형태
-                        m4 = re.search(r'\((\d+)/(\d+)\)', progress_text)
-                        if m4 and int(m4.group(2)) > 0:
-                            step, total_steps = int(m4.group(1)), int(m4.group(2))
-                            pct = min(90, int(step / total_steps * 90))
-                            msg = progress_text
-
-                if pct is None:
-                    # fallback: 경과 시간 기반 추정 (작업 유형별 예상 시간)
-                    _EST_TIMES = {"train": 900, "preprocess": 600, "convert": 300}
-                    est_total = _EST_TIMES.get(job_type, 600)
-                    pct = min(90, int((elapsed / est_total) * 100))
-
-                pct = min(95, max(5, pct))
-                mins = elapsed // 60
-
-                if job_type == "train":
-                    update_job(job_id, status="running", progress=pct,
-                              message=msg or f"학습 중... ({mins}분 경과)")
-                elif job_type == "preprocess":
-                    update_job(job_id, status="running", progress=pct,
-                              message=msg or f"전처리 중... ({elapsed}초)")
-                else:
-                    update_job(job_id, status="running", progress=pct,
-                              message=msg or f"변환 중... ({elapsed}초)")
+                pct, msg = _extract_progress_info(result, job_type, elapsed)
+                update_job(job_id, status="running", progress=pct, message=msg)
 
             else:
                 # Unknown status — log and treat as transient
@@ -1068,15 +1111,8 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
             time.sleep(backoff)
     except Exception as _poll_fatal:
         # 폴링 스레드 예상치 못한 크래시 — 작업을 failed로 마킹하여 영구 running 상태 방지
-        print(f"[CRITICAL] poll_runpod_job crashed for {job_id}: {_poll_fatal}")
-        try:
-            update_job(job_id, status="failed",
-                      message=f"내부 오류로 작업이 중단되었습니다. 다시 시도해 주세요.")
-            if job_type == "convert":
-                with get_db() as db:
-                    db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
-        except Exception:
-            pass
+        logger.critical("poll_runpod_job crashed for %s: %s", job_id, _poll_fatal)
+        _mark_job_failed_with_conversion(job_id, job_type, "내부 오류로 작업이 중단되었습니다. 다시 시도해 주세요.")
     finally:
         with _poll_errors_lock:
             _poll_error_counts.pop(job_id, None)
@@ -1091,15 +1127,13 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     total_duration = output.get("total_duration", 0.0)
 
     # Diagnostic: log what we received from RunPod
-    print(f"[Preprocess] Received output keys: {list(output.keys())}")
-    print(f"[Preprocess] segment_count={output.get('segment_count')}, "
-          f"total_duration={total_duration}, "
-          f"segments={len(segments)}, accomp={len(accomp_files)}, "
-          f"vocals={len(vocal_files)}")
+    logger.info("[Preprocess] Received output keys: %s", list(output.keys()))
+    logger.info("[Preprocess] segment_count=%s, total_duration=%s, segments=%d, accomp=%d, vocals=%d",
+               output.get("segment_count"), total_duration, len(segments), len(accomp_files), len(vocal_files))
     if not segments and output.get("segment_count", 0) > 0:
-        print(f"[Preprocess] WARNING: Handler reported {output.get('segment_count')} segments "
-              f"but segments array is empty! RunPod response may have been truncated "
-              f"due to payload size limit.")
+        logger.warning("[Preprocess] Handler reported %s segments but segments array is empty! "
+                       "RunPod response may have been truncated due to payload size limit.",
+                       output.get("segment_count"))
     saved_files = []
 
     # 기존 파일과 이름 충돌 방지용 prefix
@@ -1123,7 +1157,7 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
                     })
                     existing.add(fname)
                 except Exception as e:
-                    print(f"[Preprocess] Failed to download {orig_name}: {e}")
+                    logger.error("[Preprocess] Failed to download %s: %s", orig_name, e)
             elif fobj.get("data_base64"):
                 # Legacy: inline base64
                 with open(fpath, "wb") as f:
@@ -1157,7 +1191,7 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
                     file_ids
                 )
         except Exception as e:
-            print(f"[Preprocess] DB update failed for file_ids (will retry next poll): {e}")
+            logger.error("[Preprocess] DB update failed for file_ids (will retry next poll): %s", e)
         else:
             with _preprocess_lock:
                 preprocess_file_map.pop(job_id, None)
@@ -1177,7 +1211,7 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception as e:
-            print(f"[Warning] Failed to parse metadata: {e}")
+            logger.warning("Failed to parse metadata: %s", e)
     prev_dur = meta.get("total_duration", 0.0)
     merged_dur = prev_dur + total_duration
     meta["total_duration"] = round(merged_dur, 2)
@@ -1195,7 +1229,7 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
         meta_tmp.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
         meta_tmp.replace(meta_path)
     except Exception as e:
-        print(f"[Warning] metadata write failed: {e}")
+        logger.warning("metadata write failed: %s", e)
         meta_tmp.unlink(missing_ok=True)
 
     return {
@@ -1218,7 +1252,7 @@ def _download_with_retry(url: str, dest: Path, timeout: int = 300, retries: int 
             return
         except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as e:
             if attempt < retries - 1:
-                print(f"[Download] 재시도 {attempt + 1}/{retries}: {dest.name} ({e})")
+                logger.warning("[Download] 재시도 %d/%d: %s (%s)", attempt + 1, retries, dest.name, e)
                 time.sleep(2 ** attempt)
             else:
                 raise RuntimeError(f"다운로드 {retries}회 실패 ({dest.name}): {e}") from e
@@ -1248,7 +1282,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 raw = base64.b64decode(output["pth_base64"])
                 with open(pth_path, "wb") as f:
                     f.write(raw)
-                print(f"[Train] Model saved via base64 fallback: {pth_filename}")
+                logger.info("[Train] Model saved via base64 fallback: %s", pth_filename)
             # Legacy: inline base64 (backward compat for small models)
             elif output.get("pth_data"):
                 pth_filename = output.get("pth_filename", f"{model_name}.pth")
@@ -1286,7 +1320,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 raw = base64.b64decode(output["index_base64"])
                 with open(index_path, "wb") as f:
                     f.write(raw)
-                print(f"[Train] Index saved via base64 fallback: {idx_filename}")
+                logger.info("[Train] Index saved via base64 fallback: %s", idx_filename)
             # Legacy: inline base64
             elif output.get("index_data"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
@@ -1313,7 +1347,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                           _train_files_json))
             except Exception as db_err:
                 # DB 삽입 실패 시 다운로드된 모델 파일 정리 (고아 파일 방지)
-                print(f"[Train] DB insert failed, cleaning up model files: {db_err}")
+                logger.error("[Train] DB insert failed, cleaning up model files: %s", db_err)
                 shutil.rmtree(model_dir, ignore_errors=True)
                 raise
 
@@ -1331,7 +1365,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             if output.get("converted_audio_url"):
                 _download_with_retry(output["converted_audio_url"], out_path, timeout=600)
                 file_size = out_path.stat().st_size if out_path.exists() else 0
-                print(f"[Convert] Downloaded vocals from R2: {file_size:,} bytes")
+                logger.info("[Convert] Downloaded vocals from R2: %s bytes", f"{file_size:,}")
                 if file_size < 50_000:
                     raise RuntimeError(f"다운로드된 보컬 파일이 너무 작습니다 ({file_size:,} bytes). 변환이 실패했을 수 있습니다.")
                 has_vocals = True
@@ -1356,7 +1390,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 if output.get("mixed_audio_url"):
                     _download_with_retry(output["mixed_audio_url"], mixed_path, timeout=300)
                     result_data["mixed_file"] = mixed_filename
-                    print(f"[Convert] Downloaded mixed from R2: {mixed_path.stat().st_size:,} bytes")
+                    logger.info("[Convert] Downloaded mixed from R2: %s bytes", f"{mixed_path.stat().st_size:,}")
                 elif output.get("mixed_audio"):
                     with open(mixed_path, "wb") as f:
                         f.write(base64.b64decode(output["mixed_audio"]))
@@ -1394,7 +1428,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 with get_db() as db:
                     db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
             except Exception:
-                pass
+                logger.debug("Silent exception in %s", __name__, exc_info=True)
     finally:
         with _poll_errors_lock:
             _poll_error_counts.pop(job_id, None)
@@ -1406,7 +1440,7 @@ def _run_batched_preprocess(job_id: str, batches: list[list[dict]]):
     try:
         _run_batched_preprocess_inner(job_id, batches)
     except Exception as e:
-        print(f"[BatchPreprocess] Unexpected crash for job {job_id}: {e}")
+        logger.error("[BatchPreprocess] Unexpected crash for job %s: %s", job_id, e)
         import traceback
         traceback.print_exc()
         update_job(job_id, status="failed",
@@ -1484,7 +1518,7 @@ def _run_batched_preprocess_inner(job_id: str, batches: list[list[dict]]):
                         try:
                             runpod_client.cancel_runpod_job(runpod_job_id)
                         except Exception:
-                            pass
+                            logger.debug("Silent exception in %s", __name__, exc_info=True)
                     update_job(job_id, status="failed",
                                message=f"{batch_label} 시간 초과 (1시간)")
                     return
@@ -1569,7 +1603,7 @@ async def startup():
             try:
                 _cleanup_stale_chunk_uploads()
             except Exception:
-                pass
+                logger.debug("Silent exception in %s", __name__, exc_info=True)
     threading.Thread(target=_chunk_cleanup_loop, daemon=True).start()
 
 
@@ -1996,7 +2030,7 @@ async def start_training(
             try:
                 seg_map = json.loads(meta_path.read_text(encoding="utf-8")).get("file_segments", {})
             except Exception as e:
-                print(f"[Warning] Failed to parse metadata: {e}")
+                logger.warning("Failed to parse metadata: %s", e)
 
         try:
             ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
@@ -2011,10 +2045,10 @@ async def start_training(
                 f for f in all_preprocessed
                 if f.name in selected_seg_names
             ]
-            print(f"[Train] Segment filter: {len(selected_seg_names)} mapped → {len(preprocessed_files)} found on disk")
+            logger.info("[Train] Segment filter: %d mapped → %d found on disk", len(selected_seg_names), len(preprocessed_files))
         else:
             # 매핑 없으면 (이전 전처리) 전체 사용
-            print(f"[Train] No segment mapping found, using all {len(all_preprocessed)} segments")
+            logger.info("[Train] No segment mapping found, using all %d segments", len(all_preprocessed))
             preprocessed_files = all_preprocessed
     else:
         preprocessed_files = all_preprocessed
@@ -2047,7 +2081,7 @@ async def start_training(
 
         if use_r2:
             import time as _time
-            print(f"[Train] Uploading {len(file_paths)} files ({total_size:,} bytes, {total_size/1024/1024:.1f}MB) to R2...")
+            logger.info("[Train] Uploading %d files (%s bytes, %.1fMB) to R2...", len(file_paths), f"{total_size:,}", total_size/1024/1024)
             r2_client, r2_bucket_name = _get_r2_client()
             upload_start = _time.time()
             uploaded_bytes = 0
@@ -2063,14 +2097,14 @@ async def start_training(
                         elapsed = _time.time() - upload_start
                         pct = (i + 1) / len(file_paths) * 100
                         speed = uploaded_bytes / 1024 / 1024 / max(elapsed, 0.1)
-                        print(f"[Train] R2 upload: {i+1}/{len(file_paths)} ({pct:.0f}%) — {uploaded_bytes/1024/1024:.1f}MB, {speed:.1f}MB/s, {elapsed:.0f}s elapsed")
+                        logger.info("[Train] R2 upload: %d/%d (%.0f%%) — %.1fMB, %.1fMB/s, %.0fs elapsed", i+1, len(file_paths), pct, uploaded_bytes/1024/1024, speed, elapsed)
                 except Exception as e:
-                    print(f"[Train] R2 upload failed at file {i+1}/{len(file_paths)} ({Path(fp).name}): {e}")
+                    logger.error("[Train] R2 upload failed at file %d/%d (%s): %s", i+1, len(file_paths), Path(fp).name, e)
                     update_job(job_id, status="failed",
                         message=f"학습 데이터 R2 업로드 실패 ({i+1}/{len(file_paths)}): {e}")
                     raise HTTPException(500, f"학습 데이터 R2 업로드 실패: {e}")
             total_elapsed = _time.time() - upload_start
-            print(f"[Train] All {len(audio_urls)} files uploaded to R2 in {total_elapsed:.1f}s ({total_size/1024/1024:.1f}MB, {total_size/1024/1024/max(total_elapsed,0.1):.1f}MB/s)")
+            logger.info("[Train] All %d files uploaded to R2 in %.1fs (%.1fMB, %.1fMB/s)", len(audio_urls), total_elapsed, total_size/1024/1024, total_size/1024/1024/max(total_elapsed,0.1))
 
         config = load_config()
         r2_bucket = config.get("r2_bucket_name", "")
@@ -2105,7 +2139,7 @@ async def start_training(
             }
 
         payload_size = len(json.dumps(payload))
-        print(f"[Train] Payload size: {payload_size:,} bytes, segments: {total_segments}")
+        logger.info("[Train] Payload size: %s bytes, segments: %d", f"{payload_size:,}", total_segments)
 
         runpod_job_id = runpod_client.submit_job(payload)
         if not runpod_job_id:
@@ -2115,12 +2149,7 @@ async def start_training(
         update_job(job_id, status="running", progress=5,
                   message=msg, runpod_job_id=runpod_job_id)
 
-        thread = threading.Thread(
-            target=poll_runpod_job,
-            args=(job_id, runpod_job_id, "train"),
-            daemon=True
-        )
-        thread.start()
+        _spawn_polling_thread(job_id, runpod_job_id, "train")
 
     except HTTPException:
         raise
@@ -2202,12 +2231,7 @@ async def start_preprocess(
                       message=f"GPU에 전처리 작업 제출됨 ({len(unprocessed)}개 파일{skip_msg})",
                       runpod_job_id=runpod_job_id)
 
-            thread = threading.Thread(
-                target=poll_runpod_job,
-                args=(job_id, runpod_job_id, "preprocess"),
-                daemon=True
-            )
-            thread.start()
+            _spawn_polling_thread(job_id, runpod_job_id, "preprocess")
         else:
             # 다중 배치: 순차적으로 전처리 (각 배치를 별도 RunPod 작업으로)
             update_job(job_id, status="running", progress=2,
@@ -2265,7 +2289,7 @@ def _preprocess_status_sync():
         try:
             total_dur = json.loads(meta_path.read_text(encoding="utf-8")).get("total_duration", 0.0)
         except Exception as e:
-            print(f"[Warning] Failed to parse metadata: {e}")
+            logger.warning("Failed to parse metadata: %s", e)
 
     # 메타데이터 없으면 파일 크기 기반으로 빠르게 추정 (수백 개 파일을 열지 않음)
     if total_dur == 0.0 and has_segments:
@@ -2280,7 +2304,7 @@ def _preprocess_status_sync():
                 else:
                     total_dur += size / 96000.0
             except Exception:
-                pass
+                logger.debug("Silent exception in %s", __name__, exc_info=True)
 
     return {
         "preprocessed": has_segments,  # 세그먼트가 있으면 학습 가능 (전체 완료 불필요)
@@ -2446,13 +2470,13 @@ async def start_conversion(
         try:
             pth_url = refresh_presigned_url(model["pth_url"])
         except Exception as e:
-            print(f"[Convert] pth presigned URL 갱신 실패: {e}, 원본 URL 사용")
+            logger.error("[Convert] pth presigned URL 갱신 실패: %s, 원본 URL 사용", e)
             pth_url = model["pth_url"]
     if model["index_url"]:
         try:
             index_url = refresh_presigned_url(model["index_url"])
         except Exception as e:
-            print(f"[Convert] index presigned URL 갱신 실패: {e}, 원본 URL 사용")
+            logger.error("[Convert] index presigned URL 갱신 실패: %s, 원본 URL 사용", e)
             index_url = model["index_url"]
 
     # Job + 변환 기록 동시 생성 (원자성: RunPod 제출 전에 모든 DB 레코드 삽입)
@@ -2500,7 +2524,7 @@ async def start_conversion(
             audio_url = upload_to_r2(temp_path, audio_r2_key)
             payload["audio_url"] = audio_url
         except Exception as e:
-            print(f"[Convert] R2 audio upload failed: {e}")
+            logger.error("[Convert] R2 audio upload failed: %s", e)
             file_size = temp_path.stat().st_size
             if file_size > 7_000_000:  # 7MB 이상이면 base64로도 10MB 초과
                 update_job(job_id, status="failed",
@@ -2527,9 +2551,9 @@ async def start_conversion(
                     pth_r2_key = f"convert/{job_id}/model.pth"
                     pth_url = upload_to_r2(local_pth, pth_r2_key)
                     payload["pth_url"] = pth_url
-                    print(f"[Convert] Uploaded model pth to R2: {pth_r2_key}")
+                    logger.info("[Convert] Uploaded model pth to R2: %s", pth_r2_key)
                 except Exception as e:
-                    print(f"[Convert] R2 model upload failed: {e}")
+                    logger.error("[Convert] R2 model upload failed: %s", e)
                     # 임시 파일 정리
                     if temp_path and Path(temp_path).exists():
                         Path(temp_path).unlink(missing_ok=True)
@@ -2546,16 +2570,16 @@ async def start_conversion(
                     idx_r2_key = f"convert/{job_id}/model.index"
                     index_url = upload_to_r2(local_idx, idx_r2_key)
                     payload["index_url"] = index_url
-                    print(f"[Convert] Uploaded model index to R2: {idx_r2_key}")
+                    logger.info("[Convert] Uploaded model index to R2: %s", idx_r2_key)
                 except Exception as e:
-                    print(f"[Convert] R2 index upload failed: {e}")
+                    logger.error("[Convert] R2 index upload failed: %s", e)
                     # index는 선택사항이므로 계속 진행
 
         # 페이로드 크기 로깅 (디버깅용)
         payload_keys = {k: (len(v) if isinstance(v, str) and len(v) > 100 else v)
                         for k, v in payload.items()}
         payload_size = len(json.dumps(payload))
-        print(f"[Convert] Payload size: {payload_size:,} bytes, keys: {payload_keys}")
+        logger.info("[Convert] Payload size: %s bytes, keys: %s", f"{payload_size:,}", payload_keys)
 
         runpod_job_id = runpod_client.submit_job(payload)
 
@@ -2567,7 +2591,7 @@ async def start_conversion(
             if temp_path.exists():
                 temp_path.unlink()
         except Exception:
-            pass
+            logger.debug("Silent exception in %s", __name__, exc_info=True)
 
         update_job(job_id, status="running", progress=10,
                   message="GPU 변환 시작", runpod_job_id=runpod_job_id)
@@ -2576,12 +2600,7 @@ async def start_conversion(
         with get_db() as db:
             db.execute("UPDATE conversions SET status='processing' WHERE job_id=?", (job_id,))
 
-        thread = threading.Thread(
-            target=poll_runpod_job,
-            args=(job_id, runpod_job_id, "convert"),
-            daemon=True
-        )
-        thread.start()
+        _spawn_polling_thread(job_id, runpod_job_id, "convert")
 
     except HTTPException:
         raise
@@ -2594,13 +2613,13 @@ async def start_conversion(
             with get_db() as db:
                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
         except Exception:
-            pass
+            logger.debug("Silent exception in %s", __name__, exc_info=True)
         # 임시 입력 파일 정리 (실패 시에도 누수 방지)
         try:
             if temp_path.exists():
                 temp_path.unlink()
         except Exception:
-            pass
+            logger.debug("Silent exception in %s", __name__, exc_info=True)
         raise HTTPException(500, f"변환 제출 실패: {error_msg}")
 
     return {"job_id": job_id}
@@ -2641,7 +2660,7 @@ async def get_job(job_id: str):
         try:
             result["result"] = json.loads(result["result_json"])
         except Exception:
-            pass
+            logger.debug("Silent exception in %s", __name__, exc_info=True)
     return result
 
 
@@ -2706,7 +2725,7 @@ async def cleanup_all_stuck_jobs():
                 try:
                     runpod_client.cancel_runpod_job(row["runpod_job_id"])
                 except Exception:
-                    pass
+                    logger.debug("Silent exception in %s", __name__, exc_info=True)
         result = db.execute("""
             UPDATE jobs
             SET status='cancelled',
@@ -2734,7 +2753,7 @@ async def list_jobs():
             try:
                 d["result"] = json.loads(d["result_json"])
             except Exception:
-                pass
+                logger.debug("Silent exception in %s", __name__, exc_info=True)
         results.append(d)
     return {"jobs": results}
 
@@ -2782,7 +2801,7 @@ async def delete_model(model_id: int):
                     try:
                         fpath.unlink(missing_ok=True)
                     except Exception:
-                        pass
+                        logger.debug("Silent exception in %s", __name__, exc_info=True)
         # 연결된 변환 기록도 삭제 (cascade)
         db.execute("DELETE FROM conversions WHERE model_id = ?", (model_id,))
         db.execute("DELETE FROM voice_models WHERE id=?", (model_id,))
@@ -2980,8 +2999,8 @@ def open_browser():
     webbrowser.open("http://localhost:8000")
 
 if __name__ == "__main__":
-    print("\nAI Voice Studio 시작 중...")
-    print("   http://localhost:8000 에서 접속하세요\n")
+    logger.info("AI Voice Studio 시작 중...")
+    logger.info("http://localhost:8000 에서 접속하세요")
 
     if not FROZEN:
         # 개발 모드: 브라우저 자동 열기 (.exe 모드에서는 pywebview가 처리)
