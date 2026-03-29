@@ -2177,41 +2177,40 @@ def _post_process_vocal(
     """
     filters = []
 
-    # ━━━ 1. 클릭/팝 아티팩트 제거 (비파괴적) ━━━
+    # ━━━ 1. 노이즈 게이트 — 저음량 구간 보코더 아티팩트 제거 ━━━
+    # v34: 무음/저음량 경계에서 HiFi-GAN 잔류 노이즈 증폭이 기계음 주원인
+    # 분석: 기다릴게 3:31 RMS=-87.7dB에서 SF=0.13 (극심한 기계음)
+    # range_size=-40: 게이트 닫힐 때 -40dB 감쇠 (완전 무음이 아닌 자연스러운 페이드)
+    filters.append(
+        "agate=threshold=0.008:range=0.025:attack=5:release=80"
+    )
+
+    # ━━━ 2. 클릭/팝 아티팩트 제거 (비파괴적) ━━━
     filters.append(
         "adeclick=window=55:overlap=75:arorder=8:threshold=5:burst=4"
     )
 
-    # ━━━ 2. 초저역 제거 ━━━
+    # ━━━ 3. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 3. 디에서 — 치찰음 최소 보정 ━━━
-    # v33: 6kHz -2.5→-1.0, width 1.5→0.7 (v24의 과도한 고역 커팅이 발음 불명확 원인)
-    # v32 분석: Presence -7~-15dB 손실, Air -3~-12dB 손실 → 디에서 과다가 주범
-    filters.append("equalizer=f=6500:width_type=o:width=0.7:g=-1.0")
-    # 7.5kHz: HiFi-GAN 금속성만 최소 보정 (v24 -2.5→v33 -1.0)
-    filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-1.0")
+    # ━━━ 4. 최소 EQ — 과보정 금지 원칙 ━━━
+    # v34: 디에서/저역커팅 최소화. RVC 보컬은 이미 Demucs로 분리된 깨끗한 보컬.
+    # 과도한 EQ 체인이 오히려 자연스러움을 해침 (v24~v33 교훈)
+    # 7.5kHz: HiFi-GAN 금속성만 최소 보정
+    filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-0.8")
 
-    # ━━━ 4. 저역 탁함 보정 (최소한) ━━━
-    filters.append("equalizer=f=300:width_type=o:width=0.8:g=-0.5")
-    filters.append("equalizer=f=550:width_type=o:width=0.9:g=-0.5")
-
-    # ━━━ 5. Presence/Air 보상 강화 ━━━
-    # v33: 3.2kHz +0.8→+1.5, 10kHz +0.8→+1.5 (발음 선명도 + 숨소리 복원)
-    # 16kHz 커팅 제거 (에어 대역 보존)
-    filters.append("equalizer=f=3200:width_type=o:width=1.0:g=1.5")
-    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=1.5")
+    # ━━━ 5. Presence/Air 미세 보상 ━━━
+    # v34: +1.5→+1.0 (v33에서 과부스트 → SC +344Hz 증가 = 밝기 과다)
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.0")
+    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=1.0")
 
     # ━━━ 6. 고음/가성 모드 ━━━
     if high_note_mode:
         filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
 
-    # ━━━ 7. 소프트 새츄레이션 — 디지털감 완화 ━━━
-    # v24 신규: HiFi-GAN의 과도하게 깨끗한 디지털 출력에 미세 워밍
-    # threshold=0.88: 거의 피크에서만 작동, 일반 구간은 투명
-    filters.append("asoftclip=type=tanh:threshold=0.88:output=0.96")
-
-    # ━━━ 8. 안전 리미터 ━━━
+    # ━━━ 7. 안전 리미터 (소프트 새츄레이션 제거) ━━━
+    # v34: asoftclip 제거 — 디지털감 완화보다 자연스러움 보존이 우선
+    # asoftclip이 피크 부근에서 미세하게 파형을 왜곡 → AI스러움의 한 원인
     filters.append("alimiter=limit=0.98:attack=5:release=100:level=disabled")
 
     # ━━━ 6. 리버브 (선택적) ━━━
