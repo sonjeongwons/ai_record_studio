@@ -1330,13 +1330,13 @@ def _rvc_preprocess(
       4) Resample segments to 16kHz → sliced_audios_16k/
       5) High-note oversampling: F0≥350Hz 세그먼트 복제 (고음 비율 2%→10%+)
       6) Pitch-shift augmentation: 중고음 세그먼트 +2/+4 semitone 복사
-      7) Global normalization: -4 dBFS (증강 데이터 포함)
+      7) Global normalization: -1 dBFS (자연 다이나믹스 보존)
 
     v11 변경:
       - 스펙트럴 품질 필터 추가 (노이즈 세그먼트 자동 제거)
       - 고음 오버샘플링 (F0 분석 기반, 고음 학습 데이터 비율 증가)
       - 피치 시프트 증강 (중고음 → +2/+4 semitone → 가상 고음역 데이터 생성)
-      - 정규화 타겟 -3→-4 dBFS (증강 데이터 헤드룸 확보)
+      - 정규화 타겟 -3→-1 dBFS (v24: 자연 다이나믹스 보존)
     """
     SLICE_DURATION = 5.0  # seconds — v13: 3.5→5.0 (한국 가요 프레이즈 보존: 비브라토, 멜리스마, 호흡 패턴)
 
@@ -1563,7 +1563,7 @@ def _rvc_preprocess(
             _norm_factor = _TARGET / _global_peak
             log.info(
                 f"Global normalization: peak={_global_peak:.4f}, "
-                f"factor={_norm_factor:.4f}, target=-4dBFS ({len(_gt_files)} slices)"
+                f"factor={_norm_factor:.4f}, target=-1dBFS ({len(_gt_files)} slices)"
             )
             for _gf in _gt_files:
                 try:
