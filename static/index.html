@@ -3013,11 +3013,11 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">에폭 수 <i class="tip" data-tip="AI가 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n🔢 추천값:\n• 300 = 빠른 결과 확인 (테스트용)\n• 400 = 소량 데이터 100~200 세그먼트 권장\n• 500 = 소량 데이터(5~10분)에 적합\n• 800 = 5~15분 데이터 권장 (품질·비용 균형)\n• 1000+ = 15분 이상 고품질 학습 시\n\n📊 예상 소요 시간 (500에폭, RMVPE 기준):\n• 데이터 5분 → ~1시간, $2.50\n• 데이터 10분 → ~1.8시간, $4.90\n• 데이터 30분 → ~5.4시간, $14\n※ Crepe 사용 시 +20% / RTX 4090 실측 기준\n\n⚠️ 에폭이 너무 높으면 과학습으로 오히려 어색해집니다.\n💰 에폭 2배 = 비용 약 2배. 처음엔 800으로 결과 확인 후 재학습 여부 결정.">ⓘ</i></label>
           <select id="train-epochs" onchange="estimateTrainingCost()">
-            <option value="100">100 (테스트용 · 빠른 결과 확인)</option>
-            <option value="150">150 (10분 이하 데이터)</option>
-            <option value="200" selected>200 (권장 · 커뮤니티 표준, 25분 데이터 최적)</option>
-            <option value="300">300 (30분+ 데이터 · 오버트레이닝 주의)</option>
-            <option value="400">400 (최대 · 오버트레이닝 위험 높음)</option>
+            <option value="50">50 (테스트용 · 빠른 결과 확인)</option>
+            <option value="100">100 (10분 이하 데이터)</option>
+            <option value="150" selected>150 (권장 · KLM49 + 25분 데이터 최적)</option>
+            <option value="200">200 (30분+ 데이터)</option>
+            <option value="300">300 (최대 · 오버트레이닝 주의)</option>
           </select>
         </div>
         <div>
@@ -3041,9 +3041,9 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">배치 사이즈 <i class="tip" data-tip="AI가 한 번에 처리하는 데이터 묶음 크기입니다.\n\n🔢 추천:\n• 자동 = GPU 최적화 (권장!)\n• 8 = '메모리 부족' 오류 발생 시\n• 16 = 30% 빠름 / 24 = 50% 빠름 (고사양 GPU 전용)\n\n⚠️ 잘 모르면 '자동'으로 두세요.\n💰 배치가 클수록 학습 속도가 빨라져 비용이 절감됩니다.">ⓘ</i></label>
           <select id="train-batch" onchange="estimateTrainingCost()">
-            <option value="4">4 (10분 이하 데이터)</option>
-            <option value="8" selected>8 (권장 · 25분 데이터 최적)</option>
-            <option value="16">16 (30분+ 데이터 · 30% 빠름)</option>
+            <option value="4" selected>4 (권장 · KLM49 최적, 25분 데이터)</option>
+            <option value="8">8 (30분+ 데이터)</option>
+            <option value="16">16 (대규모 데이터 · 30% 빠름)</option>
             <option value="0">자동 (GPU가 알아서 최적화)</option>
           </select>
         </div>
@@ -3251,7 +3251,7 @@ input[type="range"]::-moz-range-track {
           <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (기본값 0.15)\n• 0.20~0.40 = 자연스러운 AI 목소리\n• 0.45~0.65 = 강한 AI 적용 (추천 범위)\n• 0.70~1.0 = AI 목소리 최대\n\n⚠️ 높을수록 기계적/인공적으로 들릴 수 있습니다.\n💡 기본값 0.15는 원본 발성을 최대한 보존하면서 AI를 적용합니다.">ⓘ</i></span>
           <span class="slider-value" id="index-val">0.50</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="65" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+        <input type="range" id="index-slider" min="0" max="100" value="35" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
         <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.45~0.65 권장)</div>
       </div>
       <!-- Advanced settings (collapsible) -->
@@ -4688,8 +4688,8 @@ function estimateTrainingCost() {
   }
 
   var totalMins = totalSecs / 60;
-  var epochs = parseInt(document.getElementById('train-epochs').value) || 200;
-  var batch  = parseInt(document.getElementById('train-batch').value)  || 8;
+  var epochs = parseInt(document.getElementById('train-epochs').value) || 150;
+  var batch  = parseInt(document.getElementById('train-batch').value)  || 4;
   var sr     = parseInt(document.getElementById('train-sr').value)     || 40000;
   var f0     = (document.getElementById('train-f0').value || 'rmvpe').toLowerCase();
 
@@ -4831,12 +4831,12 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // Default v33: filter 3(피치안정), index 0.65(모델음색↑), rms 0.25(다이나믹스 블렌드)
-      f0: 'rmvpe', protect: 40, rms: 25, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 65,
+      // v35 KLM49: 한국어 노래 index 0.35 (pretrained 보컬 범위 활용), filter 3, rms 0.25
+      f0: 'rmvpe', protect: 33, rms: 25, filter: 3, hop: 1,
+      clean: false, cleanStr: 70, index: 35,
       postReverb: 5, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: 'v33 기본 — index 0.65, filter 3, rms 0.25'
+      desc: 'v35 기본 — KLM49 최적화, index 0.35, filter 3'
     },
     falsetto: {
       // 가성/고음: filter=1(비브라토 보존) + 고음모드
@@ -4847,20 +4847,20 @@ function applyConvertPreset(preset) {
       desc: '가성/고음 최적화 — 피치 스무딩 최소, 비브라토 보존, 고음모드 ON'
     },
     natural: {
-      // Natural v33: 자연스러움 우선 — filter 3, 낮은 index
-      f0: 'rmvpe', protect: 35, rms: 20, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 45,
+      // Natural v35: 최대 자연스러움, pretrained 활용 극대화
+      f0: 'rmvpe', protect: 33, rms: 20, filter: 3, hop: 1,
+      clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: '최대 자연스러움 — 리버브 없음, 원곡 다이나믹스 보존'
+      desc: '최대 자연스러움 — index 0.25, pretrained 보컬 극대화'
     },
     studio: {
-      // Studio v33: 기본 + 리버브 공간감
-      f0: 'rmvpe', protect: 40, rms: 25, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 65,
+      // Studio v35: KLM49 + 리버브 공간감
+      f0: 'rmvpe', protect: 33, rms: 25, filter: 3, hop: 1,
+      clean: false, cleanStr: 70, index: 35,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: '스튜디오 품질 — index 0.65, filter 3, 미세 공간감'
+      desc: '스튜디오 품질 — KLM49 최적화, index 0.35, 공간감'
     },
     chorus: {
       // 화음/코러스: filter 3(피치 안정화) + index 낮춤
@@ -4871,12 +4871,12 @@ function applyConvertPreset(preset) {
       desc: '화음/코러스 곡 — 피치 안정화(filter 3), 인덱스 낮춤'
     },
     indie: {
-      // 인디/차분한 곡 v33 — filter 3 + 공간감
-      f0: 'rmvpe', protect: 35, rms: 25, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 55,
+      // 인디/차분한 곡 v35 — 낮은 index + 공간감
+      f0: 'rmvpe', protect: 33, rms: 25, filter: 3, hop: 1,
+      clean: false, cleanStr: 70, index: 30,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      desc: '인디/차분한 곡 — index 0.55, filter 3, 자연 공간감'
+      desc: '인디/차분한 곡 — index 0.30, KLM49 공간감'
     },
     chorus_v2: {
       // 화음/그룹 곡 v2 — 기다릴게 분석 기반 (발음 뭉개짐+삑사리 문제 수정)
@@ -6387,7 +6387,7 @@ async function startConversion() {
   var form = new FormData();
   form.append('model_id', selectedModelId);
   form.append('pitch_shift', getVal('pitch-slider', '0'));
-  form.append('index_rate', (getVal('index-slider', '65') / 100).toFixed(2));
+  form.append('index_rate', (getVal('index-slider', '35') / 100).toFixed(2));
   form.append('f0_method', getVal('convert-f0', 'rmvpe'));
   form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
@@ -6801,7 +6801,7 @@ async function startBatchConversion() {
       var form = new FormData();
       form.append('model_id', selectedModelId);
       form.append('pitch_shift', getVal('pitch-slider', '0'));
-      form.append('index_rate', (getVal('index-slider', '65') / 100).toFixed(2));
+      form.append('index_rate', (getVal('index-slider', '35') / 100).toFixed(2));
       form.append('f0_method', getVal('convert-f0', 'rmvpe'));
       form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));

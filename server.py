@@ -1996,9 +1996,9 @@ async def upload_chunk(
 @app.post("/api/train")
 async def start_training(
     model_name: str = Form(...),
-    epochs: int = Form(200),           # v35: 300→200 (25분 데이터에 150-200 권장, 300은 오버트레이닝)
-    sample_rate: int = Form(40000),    # v32: 48k→40k 복원 (커뮤니티 표준 40k)
-    batch_size: int = Form(8),         # v35: auto→8 (<30분 데이터에 batch 4-8 권장)
+    epochs: int = Form(150),           # v35: KLM49 + 한국어 커뮤니티: 50-150 epoch
+    sample_rate: int = Form(40000),    # v32: 커뮤니티 표준 40k
+    batch_size: int = Form(4),         # v35: 한국어 커뮤니티: batch 4 권장
     f0_method: str = Form("rmvpe"),
     file_ids: str = Form("")  # comma-separated
 ):

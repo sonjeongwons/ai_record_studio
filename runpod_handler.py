@@ -993,17 +993,17 @@ def task_train(job_input: dict, job: dict) -> dict:
         sample_rate: int = int(job_input.get("sample_rate", 40000))
     except (ValueError, TypeError):
         sample_rate = 40000  # v32: 48k→40k 복원 (48k 보코더 기계음 이슈 — RVC Issue #119/#514)
-    # v35: 300→200 (커뮤니티: 25분 데이터에 150-200 epoch 권장, 300은 오버트레이닝 위험)
-    # RVC AI Hub: "excessive epochs cause models to narrow flexibility, producing robotic output"
+    # v35: KLM49 + 한국어 커뮤니티 권장 50-150 epoch (KLM은 적은 epoch으로 충분)
+    # 25분 데이터 기준 150이 최적. save_every=10으로 체크포인트별 청취 테스트 가능
     try:
-        epochs: int = int(job_input.get("epochs", 200))
+        epochs: int = int(job_input.get("epochs", 150))
     except (ValueError, TypeError):
-        epochs = 200
-    # v35: auto→8 (커뮤니티: <30분 데이터에 batch 4-8 권장, 과대 batch는 음질 뭉개짐)
+        epochs = 150
+    # 한국어 커뮤니티: batch_size 4 권장 (소규모 데이터에 최적)
     try:
-        batch_size: int = int(job_input.get("batch_size", 8))
+        batch_size: int = int(job_input.get("batch_size", 4))
     except (ValueError, TypeError):
-        batch_size = 8
+        batch_size = 4
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
     # v35: 25→10 — 200 epoch에서 20개 체크포인트로 최적 epoch 정밀 식별
@@ -2592,9 +2592,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # v23: 0.50으로 상향 — 모델 음색 50% 반영 + 원곡 특성 50% 보존 (균형점)
     # 너무 높으면(0.9+) 아티팩트/버징, 너무 낮으면(<0.3) 모델 음색 부족
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.65))
+        index_rate: float = float(job_input.get("index_rate", 0.35))
     except (ValueError, TypeError):
-        index_rate = 0.65
+        index_rate = 0.35
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
     f0_method: str = job_input.get("f0_method", "rmvpe")
