@@ -189,26 +189,27 @@ RUN python -c "from bs4 import BeautifulSoup; print('bs4 OK')" \
 # and adds 30-120s latency. With pre-caching, cold start is <2s.
 
 # -- RVC Pretrained v2 Models --
-# v35: 40k를 TITAN Medium으로 교체 (467 epoch / 1M+ steps / 11h Expresso 학습)
-# TITAN은 기본 RVC pretrained보다 더 풍부한 보컬 특성 학습 — 자연스러운 출력 기대
-# 48k/32k는 기본 pretrained 유지 (TITAN 40k가 핵심)
+# v35: 40k를 KLM49_HFG (Korean Language Model)로 교체
+# KLM49: 한국어 음소 최적화 (40p 음성학 스크립트 + 22명 성우/보컬리스트)
+# 노래 데이터 포함 (남녀 저음~고음 전 음역), 한국어 노래에 최적
+# by SeoulStreamingStation (Han TD) — 한국 RVC 커뮤니티 표준 pretrained
+# 48k/32k도 KLM49 사용 (전 sample rate 지원)
 RUN mkdir -p /app/Applio/rvc/models/pretraineds/pretrained_v2 \
     && cd /app/Applio/rvc/models/pretraineds/pretrained_v2 \
-    && echo "Downloading TITAN Medium 40k pretrained..." \
+    && echo "Downloading KLM49_HFG Korean pretrained (40k, 48k, 32k)..." \
     && wget -q -O f0D40k.pth \
-       "https://huggingface.co/blaise-tk/TITAN/resolve/main/models/medium/40k/pretrained/D-f040k-TITAN-Medium.pth" \
+       "https://huggingface.co/SeoulStreamingStation/KLM49_HFG/resolve/main/D_KLM_HFG_40k.pth" \
     && wget -q -O f0G40k.pth \
-       "https://huggingface.co/blaise-tk/TITAN/resolve/main/models/medium/40k/pretrained/G-f040k-TITAN-Medium.pth" \
-    && echo "Downloading default pretrained v2 (48k, 32k)..." \
+       "https://huggingface.co/SeoulStreamingStation/KLM49_HFG/resolve/main/G_KLM_HFG_40k.pth" \
     && wget -q -O f0D48k.pth \
-       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0D48k.pth" \
+       "https://huggingface.co/SeoulStreamingStation/KLM49_HFG/resolve/main/D_KLM_HFG_48k.pth" \
     && wget -q -O f0G48k.pth \
-       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0G48k.pth" \
+       "https://huggingface.co/SeoulStreamingStation/KLM49_HFG/resolve/main/G_KLM_HFG_48k.pth" \
     && wget -q -O f0D32k.pth \
-       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0D32k.pth" \
+       "https://huggingface.co/SeoulStreamingStation/KLM49_HFG/resolve/main/D_KLM_HFG_32k.pth" \
     && wget -q -O f0G32k.pth \
-       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0G32k.pth" \
-    && echo "Pretrained v2 (40k=TITAN):" && ls -lh *.pth
+       "https://huggingface.co/SeoulStreamingStation/KLM49_HFG/resolve/main/G_KLM_HFG_32k.pth" \
+    && echo "Pretrained v2 (all KLM49_HFG):" && ls -lh *.pth
 
 # -- HuBERT / ContentVec Embedder (~1.2 GB) --
 RUN mkdir -p /app/Applio/rvc/models/embedders/contentvec \
