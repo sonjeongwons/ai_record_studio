@@ -188,13 +188,18 @@ RUN python -c "from bs4 import BeautifulSoup; print('bs4 OK')" \
 # Without pre-caching, first cold start downloads ~3GB of models
 # and adds 30-120s latency. With pre-caching, cold start is <2s.
 
-# -- RVC Pretrained v2 Models (~1.2 GB total) --
+# -- RVC Pretrained v2 Models --
+# v35: 40k를 TITAN Medium으로 교체 (467 epoch / 1M+ steps / 11h Expresso 학습)
+# TITAN은 기본 RVC pretrained보다 더 풍부한 보컬 특성 학습 — 자연스러운 출력 기대
+# 48k/32k는 기본 pretrained 유지 (TITAN 40k가 핵심)
 RUN mkdir -p /app/Applio/rvc/models/pretraineds/pretrained_v2 \
     && cd /app/Applio/rvc/models/pretraineds/pretrained_v2 \
+    && echo "Downloading TITAN Medium 40k pretrained..." \
     && wget -q -O f0D40k.pth \
-       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0D40k.pth" \
+       "https://huggingface.co/blaise-tk/TITAN/resolve/main/models/medium/40k/pretrained/D-f040k-TITAN-Medium.pth" \
     && wget -q -O f0G40k.pth \
-       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0G40k.pth" \
+       "https://huggingface.co/blaise-tk/TITAN/resolve/main/models/medium/40k/pretrained/G-f040k-TITAN-Medium.pth" \
+    && echo "Downloading default pretrained v2 (48k, 32k)..." \
     && wget -q -O f0D48k.pth \
        "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0D48k.pth" \
     && wget -q -O f0G48k.pth \
@@ -203,7 +208,7 @@ RUN mkdir -p /app/Applio/rvc/models/pretraineds/pretrained_v2 \
        "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0D32k.pth" \
     && wget -q -O f0G32k.pth \
        "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0G32k.pth" \
-    && echo "Pretrained v2:" && ls -lh *.pth
+    && echo "Pretrained v2 (40k=TITAN):" && ls -lh *.pth
 
 # -- HuBERT / ContentVec Embedder (~1.2 GB) --
 RUN mkdir -p /app/Applio/rvc/models/embedders/contentvec \
