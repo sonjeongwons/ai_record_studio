@@ -3013,11 +3013,11 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">에폭 수 <i class="tip" data-tip="AI가 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n🔢 추천값:\n• 300 = 빠른 결과 확인 (테스트용)\n• 400 = 소량 데이터 100~200 세그먼트 권장\n• 500 = 소량 데이터(5~10분)에 적합\n• 800 = 5~15분 데이터 권장 (품질·비용 균형)\n• 1000+ = 15분 이상 고품질 학습 시\n\n📊 예상 소요 시간 (500에폭, RMVPE 기준):\n• 데이터 5분 → ~1시간, $2.50\n• 데이터 10분 → ~1.8시간, $4.90\n• 데이터 30분 → ~5.4시간, $14\n※ Crepe 사용 시 +20% / RTX 4090 실측 기준\n\n⚠️ 에폭이 너무 높으면 과학습으로 오히려 어색해집니다.\n💰 에폭 2배 = 비용 약 2배. 처음엔 800으로 결과 확인 후 재학습 여부 결정.">ⓘ</i></label>
           <select id="train-epochs" onchange="estimateTrainingCost()">
-            <option value="150">150 (테스트용 · 빠른 결과 확인)</option>
-            <option value="200">200 (Applio 기본 · 10분 이하 데이터)</option>
-            <option value="300" selected>300 (권장 · 5~30분 데이터 최적)</option>
-            <option value="400">400 (양질 데이터 · 30분 이상)</option>
-            <option value="500">500 (최대 · 오버트레이닝 주의)</option>
+            <option value="100">100 (테스트용 · 빠른 결과 확인)</option>
+            <option value="150">150 (10분 이하 데이터)</option>
+            <option value="200" selected>200 (권장 · 커뮤니티 표준, 25분 데이터 최적)</option>
+            <option value="300">300 (30분+ 데이터 · 오버트레이닝 주의)</option>
+            <option value="400">400 (최대 · 오버트레이닝 위험 높음)</option>
           </select>
         </div>
         <div>
@@ -3041,10 +3041,10 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">배치 사이즈 <i class="tip" data-tip="AI가 한 번에 처리하는 데이터 묶음 크기입니다.\n\n🔢 추천:\n• 자동 = GPU 최적화 (권장!)\n• 8 = '메모리 부족' 오류 발생 시\n• 16 = 30% 빠름 / 24 = 50% 빠름 (고사양 GPU 전용)\n\n⚠️ 잘 모르면 '자동'으로 두세요.\n💰 배치가 클수록 학습 속도가 빨라져 비용이 절감됩니다.">ⓘ</i></label>
           <select id="train-batch" onchange="estimateTrainingCost()">
-            <option value="0" selected>자동 (GPU가 알아서 최적화)</option>
-            <option value="8">8 (메모리 부족 오류 시)</option>
-            <option value="16">16 (중간 · 30% 빠름)</option>
-            <option value="24">24 (고사양 GPU 전용 · 50% 빠름)</option>
+            <option value="4">4 (10분 이하 데이터)</option>
+            <option value="8" selected>8 (권장 · 25분 데이터 최적)</option>
+            <option value="16">16 (30분+ 데이터 · 30% 빠름)</option>
+            <option value="0">자동 (GPU가 알아서 최적화)</option>
           </select>
         </div>
       </div>
@@ -4688,8 +4688,8 @@ function estimateTrainingCost() {
   }
 
   var totalMins = totalSecs / 60;
-  var epochs = parseInt(document.getElementById('train-epochs').value) || 300;
-  var batch  = parseInt(document.getElementById('train-batch').value)  || 0;
+  var epochs = parseInt(document.getElementById('train-epochs').value) || 200;
+  var batch  = parseInt(document.getElementById('train-batch').value)  || 8;
   var sr     = parseInt(document.getElementById('train-sr').value)     || 40000;
   var f0     = (document.getElementById('train-f0').value || 'rmvpe').toLowerCase();
 

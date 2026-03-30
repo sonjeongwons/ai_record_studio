@@ -993,19 +993,21 @@ def task_train(job_input: dict, job: dict) -> dict:
         sample_rate: int = int(job_input.get("sample_rate", 40000))
     except (ValueError, TypeError):
         sample_rate = 40000  # v32: 48k→40k 복원 (48k 보코더 기계음 이슈 — RVC Issue #119/#514)
-    # v23: 500→300 (Applio 기본 200, RVC 위키 권장 200. 800/500은 오버트레이닝 위험)
+    # v35: 300→200 (커뮤니티: 25분 데이터에 150-200 epoch 권장, 300은 오버트레이닝 위험)
+    # RVC AI Hub: "excessive epochs cause models to narrow flexibility, producing robotic output"
     try:
-        epochs: int = int(job_input.get("epochs", 300))
+        epochs: int = int(job_input.get("epochs", 200))
     except (ValueError, TypeError):
-        epochs = 300
+        epochs = 200
+    # v35: auto→8 (커뮤니티: <30분 데이터에 batch 4-8 권장, 과대 batch는 음질 뭉개짐)
     try:
-        batch_size: int = int(job_input.get("batch_size", 0))
+        batch_size: int = int(job_input.get("batch_size", 8))
     except (ValueError, TypeError):
-        batch_size = 0  # 0 = auto-detect
+        batch_size = 8
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    # v23: 50→25 — 더 세밀한 체크포인트로 최적 epoch 식별
-    save_every_epoch: int = max(1, int(job_input.get("save_every_epoch", 25)))
+    # v35: 25→10 — 200 epoch에서 20개 체크포인트로 최적 epoch 정밀 식별
+    save_every_epoch: int = max(1, int(job_input.get("save_every_epoch", 10)))
 
     if not audio_files and not audio_urls:
         raise ValueError("No audio_files or audio_urls provided for training")
