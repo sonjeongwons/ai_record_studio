@@ -36,11 +36,35 @@
 - **코드 수정 후 반드시 git commit + git push까지 완료**
 - **코드 변경 후 반드시 `python3 -m pytest tests/ -v` 실행하여 회귀 확인**
 
-## 하네스 엔지니어링 제약
+## 하네스 엔지니어링 원칙
+이 프로젝트는 Martin Fowler의 Harness Engineering 방식으로 운영됩니다.
+- **Human On the Loop** — 사용자는 방향(Why), 에이전트가 실행(How) 자율 수행
+- 에이전트끼리 역할 분담: Plan → Code → Test → Review
+- 결과물이 불만족이면 출력물이 아니라 하네스(프로세스/제약)를 개선
+- 외부 URL, 검색, 커뮤니티, 공식문서, 도구/라이브러리 자유롭게 사용 가능
+- LLM 판단보다 린터, 테스트, 실제 실행 결과를 우선
+
+## 하네스 제약 규칙
 - 모든 API 변경은 테스트 추가/수정 필수 (`tests/test_api.py`)
 - silent `except Exception: pass` 금지 — 최소 `logger.debug()` 포함
 - 새 print() 사용 금지 — `logger.info/warning/error/critical` 사용
 - 장함수(100줄+) 추가 금지 — 헬퍼 함수로 분리
+- 이미 설정된 인프라에 대해 불필요한 확인 질문 하지 말 것
+
+## 인프라 (이미 설정 완료)
+- GitHub Actions: Docker 자동 빌드 (Dockerfile/runpod_handler.py 변경 시)
+- GitHub Actions: pytest 자동 실행 (server.py/tests/ 변경 시)
+- Docker registry: ghcr.io/sonjeongwons/ai_record_studio
+- RunPod endpoint: 설정 완료 (config.json)
+- GitHub repo: sonjeongwons/ai_record_studio
+
+## 프로젝트 이력 (메모리)
+> `.claude-memory/` 디렉토리에 상세 메모리 파일 보관.
+> 다른 PC에서 `setup-claude-memory.sh` (Linux/Mac) 또는 `setup-claude-memory.bat` (Windows) 실행 시 Claude Code 메모리 자동 복원.
+
+- **v22 HPSS 실패 → v23 리버트**: HPSS harmonic 추출이 자음/숨소리 제거하여 품질 파괴. v23에서 harmonyFilter=0 비활성 + index_rate 0.50 상향
+- **v13 파이프라인 수정**: asetrate 피치시프트(치명적) 제거, SLICE_DURATION 3.5→5.0s, 고음 오버샘플링 축소
+- **향후 로드맵**: epoch 200-300 단축 재학습, UVR5 MDX-Net 리드보컬 분리, 원본 보컬 블렌딩
 
 ## 주요 명령어
 ```bash
