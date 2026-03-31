@@ -1321,13 +1321,14 @@ def _rvc_preprocess(
     model_name: str, dataset_path: str, sample_rate: int, logs_dir: Path
 ) -> None:
     """
-    RVC preprocessing v11: slice, filter, augment, resample for training.
+    RVC preprocessing v35: Demucs vocal separation + slice + filter + resample.
 
     Self-contained implementation using FFmpeg — avoids Applio's import chain.
 
     Steps:
-      1) Slice each audio file into ~3.5s segments (optimized for singing voice)
-      2) Quality filter: RMS(-45dBFS) + spectral flatness(0.4) + SNR(10dB) check
+      0) [v35 NEW] Demucs 보컬 분리 — MR(반주) 제거 (학습 소스에 MR 포함 시 기계음 원인)
+      1) Slice each audio file into ~5.0s segments (optimized for singing voice)
+      2) Quality filter: RMS(-45dBFS) + spectral flatness(0.45) + SNR(10dB) check
       3) Resample segments to target sample rate → sliced_audios/
       4) Resample segments to 16kHz → sliced_audios_16k/
       5) High-note oversampling: F0≥350Hz 세그먼트 복제 (고음 비율 2%→10%+)
@@ -1354,6 +1355,22 @@ def _rvc_preprocess(
 
     if not audio_files:
         raise RuntimeError(f"전처리할 오디오 파일이 없습니다: {dataset_path}")
+
+    # ━━━ v35: Demucs 보컬 분리 — MR 제거 (학습 품질 핵심) ━━━
+    # 분석 결과: 학습 소스 8개 중 6개에 MR(반주) 포함 → 기계음의 근본 원인
+    # Demucs로 보컬만 추출하여 깨끗한 보컬 데이터로 학습
+    vocal_dir = ensure_dir(logs_dir / "_vocal_separated")
+    log.info(f"Running Demucs vocal separation on {len(audio_files)} training files...")
+    try:
+        separation = _demucs_separate(audio_files, vocal_dir)
+        if separation.get("vocals"):
+            vocal_files = [Path(p) for p in separation["vocals"]]
+            log.info(f"Demucs separated {len(vocal_files)} vocal tracks from {len(audio_files)} sources")
+            audio_files = vocal_files  # 이후 전처리는 분리된 보컬만 사용
+        else:
+            log.warning("Demucs produced no vocals, using original audio files")
+    except Exception as e:
+        log.warning(f"Demucs separation failed ({e}), using original audio files")
 
     import soundfile as _sf
 
