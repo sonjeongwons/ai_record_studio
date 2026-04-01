@@ -1773,7 +1773,7 @@ def _rvc_train(
             "⚠ Pretrained model(s) NOT found — training from random initialization! "
             "Quality will be significantly worse. Ensure pretrained_v2 models are cached."
         )
-        runpod.serverless.progress_update(job, f"⚠ 사전학습 모델 없이 학습 시작 (품질 저하 가능)")
+        runpod.serverless.progress_update(job, "⚠ 사전학습 모델 없이 학습 시작 (품질 저하 가능)")
 
     # Verify preprocessed data exists before training
     gt_dir = logs_dir / "sliced_audios"
