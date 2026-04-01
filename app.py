@@ -9,7 +9,6 @@ import os
 import threading
 import time
 import socket
-import logging
 
 # PyInstaller 환경에서 multiprocessing freeze 지원
 if getattr(sys, 'frozen', False):
@@ -99,7 +98,7 @@ def main():
         return
 
     # 메인 윈도우 생성
-    window = webview.create_window(
+    webview.create_window(
         'AI Voice Studio',
         url=f'http://127.0.0.1:{port}',
         width=1440,

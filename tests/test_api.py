@@ -210,3 +210,128 @@ class TestPreprocess:
     def test_delete_preprocessed(self, app_client):
         resp = app_client.delete("/api/preprocess")
         assert resp.status_code == 200
+
+
+class TestConfigR2:
+    def test_save_r2_config(self, app_client):
+        """R2 설정 저장 테스트"""
+        resp = app_client.post("/api/config/r2", data={
+            "r2_endpoint_url": "https://test.r2.cloudflarestorage.com",
+            "r2_access_key_id": "test_key",
+            "r2_secret_access_key": "test_secret",
+            "r2_bucket_name": "test-bucket",
+        })
+        assert resp.status_code == 200
+
+    def test_save_download_folder(self, app_client, tmp_path):
+        """다운로드 폴더 설정 테스트"""
+        folder = str(tmp_path / "downloads")
+        resp = app_client.post("/api/config/download-folder", data={"folder": folder})
+        assert resp.status_code == 200
+        assert resp.json()["folder"] == folder
+
+
+class TestModelManagement:
+    def test_rename_nonexistent_model(self, app_client):
+        """존재하지 않는 모델 이름 변경 → 404"""
+        resp = app_client.post("/api/models/99999/rename", data={"name": "new_name"})
+        assert resp.status_code == 404
+
+    def test_quality_nonexistent_model(self, app_client):
+        """존재하지 않는 모델 품질 점수 → 404"""
+        resp = app_client.post("/api/models/99999/quality", data={"quality_score": "4.5"})
+        assert resp.status_code == 404
+
+    def test_quality_out_of_range(self, app_client):
+        """품질 점수 범위 초과 → 400"""
+        resp = app_client.post("/api/models/1/quality", data={"quality_score": "6.0"})
+        assert resp.status_code in (400, 404)
+
+
+class TestTrainValidation:
+    def test_train_without_config(self, app_client):
+        """RunPod 미설정 시 학습 → 400"""
+        resp = app_client.post("/api/train", data={
+            "model_name": "test_model",
+            "epochs": "150",
+            "sample_rate": "40000",
+            "batch_size": "4",
+            "f0_method": "rmvpe",
+            "pretrained_model": "klm49",
+        })
+        assert resp.status_code == 400
+
+    def test_train_invalid_pretrained(self, app_client):
+        """잘못된 pretrained_model 값 → 400"""
+        resp = app_client.post("/api/train", data={
+            "model_name": "test_model",
+            "pretrained_model": "invalid_model",
+        })
+        assert resp.status_code == 400
+
+    def test_train_invalid_epochs(self, app_client):
+        """에포크 범위 초과 → 400"""
+        resp = app_client.post("/api/train", data={
+            "model_name": "test_model",
+            "epochs": "99999",
+        })
+        assert resp.status_code == 400
+
+    def test_train_invalid_model_name(self, app_client):
+        """모델명 특수문자 → 400"""
+        resp = app_client.post("/api/train", data={
+            "model_name": "test/model:bad",
+        })
+        assert resp.status_code == 400
+
+
+class TestConvertValidation:
+    def test_convert_without_config(self, app_client, sample_audio_file):
+        """RunPod 미설정 시 변환 → 400"""
+        with open(sample_audio_file, "rb") as f:
+            resp = app_client.post("/api/convert", data={
+                "model_id": "1",
+                "pitch_shift": "0",
+                "pretrained_model": "klm49",
+            }, files={"audio": ("test.mp3", f, "audio/mpeg")})
+        assert resp.status_code == 400
+
+    def test_convert_invalid_pitch(self, app_client, sample_audio_file):
+        """피치 범위 초과 → 400"""
+        with open(sample_audio_file, "rb") as f:
+            resp = app_client.post("/api/convert", data={
+                "model_id": "1",
+                "pitch_shift": "99",
+            }, files={"audio": ("test.mp3", f, "audio/mpeg")})
+        assert resp.status_code == 400
+
+
+class TestSyncEndpoints:
+    def test_sync_status_without_r2(self, app_client):
+        """R2 미설정 시 동기화 상태 → 400"""
+        resp = app_client.get("/api/sync/status")
+        assert resp.status_code == 400
+
+    def test_sync_backup_without_r2(self, app_client):
+        """R2 미설정 시 백업 → 400"""
+        resp = app_client.post("/api/sync/backup")
+        assert resp.status_code == 400
+
+
+class TestConversionHistory:
+    def test_delete_nonexistent_conversion(self, app_client):
+        """존재하지 않는 변환 삭제 → 404"""
+        resp = app_client.delete("/api/conversions/99999")
+        assert resp.status_code == 404
+
+
+class TestJobPauseRemoved:
+    def test_pause_returns_410(self, app_client):
+        """제거된 pause 엔드포인트 → 410 Gone"""
+        resp = app_client.post("/api/jobs/test123/pause")
+        assert resp.status_code == 410
+
+    def test_resume_returns_410(self, app_client):
+        """제거된 resume 엔드포인트 → 410 Gone"""
+        resp = app_client.post("/api/jobs/test123/resume")
+        assert resp.status_code == 410
