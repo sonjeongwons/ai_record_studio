@@ -3694,6 +3694,38 @@ input[type="range"]::-moz-range-track {
     <div id="r2-settings-msg" style="font-size:12px;margin-top:8px"></div>
   </div>
 
+  <!-- 클라우드 동기화 카드 -->
+  <div class="card">
+    <h2 style="margin-bottom:8px">PC 간 작업 동기화</h2>
+    <p class="section-desc">다른 PC에서도 동일한 모델, 전처리 파일, 변환 결과물을 사용할 수 있도록 R2 클라우드에 동기화합니다.</p>
+    <div class="alert alert-info" style="line-height:1.7">
+      <b>백업</b>: 현재 PC의 DB + 모든 파일을 클라우드에 업로드합니다.<br>
+      <b>복원</b>: 클라우드에서 DB + 모든 파일을 다운로드하여 이 PC에 세팅합니다.<br>
+      R2 설정이 먼저 완료되어야 합니다.
+    </div>
+
+    <!-- 동기화 상태 표시 -->
+    <div id="sync-status-area" style="margin-top:16px;display:none">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px">클라우드 백업 현황</div>
+      <div id="sync-status-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px"></div>
+    </div>
+
+    <!-- 동기화 진행 상태 -->
+    <div id="sync-progress" style="display:none;margin-top:16px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="spinner" style="width:16px;height:16px;border-width:2px"></div>
+        <span id="sync-progress-msg" style="font-size:13px;color:var(--text2)">동기화 중...</span>
+      </div>
+    </div>
+
+    <div class="flex gap-8 mt-16" style="flex-wrap:wrap">
+      <button class="btn btn-secondary" id="btn-sync-status" onclick="checkSyncStatus()">동기화 상태 확인</button>
+      <button class="btn btn-primary" id="btn-sync-backup" data-loading-label="백업 중..." onclick="startSyncBackup()">클라우드에 백업</button>
+      <button class="btn btn-primary" id="btn-sync-restore" data-loading-label="복원 중..." onclick="startSyncRestore()" style="background:linear-gradient(135deg,#10b981,#059669)">클라우드에서 복원</button>
+    </div>
+    <div id="sync-msg" style="font-size:12px;margin-top:8px"></div>
+  </div>
+
   <!-- 과금 안내 카드 -->
   <div class="card">
     <h2 style="margin-bottom:4px">💰 과금 안내 — 단계별 비용 &amp; 소요 시간</h2>
@@ -7328,6 +7360,107 @@ async function saveR2Settings() {
     setButtonLoading('btn-save-r2', false);
     showSettingsMsg('r2-settings-msg', '저장 실패: ' + e.message, false);
     toast('R2 설정 저장 실패: ' + e.message, 'error');
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 클라우드 동기화 (PC 간 작업 이전)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+async function checkSyncStatus() {
+  setButtonLoading('btn-sync-status', true);
+  try {
+    var res = await api('/sync/status', { noTimeout: true });
+    var cloud = res.cloud;
+    var local = res.local;
+    var grid = document.getElementById('sync-status-grid');
+    var html = '';
+
+    function fmtSize(mb) { return mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb.toFixed(1) + ' MB'; }
+    function fmtDate(iso) {
+      if (!iso) return '-';
+      var d = new Date(iso);
+      return d.toLocaleDateString('ko-KR') + ' ' + d.toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'});
+    }
+
+    // DB
+    var dbCloud = cloud.database && cloud.database.exists;
+    html += '<div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px 12px">' +
+      '<div style="color:var(--text2);font-weight:600;margin-bottom:4px">데이터베이스</div>' +
+      '<div style="color:' + (dbCloud ? '#10b981' : '#ef4444') + '">' +
+      (dbCloud ? 'R2 백업 있음 (' + fmtDate(cloud.database.last_modified) + ')' : 'R2 백업 없음') +
+      '</div></div>';
+
+    // 카테고리
+    var cats = [
+      {key: 'uploads', label: '업로드 파일'},
+      {key: 'models', label: '학습 모델'},
+      {key: 'output', label: '변환 결과'},
+      {key: 'preprocessed', label: '전처리 파일'}
+    ];
+    cats.forEach(function(cat) {
+      var c = cloud[cat.key] || {};
+      var l = local[cat.key] || {};
+      html += '<div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px 12px">' +
+        '<div style="color:var(--text2);font-weight:600;margin-bottom:4px">' + cat.label + '</div>' +
+        '<div style="font-size:11px;color:var(--text3)">' +
+        'R2: ' + (c.count || 0) + '개 (' + fmtSize(c.total_size_mb || 0) + ')' +
+        (c.last_modified ? ' / ' + fmtDate(c.last_modified) : '') + '<br>' +
+        '로컬: ' + (l.count || 0) + '개 (' + fmtSize(l.total_size_mb || 0) + ')' +
+        '</div></div>';
+    });
+
+    grid.innerHTML = html;
+    document.getElementById('sync-status-area').style.display = 'block';
+    setButtonLoading('btn-sync-status', false);
+  } catch(e) {
+    setButtonLoading('btn-sync-status', false);
+    showSettingsMsg('sync-msg', '상태 확인 실패: ' + e.message, false);
+    toast('동기화 상태 확인 실패: ' + e.message, 'error');
+  }
+}
+
+async function startSyncBackup() {
+  if (!confirm('현재 PC의 모든 데이터(DB, 모델, 파일)를 클라우드에 백업합니다.\n기존 백업은 덮어씌워집니다. 계속하시겠습니까?')) return;
+  setButtonLoading('btn-sync-backup', true);
+  document.getElementById('sync-progress').style.display = 'block';
+  document.getElementById('sync-progress-msg').textContent = '클라우드에 백업 중... (파일 크기에 따라 수 분 소요)';
+  try {
+    var res = await api('/sync/backup', { method: 'POST', noTimeout: true });
+    setButtonLoading('btn-sync-backup', false);
+    document.getElementById('sync-progress').style.display = 'none';
+    showSettingsMsg('sync-msg', res.message, true);
+    toast(res.message, 'success');
+    checkSyncStatus();
+  } catch(e) {
+    setButtonLoading('btn-sync-backup', false);
+    document.getElementById('sync-progress').style.display = 'none';
+    showSettingsMsg('sync-msg', '백업 실패: ' + e.message, false);
+    toast('백업 실패: ' + e.message, 'error');
+  }
+}
+
+async function startSyncRestore() {
+  if (!confirm('클라우드에서 데이터를 복원합니다.\n현재 PC의 데이터는 백업 후 교체됩니다. 계속하시겠습니까?')) return;
+  setButtonLoading('btn-sync-restore', true);
+  document.getElementById('sync-progress').style.display = 'block';
+  document.getElementById('sync-progress-msg').textContent = '클라우드에서 복원 중... (파일 크기에 따라 수 분 소요)';
+  try {
+    var res = await api('/sync/restore', { method: 'POST', noTimeout: true });
+    setButtonLoading('btn-sync-restore', false);
+    document.getElementById('sync-progress').style.display = 'none';
+    showSettingsMsg('sync-msg', res.message, true);
+    toast(res.message, 'success');
+    checkSyncStatus();
+    // 데이터 갱신
+    if (typeof loadModels === 'function') loadModels();
+    if (typeof loadFiles === 'function') loadFiles();
+    if (typeof loadConversions === 'function') loadConversions();
+  } catch(e) {
+    setButtonLoading('btn-sync-restore', false);
+    document.getElementById('sync-progress').style.display = 'none';
+    showSettingsMsg('sync-msg', '복원 실패: ' + e.message, false);
+    toast('복원 실패: ' + e.message, 'error');
   }
 }
 

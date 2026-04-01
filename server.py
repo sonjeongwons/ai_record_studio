@@ -3041,6 +3041,271 @@ async def system_info():
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 클라우드 동기화 (PC 간 작업 이전)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+_SYNC_PREFIX = "sync/"  # R2 동기화 전용 prefix
+
+
+def _r2_key_from_presigned(url: str, bucket: str) -> str:
+    """presigned URL에서 R2 object key 추출."""
+    from urllib.parse import urlparse, unquote
+    parsed = urlparse(url)
+    path = unquote(parsed.path)
+    if path.startswith(f"/{bucket}/"):
+        return path[len(f"/{bucket}/"):]
+    return path.lstrip("/")
+
+
+def _sync_upload_dir(s3, bucket: str, local_dir: Path, r2_prefix: str) -> int:
+    """로컬 디렉토리의 모든 파일을 R2에 업로드. 업로드한 파일 수 반환."""
+    count = 0
+    if not local_dir.exists():
+        return count
+    for fpath in local_dir.rglob("*"):
+        if not fpath.is_file():
+            continue
+        rel = fpath.relative_to(local_dir).as_posix()
+        key = f"{r2_prefix}{rel}"
+        try:
+            s3.upload_file(str(fpath), bucket, key)
+            count += 1
+        except Exception as e:
+            logger.warning("[Sync] Upload skip %s: %s", rel, e)
+    return count
+
+
+def _sync_download_prefix(s3, bucket: str, r2_prefix: str, local_dir: Path) -> int:
+    """R2 prefix 아래 모든 오브젝트를 로컬 디렉토리에 다운로드. 다운로드한 파일 수 반환."""
+    count = 0
+    local_dir.mkdir(parents=True, exist_ok=True)
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=r2_prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            rel = key[len(r2_prefix):]
+            if not rel:
+                continue
+            dest = local_dir / rel.replace("/", os.sep)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                s3.download_file(bucket, key, str(dest))
+                count += 1
+            except Exception as e:
+                logger.warning("[Sync] Download skip %s: %s", rel, e)
+    return count
+
+
+def _sync_list_prefix(s3, bucket: str, r2_prefix: str) -> list[dict]:
+    """R2 prefix 아래 오브젝트 목록."""
+    items = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket, Prefix=r2_prefix):
+        for obj in page.get("Contents", []):
+            items.append({"key": obj["Key"], "size": obj["Size"],
+                          "modified": obj["LastModified"].isoformat()})
+    return items
+
+
+@app.post("/api/sync/backup")
+async def sync_backup():
+    """현재 PC의 DB + 파일을 R2에 백업 (다른 PC에서 복원 가능)."""
+    s3, bucket = _get_r2_client()
+    result = {"uploaded": {}}
+
+    # 1) studio.db 백업
+    if DB_PATH.exists():
+        # WAL 모드 대비: 별도 연결로 안전한 백업 생성
+        backup_path = DATA_DIR / "studio_backup.db"
+        src = sqlite3.connect(str(DB_PATH))
+        dst = sqlite3.connect(str(backup_path))
+        src.backup(dst)
+        src.close()
+        dst.close()
+        s3.upload_file(str(backup_path), bucket, f"{_SYNC_PREFIX}studio.db")
+        backup_path.unlink(missing_ok=True)
+        result["uploaded"]["database"] = True
+        logger.info("[Sync] DB 백업 완료")
+
+    # 2) uploads 디렉토리
+    n = _sync_upload_dir(s3, bucket, UPLOAD_DIR, f"{_SYNC_PREFIX}uploads/")
+    result["uploaded"]["uploads"] = n
+
+    # 3) models 디렉토리
+    n = _sync_upload_dir(s3, bucket, MODEL_DIR, f"{_SYNC_PREFIX}models/")
+    result["uploaded"]["models"] = n
+
+    # 4) output 디렉토리
+    n = _sync_upload_dir(s3, bucket, OUTPUT_DIR, f"{_SYNC_PREFIX}output/")
+    result["uploaded"]["output"] = n
+
+    # 5) preprocessed 디렉토리
+    n = _sync_upload_dir(s3, bucket, PREPROCESSED_DIR, f"{_SYNC_PREFIX}preprocessed/")
+    result["uploaded"]["preprocessed"] = n
+
+    # 6) config.json 백업 (API 키 등)
+    if CONFIG_PATH.exists():
+        s3.upload_file(str(CONFIG_PATH), bucket, f"{_SYNC_PREFIX}config.json")
+        result["uploaded"]["config"] = True
+
+    total = sum(v for v in result["uploaded"].values() if isinstance(v, int))
+    logger.info("[Sync] 백업 완료: 총 %d개 파일", total)
+    result["message"] = f"백업 완료: 총 {total}개 파일 업로드됨"
+    return result
+
+
+@app.post("/api/sync/restore")
+async def sync_restore():
+    """R2에서 DB + 파일을 다운로드하여 현재 PC에 복원."""
+    s3, bucket = _get_r2_client()
+    result = {"downloaded": {}}
+
+    # 0) config.json 복원 (R2 설정은 이미 있으므로, 나머지 설정만 머지)
+    try:
+        local_cfg = load_config()
+        tmp_cfg = DATA_DIR / "config_remote.json"
+        s3.download_file(bucket, f"{_SYNC_PREFIX}config.json", str(tmp_cfg))
+        with open(tmp_cfg, "r", encoding="utf-8") as f:
+            remote_cfg = json.load(f)
+        # R2 키는 현재 PC 값 유지, 나머지만 머지
+        for k, v in remote_cfg.items():
+            if k.startswith("r2_") or k == "runpod_api_key" or k == "runpod_endpoint_id":
+                continue
+            local_cfg[k] = v
+        save_config(local_cfg)
+        tmp_cfg.unlink(missing_ok=True)
+        result["downloaded"]["config"] = True
+    except Exception as e:
+        logger.debug("[Sync] config 복원 스킵: %s", e)
+
+    # 1) studio.db 복원
+    try:
+        db_tmp = DATA_DIR / "studio_remote.db"
+        s3.download_file(bucket, f"{_SYNC_PREFIX}studio.db", str(db_tmp))
+        # 기존 DB가 있으면 백업
+        if DB_PATH.exists():
+            bak = DATA_DIR / f"studio_before_sync_{int(time.time())}.db"
+            shutil.copy2(str(DB_PATH), str(bak))
+            logger.info("[Sync] 기존 DB 백업: %s", bak.name)
+        shutil.move(str(db_tmp), str(DB_PATH))
+        init_db()  # 마이그레이션 적용
+        result["downloaded"]["database"] = True
+        logger.info("[Sync] DB 복원 완료")
+    except Exception as e:
+        logger.warning("[Sync] DB 복원 실패: %s", e)
+        result["downloaded"]["database"] = False
+
+    # 2) uploads
+    n = _sync_download_prefix(s3, bucket, f"{_SYNC_PREFIX}uploads/", UPLOAD_DIR)
+    result["downloaded"]["uploads"] = n
+
+    # 3) models
+    n = _sync_download_prefix(s3, bucket, f"{_SYNC_PREFIX}models/", MODEL_DIR)
+    result["downloaded"]["models"] = n
+
+    # 4) output
+    n = _sync_download_prefix(s3, bucket, f"{_SYNC_PREFIX}output/", OUTPUT_DIR)
+    result["downloaded"]["output"] = n
+
+    # 5) preprocessed
+    n = _sync_download_prefix(s3, bucket, f"{_SYNC_PREFIX}preprocessed/", PREPROCESSED_DIR)
+    result["downloaded"]["preprocessed"] = n
+
+    # 6) DB의 presigned URL 갱신 (만료 대비)
+    refreshed = 0
+    try:
+        with get_db() as db:
+            models = db.execute("SELECT id, pth_url, index_url FROM voice_models").fetchall()
+            for m in models:
+                mid, pth_url, idx_url = m
+                updates = {}
+                if pth_url:
+                    try:
+                        updates["pth_url"] = refresh_presigned_url(pth_url)
+                    except Exception:
+                        pass
+                if idx_url:
+                    try:
+                        updates["index_url"] = refresh_presigned_url(idx_url)
+                    except Exception:
+                        pass
+                if updates:
+                    sets = ", ".join(f"{k}=?" for k in updates)
+                    db.execute(f"UPDATE voice_models SET {sets} WHERE id=?",
+                               [*updates.values(), mid])
+                    refreshed += 1
+    except Exception as e:
+        logger.debug("[Sync] URL 갱신 중 오류: %s", e)
+    result["downloaded"]["urls_refreshed"] = refreshed
+
+    total = sum(v for v in result["downloaded"].values() if isinstance(v, int))
+    logger.info("[Sync] 복원 완료: 총 %d개 파일", total)
+    result["message"] = f"복원 완료: 총 {total}개 파일 다운로드됨"
+    return result
+
+
+@app.get("/api/sync/status")
+async def sync_status():
+    """R2 동기화 상태 조회 (클라우드에 백업된 데이터 현황)."""
+    s3, bucket = _get_r2_client()
+
+    categories = {
+        "database": f"{_SYNC_PREFIX}studio.db",
+        "config": f"{_SYNC_PREFIX}config.json",
+        "uploads": f"{_SYNC_PREFIX}uploads/",
+        "models": f"{_SYNC_PREFIX}models/",
+        "output": f"{_SYNC_PREFIX}output/",
+        "preprocessed": f"{_SYNC_PREFIX}preprocessed/",
+    }
+    result = {}
+
+    for name, prefix in categories.items():
+        if name in ("database", "config"):
+            # 단일 파일: 존재 여부 + 최종 수정 시간
+            try:
+                resp = s3.head_object(Bucket=bucket, Key=prefix)
+                result[name] = {
+                    "exists": True,
+                    "size": resp["ContentLength"],
+                    "last_modified": resp["LastModified"].isoformat(),
+                }
+            except Exception:
+                result[name] = {"exists": False}
+        else:
+            # 디렉토리: 파일 수 + 총 크기
+            total_size = 0
+            count = 0
+            latest = None
+            paginator = s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    count += 1
+                    total_size += obj["Size"]
+                    mod = obj["LastModified"]
+                    if latest is None or mod > latest:
+                        latest = mod
+            result[name] = {
+                "count": count,
+                "total_size_mb": round(total_size / (1024 * 1024), 1),
+                "last_modified": latest.isoformat() if latest else None,
+            }
+
+    # 로컬 현황
+    local = {}
+    for name, local_dir in [("uploads", UPLOAD_DIR), ("models", MODEL_DIR),
+                             ("output", OUTPUT_DIR), ("preprocessed", PREPROCESSED_DIR)]:
+        if local_dir.exists():
+            files = [f for f in local_dir.rglob("*") if f.is_file()]
+            local[name] = {"count": len(files),
+                           "total_size_mb": round(sum(f.stat().st_size for f in files) / (1024 * 1024), 1)}
+        else:
+            local[name] = {"count": 0, "total_size_mb": 0}
+    local["database"] = {"exists": DB_PATH.exists()}
+
+    return {"cloud": result, "local": local}
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 실행
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
