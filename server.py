@@ -102,6 +102,12 @@ _active_poll_threads: dict[str, threading.Thread] = {}
 _poll_threads_lock = threading.Lock()
 
 
+def _remove_chunk_session(upload_id: str):
+    """chunk_uploads에서 세션 제거 (thread-safe)."""
+    with _chunk_lock:
+        chunk_uploads.pop(upload_id, None)
+
+
 def _cleanup_stale_chunk_uploads():
     """24시간 이상 완료되지 않은 청크 업로드 정리 (메모리 + 임시 파일)"""
     now = time.time()
@@ -191,7 +197,8 @@ def _get_audio_duration(file_path: Path) -> Optional[float]:
             capture_output=True, text=True, timeout=30
         )
         return round(float(result.stdout.strip()), 2)
-    except Exception:
+    except Exception as e:
+        logger.debug("[FFprobe] 오디오 길이 측정 실패 (%s): %s", file_path.name if hasattr(file_path, 'name') else file_path, e)
         return None
 
 
@@ -1369,7 +1376,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
 
         elif job_type == "convert":
             # 변환 파일 저장 (보컬 + 믹스) — R2 URL 또는 inline base64
-            out_filename = output.get("filename", f"converted_{job_id[:8]}.wav")
+            out_filename = Path(output.get("filename", f"converted_{job_id[:8]}.wav")).name  # path traversal 방지
             out_path = OUTPUT_DIR / out_filename
             has_vocals = False
 
@@ -1397,7 +1404,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 }
 
                 # 믹스 파일도 저장 — R2 URL 또는 inline base64
-                mixed_filename = output.get("mixed_filename", f"mixed_{job_id[:8]}.wav")
+                mixed_filename = Path(output.get("mixed_filename", f"mixed_{job_id[:8]}.wav")).name  # path traversal 방지
                 mixed_path = OUTPUT_DIR / mixed_filename
                 if output.get("mixed_audio_url"):
                     _download_with_retry(output["mixed_audio_url"], mixed_path, timeout=300)
@@ -1789,7 +1796,8 @@ async def upload_files(
             ).fetchone()
         was_preprocessed = 1 if (prev and prev["preprocessed"]) else 0
 
-        unique_name = f"{uuid.uuid4().hex[:8]}_{f.filename}"
+        safe_filename = Path(f.filename).name  # path traversal 방지
+        unique_name = f"{uuid.uuid4().hex[:8]}_{safe_filename}"
         save_path = UPLOAD_DIR / unique_name
 
         with open(save_path, "wb") as fp:
@@ -1902,11 +1910,12 @@ async def upload_chunk(
         ext = Path(filename).suffix.lower()
         if ext not in [".wav", ".mp3", ".flac", ".ogg", ".m4a", ".mp4", ".mkv", ".webm"]:
             shutil.rmtree(chunk_dir, ignore_errors=True)
-            chunk_uploads.pop(upload_id, None)
+            _remove_chunk_session(upload_id)
             raise HTTPException(400, f"지원하지 않는 파일 형식: {ext}")
 
-        # 청크 병합 → 임시 파일
-        unique_name = f"{uuid.uuid4().hex[:8]}_{filename}"
+        # 청크 병합 → 임시 파일 (path traversal 방지)
+        safe_filename = Path(filename).name
+        unique_name = f"{uuid.uuid4().hex[:8]}_{safe_filename}"
         save_path = UPLOAD_DIR / unique_name
         total_size = 0
         hash_obj = hashlib.sha256()
@@ -1923,13 +1932,13 @@ async def upload_chunk(
         except Exception as merge_err:
             save_path.unlink(missing_ok=True)
             shutil.rmtree(chunk_dir, ignore_errors=True)
-            chunk_uploads.pop(upload_id, None)
+            _remove_chunk_session(upload_id)
             raise HTTPException(500, f"청크 병합 실패: {merge_err}")
 
         if total_size > MAX_CHUNK_FILE_SIZE:
             save_path.unlink(missing_ok=True)
             shutil.rmtree(chunk_dir, ignore_errors=True)
-            chunk_uploads.pop(upload_id, None)
+            _remove_chunk_session(upload_id)
             raise HTTPException(413, RUNPOD_ERROR_MESSAGES["file_too_large"])
 
         file_hash = hash_obj.hexdigest()
@@ -1943,12 +1952,12 @@ async def upload_chunk(
         if dup:
             save_path.unlink(missing_ok=True)
             shutil.rmtree(chunk_dir, ignore_errors=True)
-            chunk_uploads.pop(upload_id, None)
+            _remove_chunk_session(upload_id)
             raise HTTPException(409,
                 f"동일한 파일이 이미 존재합니다: '{dup['original_name']}'")
 
         shutil.rmtree(chunk_dir, ignore_errors=True)
-        chunk_uploads.pop(upload_id, None)
+        _remove_chunk_session(upload_id)
 
         duration = _get_audio_duration(save_path)
         duration = duration or 0.0
@@ -2776,6 +2785,7 @@ async def cleanup_all_stuck_jobs():
         preprocess_file_map.clear()
     with _training_lock:
         _training_file_map.clear()
+        _training_pretrained_map.clear()
     return {"cleaned": result.rowcount}
 
 
@@ -3209,13 +3219,13 @@ async def sync_restore():
                 if pth_url:
                     try:
                         updates["pth_url"] = refresh_presigned_url(pth_url)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("[Sync] pth URL 갱신 실패 (model %s): %s", mid, e)
                 if idx_url:
                     try:
                         updates["index_url"] = refresh_presigned_url(idx_url)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("[Sync] index URL 갱신 실패 (model %s): %s", mid, e)
                 if updates:
                     sets = ", ".join(f"{k}=?" for k in updates)
                     db.execute(f"UPDATE voice_models SET {sets} WHERE id=?",
@@ -3256,7 +3266,8 @@ async def sync_status():
                     "size": resp["ContentLength"],
                     "last_modified": resp["LastModified"].isoformat(),
                 }
-            except Exception:
+            except Exception as e:
+                logger.debug("[Sync] head_object 실패 (%s): %s", prefix, e)
                 result[name] = {"exists": False}
         else:
             # 디렉토리: 파일 수 + 총 크기

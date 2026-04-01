@@ -23,6 +23,8 @@ LICENSE.*
 uploads/
 models/
 output/
+chunks/
+preprocessed/
 workspace/
 
 # -- PyInstaller build artifacts --
