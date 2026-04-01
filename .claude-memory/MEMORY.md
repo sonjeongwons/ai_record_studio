@@ -18,14 +18,14 @@
 - `CLAUDE.md` — 하네스 엔지니어링 제약 문서 (린터/테스트 규칙, 컨벤션)
 - `HANDOFF.md` — 전체 아키텍처 결정사항, 비용 분석, 기술 선택 이유
 
-## Current Status (2026-04-01)
-- v35 모델 학습 완료
+## Current Status (2026-04-02)
+- v35 코드 완료 (Demucs 보컬분리 전처리 + KLM49 + 학습파라미터 최적화)
+- **다음 단계: v35 빌드 완료 후 소스 9개 재전처리 → 재학습 → 3곡 재변환**
 - KLM49_HFG (한국어 노래) + RIN_E3 (영어 팝/다국어) 이중 pretrained 지원
 - PC 간 클라우드 동기화 (Cloudflare R2 백업/복원) 구현 완료
 - 테스트 43/43 통과 (pytest)
 - ruff + bandit 정적 분석 클린
-- 교차 검증 완료: server↔handler↔HTML 기본값/주석/툴팁 100% 동기화
-- **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정 (Applio 호환성 검증 필요)
+- **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정
 
 ## Training Parameters (v35 — 한국어 커뮤니티 최적값)
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
@@ -64,7 +64,30 @@
 - v22 HPSS → v23 리버트: HPSS harmonic 추출이 자음/숨소리 제거 → 품질 파괴
 - v13 파이프라인 수정: asetrate 피치시프트 제거 (기계음 원인), SLICE_DURATION 3.5→5.0s
 - v15 vocal pitch pre-shift 비활성화: librosa STFT phase vocoder가 formant 미보존 → 이중 적용 시 기계음
-- v35 KLM49_HFG 도입: 한국어 노래 최적화 pretrained (기존 TITAN 교체)
+- v31 48kHz 시도 → 보코더 기계음 악화 → v32에서 40kHz 복원 (RVC Issue #119/#514)
+- v33~v34 후처리 최적화: 과도한 고역 EQ 커팅 제거, 노이즈 게이트 추가, asoftclip 제거
+- v35 KLM49_HFG 도입 + Demucs 보컬분리 전처리 추가 (근본 원인 해결)
+
+## 음질 개선 히스토리 (v30~v35)
+- **근본 원인 발견 (2026-03-31)**: 학습 소스 9개 중 6개에 MR(반주) 포함
+  → 모델이 베이스/드럼/기타를 "목소리의 일부"로 학습 = 기계음 80%의 원인
+- v30: 기본 pretrained, 800ep → 심각한 오버트레이닝 + MR 오염
+- v31: 48kHz 시도 → 보코더 기계음 악화
+- v32: 40kHz 복원, 300ep → MR 오염 미해결
+- v33 (KLM49): 한국어 pretrained, 150ep, batch4 → 약간 개선, MR 미해결
+- **v35 (현재)**: 전처리에 Demucs 보컬분리 추가 → MR 자동 제거 → 아직 미학습
+
+## 타겟 곡 3개
+- "01_Breaking Through (4824 Wave).wav" — 영어, 팝/록, 48kHz/24bit WAV
+- "플레이브 - 기다릴게.mp3" — 한국어, K-POP, 44.1kHz MP3
+- "Jeremy Zucker - comethru ft. Bea Miller.mp3" — 영어, 인디팝, 44.1kHz MP3
+
+## 학습 소스 음원 9개 (mp3record/ 폴더)
+- 07a51a19, 5a8a4c9a, a2eebb1e, 90d37ee7, 79dde5c2 — MR 포함 (Demucs 분리 필요)
+- 장이정-살다가한번쯤 — MR 포함 (Demucs 분리 필요)
+- **장이정-살다가테스트** — ✓ 깨끗한 보컬 (320kbps, 최고 품질)
+- **히스토리_tomorrow** — ✓ 깨끗한 보컬 (66초)
+- 장이정 학습용 데이터 (1) — 20분, 혼합 (보컬 12분 + MR 8분, Demucs 분리 필요)
 
 ## 코드 감사 이력 (2026-04-01)
 - 보안: path traversal 2건, XSS 6건, SQLite 리소스 누수 1건 수정
