@@ -28,7 +28,7 @@ import uvicorn
 import requests
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2163,7 +2163,7 @@ async def start_training(
             batches = prepare_files_for_runpod(file_paths)
             if len(batches) > 1:
                 raise HTTPException(400,
-                    f"학습 데이터가 너무 큽니다. R2 스토리지를 설정하거나 파일 수를 줄여주세요.")
+                    "학습 데이터가 너무 큽니다. R2 스토리지를 설정하거나 파일 수를 줄여주세요.")
             payload = {
                 "task_type": "train",
                 "model_name": model_name,
@@ -2319,7 +2319,6 @@ def _preprocess_status_sync():
             training_segments.append(f)
 
     has_segments = len(training_segments) > 0
-    all_processed = total_files > 0 and unprocessed == 0
     processed_count = total_files - unprocessed
 
     total_dur = 0.0
@@ -2514,9 +2513,7 @@ async def start_conversion(
             pth_url = refresh_presigned_url(model["pth_url"])
         except Exception as e:
             logger.error("[Convert] pth presigned URL 갱신 실패: %s", e)
-            # 만료된 URL을 그대로 사용하면 RunPod에서 403 Forbidden 발생 → 즉시 실패 처리
-            update_job(job_id, status="failed",
-                      message=f"모델 파일 URL 갱신 실패: {e}")
+            # job 생성 전이므로 update_job 없이 바로 HTTP 에러 반환
             raise HTTPException(500, f"모델 파일 URL 갱신 실패 (R2 설정 확인 필요): {e}")
     if model["index_url"]:
         try:

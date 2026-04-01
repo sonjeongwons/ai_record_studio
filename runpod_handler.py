@@ -31,11 +31,10 @@ import shutil
 import base64
 import logging
 import traceback
-import tempfile
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import torch
 import numpy as np
@@ -285,8 +284,8 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         segments, skipped_files = _segment_audio(cleaned_paths, segment_dir)
         if not segments:
             raise RuntimeError(
-                f"세그먼트 생성 실패: 유효한 세그먼트가 0개입니다. "
-                f"모든 오디오가 너무 짧거나 (< 2초) 손상되었습니다."
+                "세그먼트 생성 실패: 유효한 세그먼트가 0개입니다. "
+                "모든 오디오가 너무 짧거나 (< 2초) 손상되었습니다."
             )
 
         # Convert segments to FLAC (lossless) for transfer.
