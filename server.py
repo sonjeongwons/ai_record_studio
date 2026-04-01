@@ -1975,6 +1975,7 @@ async def start_training(
     sample_rate: int = Form(40000),    # v32: 커뮤니티 표준 40k
     batch_size: int = Form(4),         # v35: 한국어 커뮤니티: batch 4 권장
     f0_method: str = Form("rmvpe"),
+    pretrained_model: str = Form("klm49"),  # "klm49" 한국어 / "rin_e3" 다국어(팝송)
     file_ids: str = Form("")  # comma-separated
 ):
     if not runpod_client.is_configured():
@@ -2004,6 +2005,8 @@ async def start_training(
         raise HTTPException(400, f"샘플레이트는 32000/40000/48000 중 하나여야 합니다. (입력: {sample_rate})")
     if f0_method not in ("rmvpe", "crepe", "crepe-tiny"):
         raise HTTPException(400, f"피치 추출 방식은 rmvpe/crepe/crepe-tiny 중 하나여야 합니다. (입력: {f0_method})")
+    if pretrained_model not in ("klm49", "rin_e3"):
+        raise HTTPException(400, f"사전학습 모델은 klm49/rin_e3 중 하나여야 합니다. (입력: {pretrained_model})")
 
     # 학습 파일 수집
     with get_db() as db:
@@ -2127,6 +2130,7 @@ async def start_training(
                 "epochs": epochs,
                 "batch_size": batch_size,
                 "f0_method": f0_method,
+                "pretrained_model": pretrained_model,
                 "bucket_name": r2_bucket,
             }
         else:
@@ -2143,6 +2147,7 @@ async def start_training(
                 "epochs": epochs,
                 "batch_size": batch_size,
                 "f0_method": f0_method,
+                "pretrained_model": pretrained_model,
                 "bucket_name": r2_bucket,
             }
 

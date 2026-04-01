@@ -3047,6 +3047,13 @@ input[type="range"]::-moz-range-track {
             <option value="0">자동 (GPU가 알아서 최적화)</option>
           </select>
         </div>
+        <div>
+          <label class="label">사전학습 모델 <i class="tip" data-tip="AI 목소리의 기초가 되는 사전학습 모델입니다.\n\n🇰🇷 KLM49 (한국어 최적화)\n• 한국어 노래에 최적 — 자음/모음 발음이 자연스러움\n• 22명 한국 성우/보컬리스트 데이터 기반\n• K-pop, 발라드, 트로트 등 한국어 곡 권장\n\n🌍 RIN_E3 (다국어/범용)\n• 영어 팝송, 일본어, 다국어에 적합\n• Applio 공식 기본 모델\n• 영어 발음(th, r, l, v) 재현이 자연스러움\n\n💡 한국어 노래만 하면 KLM49, 팝송도 하면 RIN_E3를 선택하세요.">ⓘ</i></label>
+          <select id="train-pretrained" onchange="estimateTrainingCost()">
+            <option value="klm49" selected>KLM49 — 한국어 노래 최적화 (권장)</option>
+            <option value="rin_e3">RIN_E3 — 다국어/팝송 (영어·일본어·범용)</option>
+          </select>
+        </div>
       </div>
       <!-- 학습 비용 예상 패널 (동적) -->
       <div id="train-cost-panel" class="cost-panel mt-16" style="display:none">
@@ -5930,6 +5937,7 @@ async function _doStartTraining() {
 
   var f0Method = document.getElementById('train-f0').value;
   var batchSize = document.getElementById('train-batch').value;
+  var pretrainedModel = document.getElementById('train-pretrained').value;
 
   var form = new FormData();
   form.append('model_name', modelName);
@@ -5937,6 +5945,7 @@ async function _doStartTraining() {
   form.append('sample_rate', sr);
   form.append('batch_size', batchSize);
   form.append('f0_method', f0Method);
+  form.append('pretrained_model', pretrainedModel);
   form.append('file_ids', fileIds);
 
   try {

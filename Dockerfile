@@ -189,11 +189,14 @@ RUN python -c "from bs4 import BeautifulSoup; print('bs4 OK')" \
 # and adds 30-120s latency. With pre-caching, cold start is <2s.
 
 # -- RVC Pretrained v2 Models --
-# v35: 40k를 KLM49_HFG (Korean Language Model)로 교체
-# KLM49: 한국어 음소 최적화 (40p 음성학 스크립트 + 22명 성우/보컬리스트)
-# 노래 데이터 포함 (남녀 저음~고음 전 음역), 한국어 노래에 최적
-# by SeoulStreamingStation (Han TD) — 한국 RVC 커뮤니티 표준 pretrained
-# 48k/32k도 KLM49 사용 (전 sample rate 지원)
+# 두 종류의 pretrained를 모두 캐시하여 학습 시 사용자가 선택 가능
+#
+# 1) KLM49_HFG: 한국어 노래 최적화 (한국어 음소 40p + 22명 성우/보컬리스트)
+#    by SeoulStreamingStation (Han TD) — 한국 RVC 커뮤니티 표준
+# 2) RIN_E3: 다국어/범용 (영어 팝, 일본어, 범용 노래에 적합)
+#    by Applio 공식 — Applio 기본 pretrained
+
+# -- KLM49_HFG (한국어) → pretrained_v2/ (기본 경로, 기존 호환) --
 RUN mkdir -p /app/Applio/rvc/models/pretraineds/pretrained_v2 \
     && cd /app/Applio/rvc/models/pretraineds/pretrained_v2 \
     && echo "Downloading KLM49_HFG Korean pretrained (40k, 48k, 32k)..." \
@@ -209,7 +212,25 @@ RUN mkdir -p /app/Applio/rvc/models/pretraineds/pretrained_v2 \
        "https://huggingface.co/SeoulStreamingStation/KLM49_HFG/resolve/main/D_KLM_HFG_32k.pth" \
     && wget -q -O f0G32k.pth \
        "https://huggingface.co/SeoulStreamingStation/KLM49_HFG/resolve/main/G_KLM_HFG_32k.pth" \
-    && echo "Pretrained v2 (all KLM49_HFG):" && ls -lh *.pth
+    && echo "KLM49_HFG:" && ls -lh *.pth
+
+# -- RIN_E3 (다국어/범용) → pretrained_rin_e3/ --
+RUN mkdir -p /app/Applio/rvc/models/pretraineds/pretrained_rin_e3 \
+    && cd /app/Applio/rvc/models/pretraineds/pretrained_rin_e3 \
+    && echo "Downloading RIN_E3 multilingual pretrained (40k, 48k, 32k)..." \
+    && wget -q -O f0D40k.pth \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0D40k.pth" \
+    && wget -q -O f0G40k.pth \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0G40k.pth" \
+    && wget -q -O f0D48k.pth \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0D48k.pth" \
+    && wget -q -O f0G48k.pth \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0G48k.pth" \
+    && wget -q -O f0D32k.pth \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0D32k.pth" \
+    && wget -q -O f0G32k.pth \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/pretrained_v2/f0G32k.pth" \
+    && echo "RIN_E3:" && ls -lh *.pth
 
 # -- HuBERT / ContentVec Embedder (~1.2 GB) --
 RUN mkdir -p /app/Applio/rvc/models/embedders/contentvec \

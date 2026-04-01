@@ -1006,6 +1006,8 @@ def task_train(job_input: dict, job: dict) -> dict:
         batch_size = 4
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
+    # pretrained 모델 선택: "klm49" (한국어) 또는 "rin_e3" (다국어/팝송)
+    pretrained_model: str = job_input.get("pretrained_model", "klm49")
     # v35: 25→10 — 200 epoch에서 20개 체크포인트로 최적 epoch 정밀 식별
     save_every_epoch: int = max(1, int(job_input.get("save_every_epoch", 10)))
 
@@ -1175,6 +1177,7 @@ def task_train(job_input: dict, job: dict) -> dict:
             logs_dir=logs_dir,
             sr_label=sr_label,
             job=job,
+            pretrained_model=pretrained_model,
         )
 
         # --- Step 6: Generate FAISS index ---
@@ -1750,15 +1753,16 @@ def _rvc_train(
     logs_dir: Path,
     sr_label: str,
     job: dict,
+    pretrained_model: str = "klm49",
 ) -> dict:
     """
     Run RVC v2 training loop via Applio CLI.
     Uses CLI (subprocess) instead of core API because core API
     doesn't check subprocess return codes.
     """
-    # Determine pretrained model paths
-    pretrained_g = _find_pretrained("G", sr_label)
-    pretrained_d = _find_pretrained("D", sr_label)
+    # Determine pretrained model paths based on user selection
+    pretrained_g = _find_pretrained("G", sr_label, pretrained_model)
+    pretrained_d = _find_pretrained("D", sr_label, pretrained_model)
 
     # Log training parameters for debugging
     log.info(f"Training params: model={model_name}, sr={sample_rate}, epochs={epochs}, "
@@ -1957,20 +1961,26 @@ def _rvc_train(
     return {"epoch_count": epoch_count, "last_lines": last_lines[-15:]}
 
 
-def _find_pretrained(gen_or_disc: str, sr_label: str) -> Optional[Path]:
+def _find_pretrained(gen_or_disc: str, sr_label: str, pretrained_model: str = "klm49") -> Optional[Path]:
     """
     Find pretrained generator/discriminator model for transfer learning.
-    Applio stores them under rvc/models/pretraineds/pretrained_v2/
+    pretrained_model: "klm49" (한국어) or "rin_e3" (다국어/팝송)
     """
+    # pretrained_model에 따라 우선 검색 디렉토리 결정
+    _PRETRAINED_DIRS = {
+        "klm49": "pretrained_v2",       # KLM49_HFG 한국어 (기본 경로)
+        "rin_e3": "pretrained_rin_e3",   # RIN_E3 다국어/범용
+    }
+    primary_dir = _PRETRAINED_DIRS.get(pretrained_model, "pretrained_v2")
+
     search_dirs = [
-        PRETRAINED_DIR / "pretrained_v2",
+        PRETRAINED_DIR / primary_dir,           # 사용자 선택 모델 우선
+        PRETRAINED_DIR / "pretrained_v2",       # 폴백: KLM49 (기본)
         PRETRAINED_DIR,
         APPLIO_ROOT / "assets" / "pretrained_v2",
         APPLIO_ROOT / "rvc" / "pretraineds" / "pretrained_v2",
     ]
 
-    # Standard naming: f0G48k.pth, f0D48k.pth (with pitch guidance)
-    # or G48k.pth, D48k.pth (without pitch guidance)
     patterns = [
         f"f0{gen_or_disc}{sr_label}.pth",
         f"{gen_or_disc}{sr_label}.pth",
@@ -1982,10 +1992,10 @@ def _find_pretrained(gen_or_disc: str, sr_label: str) -> Optional[Path]:
         for pattern in patterns:
             candidate = search_dir / pattern
             if candidate.exists():
-                log.info(f"Found pretrained {gen_or_disc}: {candidate}")
+                log.info(f"Found pretrained {gen_or_disc} ({pretrained_model}): {candidate}")
                 return candidate
 
-    log.warning(f"No pretrained {gen_or_disc} model found for {sr_label}")
+    log.warning(f"No pretrained {gen_or_disc} model found for {sr_label} (type={pretrained_model})")
     return None
 
 
