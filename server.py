@@ -1069,11 +1069,10 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                     error = str(raw_error)
                     # JSON 문자열이면 파싱 시도
                     try:
-                        import json as _json
-                        parsed = _json.loads(error)
+                        parsed = json.loads(error)
                         if isinstance(parsed, dict):
                             error = parsed.get("error_message") or parsed.get("message") or error
-                    except (ValueError, TypeError):
+                    except (json.JSONDecodeError, TypeError):
                         pass
                 if status == "TIMED_OUT":
                     error = f"RunPod 시간 초과: {error}"
@@ -1788,24 +1787,23 @@ async def upload_files(
                 f"최대 {MAX_UPLOAD_FILE_SIZE // 1024 // 1024}MB까지 지원합니다. 대용량 파일은 청크 업로드를 사용하세요.")
         file_hash = hashlib.sha256(content).hexdigest()
 
-        # 동일 파일 중복 체크 (활성 파일)
+        # 동일 파일 중복 체크 + 이전 전처리 상태 확인 (단일 트랜잭션으로 레이스 컨디션 방지)
         with get_db() as db:
             live_dup = db.execute(
                 "SELECT id, original_name FROM training_files WHERE file_hash=? AND deleted=0",
                 (file_hash,)
             ).fetchone()
-        if live_dup:
-            skipped.append({"filename": f.filename,
-                            "existing_name": live_dup["original_name"]})
-            continue
+            if live_dup:
+                skipped.append({"filename": f.filename,
+                                "existing_name": live_dup["original_name"]})
+                continue
 
-        # 삭제된 파일 중 같은 해시의 전처리 상태 확인
-        with get_db() as db:
+            # 삭제된 파일 중 같은 해시의 전처리 상태 확인
             prev = db.execute(
                 "SELECT preprocessed FROM training_files WHERE file_hash=? AND deleted=1 ORDER BY id DESC LIMIT 1",
                 (file_hash,)
             ).fetchone()
-        was_preprocessed = 1 if (prev and prev["preprocessed"]) else 0
+            was_preprocessed = 1 if (prev and prev["preprocessed"]) else 0
 
         safe_filename = Path(f.filename).name  # path traversal 방지
         unique_name = f"{uuid.uuid4().hex[:8]}_{safe_filename}"
@@ -3127,10 +3125,14 @@ async def sync_backup():
         # WAL 모드 대비: 별도 연결로 안전한 백업 생성
         backup_path = DATA_DIR / "studio_backup.db"
         src = sqlite3.connect(str(DB_PATH))
-        dst = sqlite3.connect(str(backup_path))
-        src.backup(dst)
-        src.close()
-        dst.close()
+        try:
+            dst = sqlite3.connect(str(backup_path))
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
         s3.upload_file(str(backup_path), bucket, f"{_SYNC_PREFIX}studio.db")
         backup_path.unlink(missing_ok=True)
         result["uploaded"]["database"] = True

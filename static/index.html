@@ -5541,7 +5541,7 @@ async function startPreprocess() {
       setTimeout(function() { fadeSection(document.getElementById('preprocess-done'), true, 260); }, 200);
       preprocessDone = true;
       document.getElementById('btn-start-train').disabled = false;
-      toast(res.message || '모든 파일이 이미 전처리되었습니다', 'success');
+      toast(escapeHtml(res.message || '모든 파일이 이미 전처리되었습니다'), 'success');
       checkPreprocessStatus();
       return;
     }
@@ -6333,7 +6333,7 @@ async function loadModels() {
 
     document.getElementById('convert-model-list').innerHTML = pageModels.map(function(m) {
       var files = [];
-      try { files = JSON.parse(m.training_files_json || '[]'); } catch(e) {}
+      try { files = JSON.parse(m.training_files_json || '[]'); } catch(e) { files = []; }
       var filesHtml = '';
       if (files.length > 0) {
         filesHtml = '<div class="model-train-files" onclick="event.stopPropagation(); this.classList.toggle(\'expanded\')">' +
@@ -6801,6 +6801,7 @@ function switchResultAudio(mode) {
   if (wasPlaying) audio.play().catch(function(e) { if (e.name !== 'AbortError') console.info('오디오 전환 재생 실패:', e.name); });
   var mixBtn = document.getElementById('toggle-mix');
   var vocalBtn = document.getElementById('toggle-vocal');
+  if (!mixBtn || !vocalBtn) return;
   if (mode === 'mix') {
     mixBtn.classList.add('active');   vocalBtn.classList.remove('active');
     mixBtn.setAttribute('aria-pressed', 'true');
@@ -7458,13 +7459,13 @@ async function startSyncBackup() {
     setButtonLoading('btn-sync-backup', false);
     document.getElementById('sync-progress').style.display = 'none';
     showSettingsMsg('sync-msg', res.message, true);
-    toast(res.message, 'success');
+    toast(escapeHtml(res.message), 'success');
     checkSyncStatus();
   } catch(e) {
     setButtonLoading('btn-sync-backup', false);
     document.getElementById('sync-progress').style.display = 'none';
     showSettingsMsg('sync-msg', '백업 실패: ' + e.message, false);
-    toast('백업 실패: ' + e.message, 'error');
+    toast('백업 실패: ' + escapeHtml(e.message), 'error');
   }
 }
 
@@ -7478,7 +7479,7 @@ async function startSyncRestore() {
     setButtonLoading('btn-sync-restore', false);
     document.getElementById('sync-progress').style.display = 'none';
     showSettingsMsg('sync-msg', res.message, true);
-    toast(res.message, 'success');
+    toast(escapeHtml(res.message), 'success');
     checkSyncStatus();
     // 데이터 갱신
     if (typeof loadModels === 'function') loadModels();
@@ -7488,7 +7489,7 @@ async function startSyncRestore() {
     setButtonLoading('btn-sync-restore', false);
     document.getElementById('sync-progress').style.display = 'none';
     showSettingsMsg('sync-msg', '복원 실패: ' + e.message, false);
-    toast('복원 실패: ' + e.message, 'error');
+    toast('복원 실패: ' + escapeHtml(e.message), 'error');
   }
 }
 

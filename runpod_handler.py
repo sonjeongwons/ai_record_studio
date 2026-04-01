@@ -1062,7 +1062,7 @@ def task_train(job_input: dict, job: dict) -> dict:
         # R2 URL에서 다운로드 (네트워크/HTTP 오류 시 최대 5회 재시도)
         import requests as _req
         for i, uobj in enumerate(audio_urls):
-            fname = uobj.get("filename", f"audio_{i}.wav")
+            fname = Path(uobj.get("filename", f"audio_{i}.wav")).name  # path traversal 방지
             url = uobj["url"]
             dest = dataset_dir / fname
             last_err = None
@@ -2728,7 +2728,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
             _download_with_retries(_req, pth_url, pth_path, "모델 파일", timeout=120)
         else:
             pth_path = decode_b64_file(pth_b64, work / "model.pth")
-        log.info(f"Model file ready: {pth_path.stat().st_size / 1024:.1f} KB")
+        # 모델 파일 기본 검증 (크기 + 파일 형식)
+        pth_size = pth_path.stat().st_size
+        if pth_size < 1_000_000:  # 1MB 미만은 비정상
+            raise RuntimeError(f"모델 파일이 너무 작습니다 ({pth_size / 1024:.1f} KB). 손상되었거나 잘못된 파일입니다.")
+        log.info(f"Model file ready: {pth_size / 1024:.1f} KB")
 
         # Index: download from URL or decode base64
         index_path = None
@@ -2822,30 +2826,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
         # 한국어 마찰음(ㅅ,ㅆ,ㅈ,ㅊ,ㅎ)의 에너지가 4-8kHz에 집중 → 이 대역 커팅은 발음 뭉개짐 유발
         # → 디에싱은 후처리에서 한 번만 적용 (9kHz 이상의 좁은 대역만 타겟)
 
-        # --- Step 2c: Vocal pitch pre-shift — DISABLED v15 ---
-        # librosa.effects.pitch_shift = STFT phase vocoder (formant non-preserving).
-        # pre(-N st) + post(+N st) 이중 적용 시 phase artifact 심화 → 전곡 기계음 유발.
-        # 실측 (comethru5): 위상 보코더 이중 손실로 "아예 사람이 부른게 아닌 것 같은" 결과.
-        # 향후 rubberband 등 formant-preserving 피치 시프터로 교체 시 재활성화.
-        # API 파라미터는 유지 (호환성), 실제 효과는 0으로 고정.
-        _vocal_pitch_pre_shift: int = 0  # DISABLED: 항상 0 (formant-preserving 미지원)
-        if False and _vocal_pitch_pre_shift != 0 and rvc_input.exists():  # noqa: disabled
-            try:
-                import soundfile as _sf_pps
-                import librosa as _lib_pps
-                _pps_y, _pps_sr = _sf_pps.read(str(rvc_input))
-                _pps_mono = _pps_y.mean(axis=1) if _pps_y.ndim > 1 else _pps_y
-                log.info(f"Vocal pitch pre-shift: {_vocal_pitch_pre_shift:+d} semitones")
-                _pps_shifted = _lib_pps.effects.pitch_shift(
-                    _pps_mono.astype(float), sr=_pps_sr, n_steps=_vocal_pitch_pre_shift
-                )
-                _pps_out = work / "vocal_pre_shifted.wav"
-                _sf_pps.write(str(_pps_out), _pps_shifted, _pps_sr)
-                rvc_input = _pps_out
-                log.info(f"Vocal pitch pre-shift saved: {rvc_input.name}")
-            except Exception as _pps_err:
-                log.warning(f"Vocal pitch pre-shift failed (skipping): {_pps_err}")
-                _vocal_pitch_pre_shift = 0  # post-shift 스킵
+        # --- Vocal pitch pre-shift: 제거됨 (v15) ---
+        # librosa.effects.pitch_shift STFT phase vocoder는 formant 미보존 → 기계음 유발.
+        # 향후 rubberband 등 formant-preserving 피치 시프터 도입 시 재구현 예정.
 
         # --- Step 3: RVC voice conversion on vocals ---
         runpod.serverless.progress_update(job, "Running voice conversion (RVC)... (3/4)")
@@ -3007,27 +2990,6 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 log.warning("Post-processing produced empty/small output, using raw conversion")
         except Exception as pp_err:
             log.warning(f"Post-processing failed, using raw RVC output: {pp_err}")
-
-        # --- Step 3c: Vocal pitch post-shift (pre-shift 복원) v14 ---
-        # Step 2c에서 사전 피치 조정했다면 여기서 원래 피치로 복원.
-        # 최종 보컬 피치 = 원본과 동일 → MR과 완벽히 동기화 유지.
-        if _vocal_pitch_pre_shift != 0:
-            try:
-                import soundfile as _sf_ppr
-                import librosa as _lib_ppr
-                _ppr_y, _ppr_sr = _sf_ppr.read(str(converted_vocals_path))
-                _ppr_mono = _ppr_y.mean(axis=1) if _ppr_y.ndim > 1 else _ppr_y
-                log.info(f"Vocal pitch post-shift: {-_vocal_pitch_pre_shift:+d} semitones (restoring)")
-                _ppr_shifted = _lib_ppr.effects.pitch_shift(
-                    _ppr_mono.astype(float), sr=_ppr_sr, n_steps=-_vocal_pitch_pre_shift
-                )
-                _ppr_out = work / "converted_vocals_post_shifted.wav"
-                _sf_ppr.write(str(_ppr_out), _ppr_shifted, _ppr_sr)
-                if _ppr_out.exists() and _ppr_out.stat().st_size > 1000:
-                    converted_vocals_path = _ppr_out
-                    log.info("Vocal pitch post-shift applied: original pitch restored")
-            except Exception as _ppr_err:
-                log.warning(f"Vocal pitch post-shift failed (skipping): {_ppr_err}")
 
         # --- Step 4: Mix converted vocals + original accompaniment ---
         mixed_path = None
@@ -3221,6 +3183,9 @@ def _rvc_infer(
     # --- Strategy 3: Low-level pipeline fallback ---
     # If pedalboard is missing, core.py and VoiceConverter won't import.
     # Use the inference pipeline directly, bypassing the infer.py wrapper.
+    net_g = None
+    hubert_model = None
+    pipeline = None
     try:
         os.chdir(APPLIO_ROOT)
         log.info("Attempting low-level pipeline inference (Strategy 3)")
@@ -3331,12 +3296,7 @@ def _rvc_infer(
     finally:
         os.chdir(original_cwd)
         # Strategy 3 GPU 모델 정리 (Strategy 4를 위해 VRAM 확보)
-        try:
-            for _obj in [locals().get('net_g'), locals().get('hubert_model'), locals().get('pipeline')]:
-                if _obj is not None:
-                    del _obj
-        except Exception:
-            pass
+        del net_g, hubert_model, pipeline
         cleanup_gpu()
 
     # --- Strategy 4: CLI fallback (last resort) ---

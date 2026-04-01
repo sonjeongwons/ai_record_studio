@@ -2,7 +2,6 @@
 pytest fixtures — 테스트용 격리 환경 설정
 임시 디렉토리에서 DB/파일을 생성하여 실제 데이터에 영향 없음
 """
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,13 +9,6 @@ import pytest
 
 # server.py가 import 시점에 디렉토리를 생성하므로, import 전에 패치 필요
 VOICE_STUDIO_DIR = Path(__file__).parent.parent
-
-
-@pytest.fixture(scope="session")
-def tmp_data_dir():
-    """세션 전체에서 공유하는 임시 데이터 디렉토리"""
-    with tempfile.TemporaryDirectory(prefix="vs_test_") as tmpdir:
-        yield Path(tmpdir)
 
 
 @pytest.fixture()

@@ -19,7 +19,7 @@
 - CI/CD: GitHub Actions (Docker 빌드 + pytest 자동 실행)
 
 ## 현재 상태 (2026-04-01 업데이트)
-- ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 34/34 통과
+- ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 43/43 통과
 - ✅ RunPod Serverless Handler (runpod_handler.py) 구현 완료
 - ✅ 네트워크 장애 복원력 강화 (서버 재시작/네트워크 끊김 시 자동 복구)
 - ✅ 구조화 로깅 (print → logging 전환)

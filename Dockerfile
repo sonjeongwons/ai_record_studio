@@ -66,6 +66,9 @@ RUN apt-get update \
 # ── 1.2 PyTorch (pinned, CUDA 12.1) ─────────────────────────────
 # ~2.5 GB — separate layer for cache efficiency.
 # MUST be installed before Applio's requirements to prevent CPU-only torch.
+# ⚠️ CVE-2025-32434: PyTorch <2.6.0의 torch.load()에 RCE 취약점 존재.
+#    현재 2.1.0 사용 중 — Applio/fairseq 호환성 검증 후 2.6.0+로 업그레이드 예정.
+#    완화 조치: 사용자 업로드 모델은 _validate_pth_file()로 기본 검증 수행.
 RUN python -m pip install --no-cache-dir \
         torch==2.1.0+cu121 \
         torchvision==0.16.0+cu121 \

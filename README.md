@@ -40,7 +40,7 @@ python server.py     # 개발 서버 (브라우저)
 
 ## 테스트
 ```bash
-python -m pytest tests/ -v   # 34개 API 테스트
+python -m pytest tests/ -v   # 43개 API 테스트
 ```
 
 ## EXE 빌드 (고객 배포용)
