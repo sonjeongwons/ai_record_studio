@@ -106,20 +106,27 @@
 
 ## 4. 현재 구현 상태
 
-### 4-1. 완성된 파일 (voice-studio/)
+### 4-1. 완성된 파일
 
 ```
-voice-studio/
-├── server.py          # ✅ FastAPI 백엔드 (모든 API 엔드포인트)
-├── static/
-│   └── index.html     # ✅ 웹 UI (다크 테마, 4개 탭)
-├── requirements.txt   # ✅ Python 의존성
-├── start.bat          # ✅ Windows 실행 스크립트
-├── start.sh           # ✅ Mac/Linux 실행 스크립트
-├── README.md          # ✅ 사용법 문서
-├── uploads/           # 업로드 파일 저장소
-├── models/            # 학습된 모델 저장소
-└── output/            # 변환 결과 저장소
+ai_record_studio/
+├── server.py            # ✅ FastAPI 백엔드 (35+ API 엔드포인트, 3,300줄)
+├── runpod_handler.py    # ✅ RunPod GPU 핸들러 (전처리/학습/변환, 3,500줄)
+├── static/index.html    # ✅ 웹 UI (다크 테마, 4탭, 8,400줄)
+├── app.py               # ✅ 데스크톱 앱 (PyWebView)
+├── build_exe.py         # ✅ PyInstaller EXE 빌드
+├── Dockerfile           # ✅ RunPod Docker 이미지 (멀티스테이지)
+├── requirements.txt     # ✅ Python 의존성
+├── pytest.ini           # ✅ 테스트 설정
+├── tests/               # ✅ API 테스트 (18/18 통과)
+├── .github/workflows/   # ✅ CI/CD (Docker 빌드 + pytest)
+├── CLAUDE.md            # ✅ Claude Code 하네스 제약 문서
+├── HANDOFF.md           # ✅ 이 파일 (아키텍처 결정사항)
+├── uploads/             # 업로드 파일 저장소
+├── models/              # 학습된 모델 저장소
+├── output/              # 변환 결과 저장소
+├── preprocessed/        # 전처리 세그먼트 저장소
+└── chunks/              # 청크 업로드 임시
 ```
 
 ### 4-2. server.py 주요 구조
@@ -232,11 +239,9 @@ POST /api/upload: {'files': [...], 'count': 1} ✅
 
 ## 7. Claude Code에게 전달 사항
 
-### 즉시 진행해야 할 작업 우선순위:
-1. **RunPod Serverless Handler + Dockerfile** 작성 (RVC v2/Applio 기반)
-2. **전처리 파이프라인** server.py에 통합
-3. **엔드투엔드 테스트** — 실제 오디오 파일로 학습→변환 동작 확인
-4. 에러 핸들링 강화
+### 작업 상태 (2026-04-01):
+위 1-4 항목 모두 **✅ 완료**. 자세한 내용은 섹션 5 참조.
+현재는 품질 튜닝, 상용화 준비, 라이선스 시스템 등 후속 작업 단계.
 
 ### 코드 컨벤션:
 - Python 3.10+

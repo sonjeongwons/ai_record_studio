@@ -2614,10 +2614,10 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 0.50: v23 — 커뮤니티 권장 0.50-0.75 범위로 상향
-    # v12(0.35): 후처리 최소화 후에도 모델 음색이 35%만 반영 → 변환 목적 미흡
-    # v23: 0.50으로 상향 — 모델 음색 50% 반영 + 원곡 특성 50% 보존 (균형점)
-    # 너무 높으면(0.9+) 아티팩트/버징, 너무 낮으면(<0.3) 모델 음색 부족
+    # index_rate 기본값 0.35: 한국어 커뮤니티 최적값 (v35)
+    # 모델 음색 35% + 원곡 특성 65% — 자연스러운 변환
+    # 커뮤니티 권장 범위: 0.20-0.50 (너무 높으면 아티팩트/버징, 너무 낮으면 음색 부족)
+    # UI 프리셋에서 장르별로 조절: 자연(0.25), 기본(0.35), 코러스(0.20), 듀엣(0.08)
     try:
         index_rate: float = float(job_input.get("index_rate", 0.35))
     except (ValueError, TypeError):

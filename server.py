@@ -396,7 +396,7 @@ def init_db():
             except sqlite3.OperationalError:
                 pass  # 이미 존재하면 무시
         # voice_models에 R2 URL 컬럼 추가 (기존 DB 마이그레이션)
-        for col in ("pth_url", "index_url", "training_files_json"):
+        for col in ("pth_url", "index_url", "training_files_json", "pretrained_model"):
             try:
                 db.execute(f"ALTER TABLE voice_models ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
@@ -746,7 +746,9 @@ runpod_client = RunPodClient()
 
 # 학습 작업별 사용된 훈련 파일 목록 (job_id → [파일명, ...])
 _training_file_map: dict[str, list[str]] = {}
-_training_lock = threading.Lock()  # _training_file_map 동시성 보호
+# 학습 작업별 사전학습 모델 추적 (job_id → pretrained_model)
+_training_pretrained_map: dict[str, str] = {}
+_training_lock = threading.Lock()  # _training_file_map/_training_pretrained_map 동시성 보호
 
 # RunPod 폴링 에러 카운터 동시성 보호
 _poll_errors_lock = threading.Lock()
@@ -883,7 +885,7 @@ def _is_job_cancelled(job_id: str) -> bool:
     try:
         with get_db() as db:
             row = db.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
-            return row and row["status"] in ("failed", "cancelled", "paused")
+            return row and row["status"] in ("failed", "cancelled")
     except Exception as e:
         logger.warning("[Poll] _is_job_cancelled DB 오류 (job %s): %s — 안전하게 취소 처리", job_id, e)
         return True  # DB 오류 시 폴링 중단 (무한 폴링 방지)
@@ -1343,16 +1345,18 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             try:
                 with _training_lock:
                     _train_files_json = json.dumps(_training_file_map.pop(job_id, []), ensure_ascii=False)
+                    _pretrained = _training_pretrained_map.pop(job_id, "klm49")
                 with get_db() as db:
                     db.execute("""
                         INSERT INTO voice_models (name, pth_path, index_path, pth_url, index_url,
-                                                epochs, training_time_seconds, training_files_json, status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ready')
+                                                epochs, training_time_seconds, training_files_json,
+                                                pretrained_model, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready')
                     """, (model_name, pth_path, index_path,
                           output.get("pth_url"), output.get("index_url"),
                           output.get("epochs_trained", 0),
                           output.get("training_time_seconds", 0),
-                          _train_files_json))
+                          _train_files_json, _pretrained))
             except Exception as db_err:
                 # DB 삽입 실패 시 다운로드된 모델 파일 정리 (고아 파일 방지)
                 logger.error("[Train] DB insert failed, cleaning up model files: %s", db_err)
@@ -2078,6 +2082,7 @@ async def start_training(
     job_id = uuid.uuid4().hex[:12]
     with _training_lock:
         _training_file_map[job_id] = training_file_names
+        _training_pretrained_map[job_id] = pretrained_model
     with get_db() as db:
         db.execute("""
             INSERT INTO jobs (id, job_type, status, progress, message)
@@ -2172,6 +2177,7 @@ async def start_training(
         update_job(job_id, status="failed", message=f"제출 실패: {error_msg}")
         with _training_lock:
             _training_file_map.pop(job_id, None)
+            _training_pretrained_map.pop(job_id, None)
         raise HTTPException(500, f"학습 제출 실패: {error_msg}")
 
     return {"job_id": job_id, "segments": total_segments}
@@ -2725,6 +2731,7 @@ async def cancel_job(job_id: str):
         preprocess_file_map.pop(job_id, None)
     with _training_lock:
         _training_file_map.pop(job_id, None)
+        _training_pretrained_map.pop(job_id, None)
 
     return {"status": "cancelled"}
 
