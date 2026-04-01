@@ -79,3 +79,4 @@
 - [project_v13_pipeline_fixes.md](project_v13_pipeline_fixes.md) — v29 기계음 원인 + v13 수정
 - [project_v23_hpss_revert.md](project_v23_hpss_revert.md) — HPSS 실패 + 향후 로드맵
 - [project_code_audit_2026_04.md](project_code_audit_2026_04.md) — 전체 코드 감사 결과
+- [feedback_memory_maintenance.md](feedback_memory_maintenance.md) — 변경 시 CLAUDE.md + 메모리 3종 동시 현행화 필수
