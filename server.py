@@ -2903,8 +2903,8 @@ async def update_model_quality(model_id: int, quality_score: float = Form(...)):
 async def list_conversions():
     with get_db() as db:
         rows = db.execute("""
-            SELECT c.*, m.name as model_name 
-            FROM conversions c 
+            SELECT c.*, m.name as model_name
+            FROM conversions c
             LEFT JOIN voice_models m ON c.model_id = m.id
             ORDER BY c.created_at DESC LIMIT 50
         """).fetchall()
