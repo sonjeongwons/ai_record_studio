@@ -2,8 +2,6 @@
 pytest fixtures — 테스트용 격리 환경 설정
 임시 디렉토리에서 DB/파일을 생성하여 실제 데이터에 영향 없음
 """
-import os
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch

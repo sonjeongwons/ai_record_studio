@@ -2,10 +2,6 @@
 API 엔드포인트 테스트 — 핵심 CRUD + 상태 조회
 RunPod 연동은 모킹, DB/파일시스템은 실제 (격리된 임시 환경)
 """
-import json
-from pathlib import Path
-
-import pytest
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -60,8 +56,6 @@ class TestConfig:
 
         # 설정 조회 — config.json이 패치된 경로에 쓰여야 함
         resp = app_client.get("/api/config")
-        data = resp.json()
-        # config 저장이 패치 경로를 사용하는지 확인
         assert resp.status_code == 200
 
 
@@ -90,7 +84,6 @@ class TestFiles:
         data = resp.json()
         uploaded = data.get("files", [data] if "id" in data else [])
         assert len(uploaded) >= 1
-        file_id = uploaded[0]["id"]
 
         # 파일 목록 조회
         resp = app_client.get("/api/files")
