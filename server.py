@@ -57,6 +57,8 @@ CONFIG_PATH = DATA_DIR / "config.json"
 
 # 청크 업로드 제한: 최대 2GB
 MAX_CHUNK_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
+# 일반 업로드 제한: 최대 500MB (OOM 방지 — 대용량은 청크 업로드 사용)
+MAX_UPLOAD_FILE_SIZE = 500 * 1024 * 1024  # 500MB
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 로깅 설정
@@ -428,6 +430,11 @@ def init_db():
         db.execute("CREATE INDEX IF NOT EXISTS idx_conversions_model_id ON conversions(model_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_conversions_job_id ON conversions(job_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_training_files_deleted ON training_files(deleted)")
+        # voice_models(name) UNIQUE 인덱스 — 동일 모델명 중복 방지
+        try:
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_models_name ON voice_models(name)")
+        except sqlite3.OperationalError:
+            pass  # 기존 DB에 중복 name이 있으면 인덱스 생성 실패 (무시)
 
 
 def recover_orphan_jobs_on_startup():
@@ -1310,15 +1317,15 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             # Download model from presigned URL (primary path)
             if output.get("pth_url"):
                 pth_filename = output.get("pth_filename", f"{model_name}.pth")
-                pth_path = str(model_dir / pth_filename)
-                _download_with_retry(output["pth_url"], Path(pth_path), timeout=300)
+                _download_with_retry(output["pth_url"], model_dir / pth_filename, timeout=300)
+                pth_path = f"{model_name}/{pth_filename}"  # DB에 상대경로 저장 (이식성)
             # Fallback: base64 encoded model (when R2 upload failed)
             elif output.get("pth_base64"):
                 pth_filename = output.get("pth_filename", f"{model_name}.pth")
-                pth_path = str(model_dir / pth_filename)
                 raw = base64.b64decode(output["pth_base64"])
-                with open(pth_path, "wb") as f:
+                with open(model_dir / pth_filename, "wb") as f:
                     f.write(raw)
+                pth_path = f"{model_name}/{pth_filename}"  # DB에 상대경로 저장
                 logger.info("[Train] Model saved via base64 fallback: %s", pth_filename)
 
             # Check for upload failure (model too large for base64 + no R2)
@@ -1338,15 +1345,15 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
             # Download index from presigned URL (primary path)
             if output.get("index_url"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
-                index_path = str(model_dir / idx_filename)
-                _download_with_retry(output["index_url"], Path(index_path), timeout=120)
+                _download_with_retry(output["index_url"], model_dir / idx_filename, timeout=120)
+                index_path = f"{model_name}/{idx_filename}"  # DB에 상대경로 저장
             # Fallback: base64 encoded index
             elif output.get("index_base64"):
                 idx_filename = output.get("index_filename", f"{model_name}.index")
-                index_path = str(model_dir / idx_filename)
                 raw = base64.b64decode(output["index_base64"])
-                with open(index_path, "wb") as f:
+                with open(model_dir / idx_filename, "wb") as f:
                     f.write(raw)
+                index_path = f"{model_name}/{idx_filename}"  # DB에 상대경로 저장
                 logger.info("[Train] Index saved via base64 fallback: %s", idx_filename)
 
             try:
@@ -1775,6 +1782,10 @@ async def upload_files(
             continue
 
         content = await f.read()
+        if len(content) > MAX_UPLOAD_FILE_SIZE:
+            raise HTTPException(413,
+                f"파일 '{f.filename}'이 너무 큽니다 ({len(content) / 1024 / 1024:.0f}MB). "
+                f"최대 {MAX_UPLOAD_FILE_SIZE // 1024 // 1024}MB까지 지원합니다. 대용량 파일은 청크 업로드를 사용하세요.")
         file_hash = hashlib.sha256(content).hexdigest()
 
         # 동일 파일 중복 체크 (활성 파일)
@@ -2829,9 +2840,13 @@ async def delete_model(model_id: int):
             raise HTTPException(409, f"이 모델을 사용 중인 변환 작업이 {len(active)}개 있습니다. 먼저 작업을 취소하거나 완료하세요.")
         dirs_to_check = set()
         for path_key in ["pth_path", "index_path"]:
-            if row[path_key] and Path(row[path_key]).exists():
-                dirs_to_check.add(Path(row[path_key]).parent)
-                Path(row[path_key]).unlink()
+            if row[path_key]:
+                p = Path(row[path_key])
+                if not p.is_absolute():
+                    p = MODEL_DIR / p  # 상대경로 → 절대경로
+                if p.exists():
+                    dirs_to_check.add(p.parent)
+                    p.unlink()
         # 빈 모델 디렉토리 정리
         for d in dirs_to_check:
             if d.exists() and not any(d.iterdir()):
