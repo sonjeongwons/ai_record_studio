@@ -36,14 +36,15 @@
 - HuBERT 임베딩 인덱스 기반 검색으로 음색 보존 우수
 - Applio (MIT 라이선스): 활발히 유지보수 중, Docker 지원
 
-**RVC 학습 파라미터:**
+**RVC 학습 파라미터 (v35 최적화, 2026-04 현재):**
 - F0 추출: RMVPE (가장 정확한 피치)
-- 임베더: ContentVec (기본) 또는 Spin (발음 더 좋음)
-- 사전학습 모델: 항상 사용 (학습 시간 대폭 단축)
-- 에폭: 300-500 (데이터 양에 따라)
-- 배치 사이즈: 8 (RTX 4090 기준)
-- 저장 빈도: 50 에폭마다
+- 임베더: ContentVec (768차원, HuBERT 대비 우수)
+- 사전학습 모델: KLM49_HFG (한국어 노래 최적화, 40k/48k/32k)
+- 에폭: 150 (한국어 커뮤니티 최적값, ~25분 데이터 기준)
+- 배치 사이즈: 4 (한국어 커뮤니티 권장)
+- 저장 빈도: 10 에폭마다 (세밀한 epoch 선택 가능)
 - 학습 데이터: 10-60분 클린 보컬
+- 과학습 감지: 50 epoch 무개선 시 자동 조기 중단
 - 품질 목표: MOS >4.0, 화자 유사도 >85%
 
 ### 2-2. GPU 클라우드: RunPod ✅
@@ -177,102 +178,45 @@ POST /api/upload: {'files': [...], 'count': 1} ✅
 **로컬 서버 + 웹 UI + SQLite + API 모두 정상 동작 확인됨**
 
 
-## 5. 아직 구현되지 않은 것들 (TODO)
+## 5. 구현 상태 (2026-04-01 업데이트)
 
-### 5-1. 🔴 필수 — RunPod Docker 이미지 (가장 중요!)
-현재 클라이언트는 만들어졌지만, **RunPod에서 실행될 서버사이드 핸들러**가 없음.
-이것이 실제로 학습/변환이 동작하려면 반드시 필요.
+### 5-1. ✅ 완료 — RunPod Docker 이미지 + Serverless 핸들러
+- `runpod_handler.py` (3,516줄): 전처리/학습/변환 3가지 task 모두 구현 완료
+- `Dockerfile`: 멀티스테이지 빌드 (CUDA 12.1, Applio, Demucs htdemucs_6s, RMVPE, KLM49_HFG pretrained)
+- Docker 이미지 자동 빌드: GitHub Actions → ghcr.io/sonjeongwons/ai_record_studio
+- 4-strategy RVC 추론 폴백 (core API → VoiceConverter → low-level Pipeline → CLI)
+- R2 버킷 업로드 + base64 폴백 (RunPod 20MB 응답 한도 대응)
 
-```python
-# runpod_handler.py — RunPod Serverless에서 실행됨
-# Docker 이미지에 포함해야 할 것:
-# - Applio/RVC v2 (학습 + 추론)
-# - Demucs (보컬 분리)
-# - FFmpeg (오디오/영상 처리)
-# - pyannote (화자 분리)
-# - RNNoise (노이즈 제거)
+### 5-2. ✅ 완료 — 전처리 파이프라인 통합
+- `POST /api/preprocess`: 영상→오디오 추출, Demucs 보컬 분리, 화자 분리, 노이즈 제거, 세그먼트 분할
+- `GET /api/preprocess/status`: 전처리 상태 조회
+- `DELETE /api/preprocess`: 전처리 결과 초기화
+- `POST /api/preprocess/reset`: 선택 파일만 초기화
+- 대용량 파일 자동 배치 분할 (멀티 RunPod 작업)
 
-import runpod
-import base64
+### 5-3. ✅ 완료 — 에러 핸들링 강화
+- 네트워크 실패 시 지수 백오프 재시도 (RunPodClient, polling, download)
+- 서버 재시작 시 orphan job 자동 복구 (recover_orphan_jobs_on_startup)
+- 대용량 파일 청크 업로드 (`POST /api/upload/chunk`, 최대 2GB)
+- RunPod 잔액 부족/인증 오류 한국어 안내
+- 1시간 이상 방치 작업 자동 정리
 
-def handler(job):
-    input = job["input"]
-    task_type = input["task_type"]
-    
-    if task_type == "preprocess":
-        # 1. 영상이면 FFmpeg으로 오디오 추출
-        # 2. Demucs로 보컬 분리
-        # 3. pyannote로 화자 분리
-        # 4. RNNoise로 노이즈 제거
-        # 5. 세그먼트 분할 (5-15초)
-        return {"segment_count": N, "total_duration": seconds}
-    
-    elif task_type == "train":
-        # 1. 오디오 파일 디코딩
-        # 2. RVC v2 전처리 (HuBERT 임베딩, F0 추출)
-        # 3. 학습 실행 (300-500 에폭)
-        # 4. FAISS 인덱스 생성
-        # 5. .pth + .index base64 인코딩하여 반환
-        return {
-            "pth_data": base64_pth,
-            "index_data": base64_index,
-            "pth_filename": "model.pth",
-            "index_filename": "model.index",
-            "model_name": name,
-            "epochs_trained": N,
-            "training_time_seconds": T
-        }
-    
-    elif task_type == "convert":
-        # 1. 모델 파일 디코딩 (.pth, .index)
-        # 2. 입력 오디오 디코딩
-        # 3. RVC v2 추론 (변환)
-        # 4. 결과 오디오 base64 인코딩
-        return {
-            "converted_audio": base64_audio,
-            "filename": "converted_song.wav",
-            "processing_time_seconds": T
-        }
+### 5-4. ✅ 완료 — 추가 구현 사항
+- PC 간 클라우드 동기화 (R2 백업/복원)
+- 배치 변환 (여러 곡 동시 변환)
+- 변환 프리셋 8종 (기본값/가성/자연/스튜디오/코러스/인디/코러스v2/듀엣)
+- 비용 추정 UI (전처리/학습/변환별 RTX 4090 기준 실시간 계산)
+- PyInstaller .exe 패키징 (app.py + build_exe.py)
 
-runpod.serverless.start({"handler": handler})
-```
-
-**Docker 이미지 구성:**
-```dockerfile
-FROM nvidia/cuda:12.1-runtime-ubuntu22.04
-# Applio/RVC v2 설치
-# Demucs, pyannote, FFmpeg 설치
-# runpod_handler.py 복사
-# ENTRYPOINT: python runpod_handler.py
-```
-
-### 5-2. 🟡 중요 — 전처리 파이프라인 통합
-현재 server.py에는 전처리(preprocess) API 경로가 없음.
-학습 전에 자동으로 전처리가 실행되도록 해야 함:
-- 영상 파일 → 오디오 추출
-- 보컬 분리 (Demucs)
-- 화자 분리 (pyannote)
-- 노이즈 제거
-- 세그먼트 분할
-
-### 5-3. 🟡 중요 — 에러 핸들링 강화
-- 네트워크 실패 시 재시도 (exponential backoff)
-- 학습 중간 체크포인트 복구
-- 대용량 파일 업로드 시 청크 전송
-- RunPod 잔액 부족 시 안내
-
-### 5-4. 🟢 나중에 — 라이선스/과금 시스템
+### 5-5. 🟢 나중에 — 라이선스/과금 시스템
 **의뢰인이 "나중에"라고 명시함**
 - 라이선스 서버 (FastAPI + PostgreSQL)
 - 고객별 라이선스 키 발급/만료
 - GPU 크레딧 관리
 - 사용량 통계
 
-### 5-5. 🟢 나중에 — 고급 기능
-- 오디오 이펙트 (리버브, 에코, 오토튠, EQ, 컴프레서, 디에서)
+### 5-6. 🟢 나중에 — 고급 기능
 - A/B 비교 플레이어
-- 배치 변환 (앨범 전체)
-- PyInstaller exe 패키징 (~150-200MB)
 - 자동 업데이트
 
 

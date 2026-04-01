@@ -406,11 +406,6 @@ def init_db():
             db.execute("ALTER TABLE conversions ADD COLUMN job_id TEXT")
         except sqlite3.OperationalError:
             pass
-        # jobs에 pause_state_json 컬럼 추가 (일시정지 재개용)
-        try:
-            db.execute("ALTER TABLE jobs ADD COLUMN pause_state_json TEXT")
-        except sqlite3.OperationalError:
-            pass
         # jobs에 started_at 컬럼 추가 (경과 시간 계산용)
         try:
             db.execute("ALTER TABLE jobs ADD COLUMN started_at TEXT")
@@ -1316,16 +1311,6 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 with open(pth_path, "wb") as f:
                     f.write(raw)
                 logger.info("[Train] Model saved via base64 fallback: %s", pth_filename)
-            # Legacy: inline base64 (backward compat for small models)
-            elif output.get("pth_data"):
-                pth_filename = output.get("pth_filename", f"{model_name}.pth")
-                pth_path = str(model_dir / pth_filename)
-                raw = base64.b64decode(output["pth_data"])
-                if output.get("pth_compressed"):
-                    import gzip
-                    raw = gzip.decompress(raw)
-                with open(pth_path, "wb") as f:
-                    f.write(raw)
 
             # Check for upload failure (model too large for base64 + no R2)
             if output.get("upload_method") == "failed":
@@ -1354,16 +1339,6 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 with open(index_path, "wb") as f:
                     f.write(raw)
                 logger.info("[Train] Index saved via base64 fallback: %s", idx_filename)
-            # Legacy: inline base64
-            elif output.get("index_data"):
-                idx_filename = output.get("index_filename", f"{model_name}.index")
-                index_path = str(model_dir / idx_filename)
-                raw = base64.b64decode(output["index_data"])
-                if output.get("index_compressed"):
-                    import gzip
-                    raw = gzip.decompress(raw)
-                with open(index_path, "wb") as f:
-                    f.write(raw)
 
             try:
                 with _training_lock:

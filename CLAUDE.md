@@ -18,7 +18,7 @@
 - 테스트: pytest + FastAPI TestClient (격리된 임시 DB 환경)
 - CI/CD: GitHub Actions (Docker 빌드 + pytest 자동 실행)
 
-## 현재 상태 (2026-03-29 업데이트)
+## 현재 상태 (2026-04-01 업데이트)
 - ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 18/18 통과
 - ✅ RunPod Serverless Handler (runpod_handler.py) 구현 완료
 - ✅ 네트워크 장애 복원력 강화 (서버 재시작/네트워크 끊김 시 자동 복구)
@@ -26,6 +26,8 @@
 - ✅ pytest 테스트 프레임워크 + CI/CD 테스트 파이프라인
 - ✅ 장함수 리팩토링 (헬퍼 함수 추출)
 - ✅ 에러 처리 개선 (silent except에 debug 로깅 추가)
+- ✅ PC 간 클라우드 동기화 (R2 백업/복원)
+- ✅ 배치 변환 + 변환 프리셋 8종
 
 ## 컨벤션
 - Python 3.10+, 타입힌트 사용
@@ -114,32 +116,41 @@ voice-studio/
 
 ## API 엔드포인트 (전체)
 ```
-GET  /                          → 웹 UI
-GET  /api/config                → RunPod 설정 조회
-POST /api/config                → RunPod 설정 저장
-POST /api/upload                → 파일 업로드 (다중)
-POST /api/upload/chunk          → 청크 업로드 (대용량)
-GET  /api/files                 → 업로드 파일 목록
-DELETE /api/files/{id}          → 파일 삭제
-POST /api/preprocess            → 전처리 시작 (RunPod)
-GET  /api/preprocess/status     → 전처리 상태 조회
-POST /api/train                 → 학습 시작 (RunPod)
-POST /api/convert               → 변환 시작 (RunPod)
-GET  /api/jobs/{id}             → 작업 상태 조회
-GET  /api/jobs/active           → 현재 실행 중 작업
-GET  /api/jobs                  → 전체 작업 목록
-POST /api/jobs/cleanup          → 작업 정리
-POST /api/jobs/{id}/cancel      → 작업 취소
-POST /api/jobs/{id}/pause       → 작업 일시정지
-POST /api/jobs/{id}/resume      → 작업 재개
-GET  /api/models                → 모델 목록
-DELETE /api/models/{id}         → 모델 삭제
-POST /api/models/{id}/rename    → 모델 이름 변경
-POST /api/models/{id}/quality   → 품질 점수 업데이트
-GET  /api/conversions           → 변환 이력
-DELETE /api/conversions/{id}    → 변환 이력 삭제
-GET  /api/download/{name}       → 파일 다운로드
-GET  /api/stats                 → 대시보드 통계
-GET  /api/health                → 서버/RunPod/DB 상태
-GET  /api/system-info           → 시스템 정보
+GET  /                              → 웹 UI
+GET  /api/config                    → RunPod/R2 설정 조회
+POST /api/config                    → RunPod 설정 저장
+POST /api/config/r2                 → R2 스토리지 설정 저장
+POST /api/config/download-folder    → 다운로드 폴더 설정
+POST /api/save-to-folder            → 파일을 다운로드 폴더에 복사
+POST /api/upload                    → 파일 업로드 (다중)
+POST /api/upload/chunk              → 청크 업로드 (대용량, 최대 2GB)
+GET  /api/files                     → 업로드 파일 목록
+DELETE /api/files/{id}              → 파일 삭제 (soft delete)
+POST /api/preprocess                → 전처리 시작 (RunPod)
+GET  /api/preprocess/status         → 전처리 상태 조회
+GET  /api/preprocess/download/{fn}  → 전처리 파일 다운로드 (MR/보컬)
+DELETE /api/preprocess              → 전처리 결과 전체 삭제
+POST /api/preprocess/reset          → 선택 파일 전처리 초기화
+POST /api/train                     → 학습 시작 (RunPod)
+POST /api/convert                   → 변환 시작 (RunPod)
+GET  /api/jobs/{id}                 → 작업 상태 조회
+GET  /api/jobs/active               → 현재 실행 중 작업
+GET  /api/jobs                      → 전체 작업 목록
+POST /api/jobs/cleanup              → 작업 정리
+POST /api/jobs/{id}/cancel          → 작업 취소
+POST /api/jobs/{id}/pause           → [제거됨] 410 Gone
+POST /api/jobs/{id}/resume          → [제거됨] 410 Gone
+GET  /api/models                    → 모델 목록
+DELETE /api/models/{id}             → 모델 삭제 (cascade)
+POST /api/models/{id}/rename        → 모델 이름 변경
+POST /api/models/{id}/quality       → 품질 점수 업데이트
+GET  /api/conversions               → 변환 이력
+DELETE /api/conversions/{id}        → 변환 이력 삭제
+GET  /api/download/{name}           → 파일 다운로드
+GET  /api/stats                     → 대시보드 통계
+GET  /api/health                    → 서버/RunPod/DB 상태
+GET  /api/system-info               → 시스템 정보
+POST /api/sync/backup               → 클라우드 백업 (R2)
+POST /api/sync/restore              → 클라우드 복원 (R2)
+GET  /api/sync/status               → 동기화 상태 조회
 ```
