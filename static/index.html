@@ -2996,10 +2996,10 @@ input[type="range"]::-moz-range-track {
       <div style="margin-bottom:16px;padding:12px 14px;border-radius:8px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2)">
         <div style="font-size:12px;font-weight:600;color:#10b981;margin-bottom:8px">✅ 자연스러운 목소리를 위한 권장 설정</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:var(--text2)">
-          <div>• <b>데이터 5분 이하</b>: 에폭 500, 40kHz</div>
-          <div>• <b>데이터 5~15분</b>: 에폭 800, 48kHz</div>
-          <div>• <b>데이터 15분 이상</b>: 에폭 1000, 48kHz</div>
-          <div>• <b>스튜디오 녹음 30분+</b>: 에폭 1500, 48kHz</div>
+          <div>• <b>데이터 10분 이하</b>: 에폭 100~150, 40kHz</div>
+          <div>• <b>데이터 10~25분</b>: 에폭 150 (기본값, 권장)</div>
+          <div>• <b>데이터 25분 이상</b>: 에폭 150~200</div>
+          <div>• <b>스튜디오 녹음 30분+</b>: 에폭 200~300</div>
         </div>
         <div style="margin-top:8px;font-size:11px;color:var(--text3)">
           💡 <b>데이터 품질 최우선</b>: 깨끗한 보컬 10분 > 잡음 있는 보컬 30분. 스튜디오 녹음일수록 자연스러운 결과가 나옵니다.<br>
@@ -3257,8 +3257,8 @@ input[type="range"]::-moz-range-track {
       </div>
       <div class="slider-group">
         <div class="slider-header">
-          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (기본값 0.15)\n• 0.20~0.40 = 자연스러운 AI 목소리\n• 0.45~0.65 = 강한 AI 적용 (추천 범위)\n• 0.70~1.0 = AI 목소리 최대\n\n⚠️ 높을수록 기계적/인공적으로 들릴 수 있습니다.\n💡 기본값 0.15는 원본 발성을 최대한 보존하면서 AI를 적용합니다.">ⓘ</i></span>
-          <span class="slider-value" id="index-val">0.50</span>
+          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존\n• 0.20~0.40 = 자연스러운 AI 목소리 (기본값 0.35, 권장)\n• 0.45~0.65 = 강한 AI 적용\n• 0.70~1.0 = AI 목소리 최대 (아티팩트 주의)\n\n⚠️ 0.9 이상은 아티팩트/버징 위험.\n💡 기본값 0.35는 모델 음색 35% + 원곡 특성 65%의 균형점입니다.">ⓘ</i></span>
+          <span class="slider-value" id="index-val">0.35</span>
         </div>
         <input type="range" id="index-slider" min="0" max="100" value="35" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
         <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.45~0.65 권장)</div>
@@ -3339,16 +3339,16 @@ input[type="range"]::-moz-range-track {
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0~0.2 = 원본 음량 유지 (추천! 자연스러움)\n• 0.3~0.5 = AI가 적당히 음량 조절\n• 0.5 이상 = 강한 음량 조절 (부자연스러울 수 있음)\n\n💡 처음엔 기본값(0.05). 소리가 작거나 크면 0.1~0.2로 조절.">ⓘ</i></span>
-              <span class="slider-value" id="rms-val">0.15</span>
+              <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0~0.2 = 원본 음량 유지 (추천! 자연스러움)\n• 0.3~0.5 = AI가 적당히 음량 조절\n• 0.5 이상 = 강한 음량 조절 (부자연스러울 수 있음)\n\n💡 기본값 0.25 (커뮤니티 권장 0.20~0.25). 소리가 밋밋하면 0.15로 낮추세요.">ⓘ</i></span>
+              <span class="slider-value" id="rms-val">0.25</span>
             </div>
             <input type="range" id="rms-slider" min="0" max="100" value="25" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (기본 0.15, 권장 0.10~0.25, 낮을수록 원본 음량 패턴 유지)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (기본 0.25, 권장 0.20~0.25, 낮을수록 원본 음량 패턴 유지)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음 많은 노래, 빠른 멜로디\n• 3~4 = 일반 노래 (기본 4, 추천)\n• 5~7 = 발라드 등 느린 곡\n\n💡 음정이 '뚝뚝' 끊기면 높이고, 너무 밋밋하면 낮추세요.\n💡 비브라토 보존하려면 4 이하 권장.">ⓘ</i></span>
-              <span class="slider-value" id="filter-val">2</span>
+              <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음 많은 노래, 빠른 멜로디\n• 3~4 = 일반 노래 (기본 3, 추천)\n• 5~7 = 발라드 등 느린 곡\n\n💡 음정이 '뚝뚝' 끊기면 높이고, 너무 밋밋하면 낮추세요.\n💡 비브라토 보존하려면 4 이하 권장.">ⓘ</i></span>
+              <span class="slider-value" id="filter-val">3</span>
             </div>
             <input type="range" id="filter-slider" min="0" max="12" value="3" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
             <div style="font-size:11px;color:var(--text3);margin-top:2px">높을수록 음정이 부드럽게 연결됨 (2 기본, 1~5 권장, 높으면 삑사리↓ 비브라토↓)</div>
@@ -3384,7 +3384,7 @@ input[type="range"]::-moz-range-track {
             <div style="font-size:11px;color:var(--text3);margin-top:2px">AI 특유의 건조한 느낌을 제거하는 미세한 공간감 추가</div>
             <div id="post-reverb-strength-row" style="margin-top:8px;display:none">
               <div class="slider-header">
-                <span class="slider-label" style="font-size:12px;color:var(--text2)">리버브 강도 <i class="tip" data-tip="공간감(리버브)의 세기를 조절합니다.\n\n🔢 설정 가이드:\n• 0.05~0.10 = 작은 스튜디오 느낌 (추천)\n• 0.10~0.20 = 중간 홀 느낌\n• 0.20~0.30 = 큰 공연장 느낌\n\n⚠️ 0.20 이상은 울림이 강해 부자연스러울 수 있습니다.\n💡 처음엔 기본값 0.10 그대로 사용하세요.">ⓘ</i></span>
+                <span class="slider-label" style="font-size:12px;color:var(--text2)">리버브 강도 <i class="tip" data-tip="공간감(리버브)의 세기를 조절합니다.\n\n🔢 설정 가이드:\n• 0.05~0.10 = 작은 스튜디오 느낌 (추천)\n• 0.10~0.20 = 중간 홀 느낌\n• 0.20~0.30 = 큰 공연장 느낌\n\n⚠️ 0.20 이상은 울림이 강해 부자연스러울 수 있습니다.\n💡 처음엔 기본값 0.05 그대로 사용하세요.">ⓘ</i></span>
                 <span class="slider-value" id="post-reverb-strength-val">0.05</span>
               </div>
               <input type="range" id="post-reverb-slider" min="0" max="30" value="5" class="has-fill" aria-label="리버브 강도" oninput="document.getElementById('post-reverb-strength-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
@@ -3795,28 +3795,25 @@ input[type="range"]::-moz-range-track {
       </p>
       <table class="billing-table">
         <thead>
-          <tr><th colspan="6" style="text-align:left;color:var(--text2);font-weight:400;font-size:11px;padding-bottom:4px">⚠️ 2026.03 RTX 4090 실측 데이터 기반 (30분/Crepe/500에폭 = 약 6시간/$15 실측 보정)</th></tr>
+          <tr><th colspan="6" style="text-align:left;color:var(--text2);font-weight:400;font-size:11px;padding-bottom:4px">⚠️ RTX 4090 기준 추정 (v35: KLM49/RIN_E3 pretrained, 기본 150에폭)</th></tr>
         </thead>
         <tbody>
           <tr><th scope="col">데이터</th><th scope="col">에폭</th><th scope="col">F0</th><th scope="col">배치</th><th scope="col">예상 시간</th><th scope="col">RTX 4090 비용</th></tr>
-          <tr><td>3분</td><td>300</td><td>RMVPE</td><td>자동</td><td>약 15~25분</td><td><em>~$0.66~$1.10</em></td></tr>
-          <tr><td>5분</td><td>500</td><td>RMVPE</td><td>자동</td><td>약 45~70분</td><td><em>~$2.00~$3.08</em></td></tr>
-          <tr><td>10분</td><td>500</td><td>RMVPE</td><td>자동</td><td>약 1.5~2.5시간</td><td><em>~$4.00~$6.65</em></td></tr>
-          <tr><td>10분</td><td>500</td><td>Crepe</td><td>자동</td><td>약 1.8~3시간</td><td><em>~$4.80~$7.98</em></td></tr>
-          <tr style="background:rgba(139,92,246,0.08)"><td><b>30분</b></td><td><b>500</b></td><td><b>RMVPE</b></td><td>자동</td><td><b>약 4~7시간</b></td><td><em><b>~$10.64~$18.62</b></em></td></tr>
-          <tr style="background:rgba(245,158,11,0.08)"><td><b>30분</b></td><td><b>500</b></td><td><b>Crepe</b></td><td>자동</td><td><b>약 5~8.5시간</b></td><td><em><b>~$13.30~$22.61</b></em></td></tr>
-          <tr><td>10분</td><td>1000</td><td>RMVPE</td><td>자동</td><td>약 3~4.5시간</td><td><em>~$7.98~$11.97</em></td></tr>
-          <tr><td>20분</td><td>1000</td><td>RMVPE</td><td>16</td><td>약 3.5~5시간</td><td><em>~$9.31~$13.30</em></td></tr>
+          <tr><td>5분</td><td>100</td><td>RMVPE</td><td>4</td><td>약 10~15분</td><td><em>~$0.30~$0.50</em></td></tr>
+          <tr><td>10분</td><td>150</td><td>RMVPE</td><td>4</td><td>약 20~35분</td><td><em>~$0.50~$1.00</em></td></tr>
+          <tr style="background:rgba(139,92,246,0.08)"><td><b>25분</b></td><td><b>150</b></td><td><b>RMVPE</b></td><td><b>4</b></td><td><b>약 40~60분</b></td><td><em><b>~$1.00~$1.60</b></em></td></tr>
+          <tr><td>25분</td><td>200</td><td>RMVPE</td><td>4</td><td>약 55~80분</td><td><em>~$1.40~$2.10</em></td></tr>
+          <tr><td>30분</td><td>300</td><td>RMVPE</td><td>4</td><td>약 2~3시간</td><td><em>~$3.00~$5.00</em></td></tr>
+          <tr style="background:rgba(245,158,11,0.08)"><td>30분</td><td>150</td><td>Crepe</td><td>4</td><td>약 55~85분</td><td><em>~$1.40~$2.25</em></td></tr>
         </tbody>
       </table>
       <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">
         💡 <b>옵션별 영향:</b><br>
-        · <b>에폭:</b> 500→1000으로 늘리면 시간·비용 약 2배. 처음엔 500으로 결과를 확인하세요.<br>
-        · <b>피치 추출 (Crepe vs RMVPE):</b> Crepe는 특징 추출 시간이 RMVPE의 2~3배이며, 학습 품질 차이는 미미합니다. <b>RMVPE 권장.</b><br>
-        · <b>배치 크기 16/24:</b> 자동(8)보다 약 30~50% 빠름. 메모리 오류 시 낮춰야 합니다.<br>
-        · <b>48kHz:</b> 40kHz보다 약 20% 느림. 원본이 48kHz 스튜디오 녹음일 때만 사용하세요.<br>
-        · <b>학습 데이터 양:</b> 10분이면 충분. 30분 이상은 과금이 크게 늘어나므로 에폭을 300~500으로 낮추세요.<br>
-        · <b>실측 기준:</b> 30분 데이터 + Crepe + 500에폭 ≈ 약 6시간, 약 $15 (RTX 4090).
+        · <b>에폭:</b> 150→300으로 늘리면 시간·비용 약 2배. 처음엔 150으로 결과 확인 후 재학습 여부를 결정하세요.<br>
+        · <b>피치 추출 (Crepe vs RMVPE):</b> Crepe는 특징 추출 시간이 RMVPE의 2~3배이며, 품질 차이는 미미합니다. <b>RMVPE 권장.</b><br>
+        · <b>배치 크기:</b> 기본 4 (KLM49 최적). 대용량 데이터 시 8~16으로 올리면 빨라집니다.<br>
+        · <b>과학습 감지:</b> 50에폭 무개선 시 자동 조기 중단되므로 에폭을 높게 설정해도 불필요한 비용이 발생하지 않습니다.<br>
+        · <b>실측 참고:</b> 30분 데이터 + Crepe + 500에폭 ≈ 약 6시간, 약 $15 (2026.03 실측).
       </div>
     </div>
 
@@ -3877,9 +3874,9 @@ input[type="range"]::-moz-range-track {
           <tr><th scope="col">시나리오</th><th scope="col">전처리</th><th scope="col">학습</th><th scope="col">변환×10곡</th><th scope="col">합계</th></tr>
         </thead>
         <tbody>
-          <tr><td>빠른 테스트<br><small style="color:var(--text3)">5분 데이터, 300에폭</small></td><td>~$0.31</td><td>~$1.10</td><td>~$0.35</td><td><em>~$1.76</em></td></tr>
-          <tr><td>일반 사용<br><small style="color:var(--text3)">10분 데이터, 500에폭</small></td><td>~$0.57</td><td>~$3.50</td><td>~$0.45</td><td><em>~$4.52</em></td></tr>
-          <tr><td>고품질<br><small style="color:var(--text3)">15분 데이터, 1000에폭</small></td><td>~$0.84</td><td>~$9.90</td><td>~$0.45</td><td><em>~$11.19</em></td></tr>
+          <tr><td>빠른 테스트<br><small style="color:var(--text3)">5분 데이터, 100에폭</small></td><td>~$0.20</td><td>~$0.35</td><td>~$0.05</td><td><em>~$0.60</em></td></tr>
+          <tr><td>일반 사용<br><small style="color:var(--text3)">25분 데이터, 150에폭</small></td><td>~$0.50</td><td>~$1.20</td><td>~$0.10</td><td><em>~$1.80</em></td></tr>
+          <tr><td>고품질<br><small style="color:var(--text3)">30분 데이터, 300에폭</small></td><td>~$0.60</td><td>~$4.00</td><td>~$0.15</td><td><em>~$4.75</em></td></tr>
         </tbody>
       </table>
     </div>

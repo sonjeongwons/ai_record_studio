@@ -118,7 +118,7 @@ ai_record_studio/
 ├── Dockerfile           # ✅ RunPod Docker 이미지 (멀티스테이지)
 ├── requirements.txt     # ✅ Python 의존성
 ├── pytest.ini           # ✅ 테스트 설정
-├── tests/               # ✅ API 테스트 (18/18 통과)
+├── tests/               # ✅ API 테스트 (34/34 통과)
 ├── .github/workflows/   # ✅ CI/CD (Docker 빌드 + pytest)
 ├── CLAUDE.md            # ✅ Claude Code 하네스 제약 문서
 ├── HANDOFF.md           # ✅ 이 파일 (아키텍처 결정사항)
