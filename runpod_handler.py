@@ -1731,7 +1731,7 @@ def _rvc_extract(
     else:
         # Verify filelist has actual training data (not just mute entries)
         with open(filelist_txt, "r") as f:
-            lines = [l.strip() for l in f if l.strip() and "mute" not in l.lower()]
+            lines = [ln.strip() for ln in f if ln.strip() and "mute" not in ln.lower()]
         log.info(f"filelist.txt: {len(lines)} training entries (excluding mutes)")
         if len(lines) == 0:
             raise RuntimeError(
@@ -1800,7 +1800,7 @@ def _rvc_train(
     filelist_txt = logs_dir / "filelist.txt"
     if filelist_txt.exists():
         with open(filelist_txt, "r") as f:
-            fl_lines = [l.strip() for l in f if l.strip() and "mute" not in l.lower()]
+            fl_lines = [ln.strip() for ln in f if ln.strip() and "mute" not in ln.lower()]
         log.info(f"filelist.txt before training: {len(fl_lines)} entries")
         if not fl_lines:
             raise RuntimeError(
@@ -3377,7 +3377,7 @@ def _rvc_infer(
 
     if cli_result.returncode != 0:
         # Include last 5 lines of stdout for debugging context
-        stdout_lines = [l for l in cli_result.stdout.strip().splitlines() if l.strip()]
+        stdout_lines = [ln for ln in cli_result.stdout.strip().splitlines() if ln.strip()]
         tail = "\n".join(stdout_lines[-5:]) if stdout_lines else "(no stdout)"
         stderr_tail = cli_result.stderr.strip()[-500:] if cli_result.stderr.strip() else ""
         raise RuntimeError(
