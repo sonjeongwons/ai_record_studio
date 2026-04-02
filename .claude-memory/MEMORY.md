@@ -18,8 +18,8 @@
 - `CLAUDE.md` — 하네스 엔지니어링 제약 문서 (린터/테스트 규칙, 컨벤션)
 - `HANDOFF.md` — 전체 아키텍처 결정사항, 비용 분석, 기술 선택 이유
 
-## Current Status (2026-04-02)
-- **v35 모델 "My Voice v35" 학습 완료** (150ep, 21000 steps, KLM49_HFG, Demucs 보컬분리 적용)
+## Current Status (2026-04-03)
+- **v36 모델 "My Voice v36" 학습 완료** (소스 9개 재전처리 + v36 코드로 학습)
 - v35 모델 R2 클라우드 업로드 완료 (index 357MB + pth 53MB)
 - R2 전체: 9,207개 파일, 28.6GB (모델/변환/전처리/학습 데이터 모두 포함)
 - **v36 음질 최적화 전체 적용 완료**:
@@ -84,7 +84,9 @@
 - v31: 48kHz 시도 → 보코더 기계음 악화
 - v32: 40kHz 복원, 300ep → MR 오염 미해결
 - v33 (KLM49): 한국어 pretrained, 150ep, batch4 → 약간 개선, MR 미해결
-- **v35 (현재)**: 전처리에 Demucs 보컬분리 추가 → MR 자동 제거 → **학습 완료 (My Voice v35)**
+- v35: 전처리에 Demucs 보컬분리 추가 → MR 자동 제거 → 학습 완료 (My Voice v35)
+- **v36 (현재)**: BS-Roformer SOTA 분리, rms=0, loudnorm -14 LUFS, 원본 블렌딩 → **학습 완료 (My Voice v36)**
+- **다음: v36 모델로 3곡 변환 (기본값 프리셋)**
 
 ## 타겟 곡 3개
 - "01_Breaking Through (4824 Wave).wav" — 영어, 팝/록, 48kHz/24bit WAV
