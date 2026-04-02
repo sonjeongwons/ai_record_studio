@@ -3108,8 +3108,9 @@ def _sync_upload_dir(s3, bucket: str, local_dir: Path, r2_prefix: str) -> int:
 
 
 def _sync_download_prefix(s3, bucket: str, r2_prefix: str, local_dir: Path) -> int:
-    """R2 prefix 아래 모든 오브젝트를 로컬 디렉토리에 다운로드. 다운로드한 파일 수 반환."""
+    """R2 prefix 아래 오브젝트를 로컬에 다운로드. 이미 동일 파일이 있으면 스킵. 다운로드한 파일 수 반환."""
     count = 0
+    skipped = 0
     local_dir.mkdir(parents=True, exist_ok=True)
     paginator = s3.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket, Prefix=r2_prefix):
@@ -3119,12 +3120,21 @@ def _sync_download_prefix(s3, bucket: str, r2_prefix: str, local_dir: Path) -> i
             if not rel:
                 continue
             dest = local_dir / rel.replace("/", os.sep)
+
+            # 중복 체크: 로컬에 동일 크기 파일이 있으면 스킵
+            if dest.exists() and dest.stat().st_size == obj["Size"]:
+                skipped += 1
+                continue
+
             dest.parent.mkdir(parents=True, exist_ok=True)
             try:
                 s3.download_file(bucket, key, str(dest))
                 count += 1
             except Exception as e:
                 logger.warning("[Sync] Download skip %s: %s", rel, e)
+
+    if skipped > 0:
+        logger.info("[Sync] %s: %d개 다운로드, %d개 중복 스킵", r2_prefix, count, skipped)
     return count
 
 
@@ -3275,8 +3285,8 @@ async def sync_restore():
     result["downloaded"]["urls_refreshed"] = refreshed
 
     total = sum(v for v in result["downloaded"].values() if isinstance(v, int))
-    logger.info("[Sync] 복원 완료: 총 %d개 파일", total)
-    result["message"] = f"복원 완료: 총 {total}개 파일 다운로드됨"
+    logger.info("[Sync] 복원 완료: %d개 파일 다운로드 (중복 파일은 자동 스킵됨)", total)
+    result["message"] = f"복원 완료: {total}개 파일 다운로드 (중복 파일은 자동 스킵)"
     return result
 
 
