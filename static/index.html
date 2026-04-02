@@ -3034,9 +3034,10 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">피치 추출 방식 <i class="tip" data-tip="AI가 목소리의 음 높낮이를 분석하는 방법을 선택합니다.\n\n🔢 추천:\n• RMVPE = 빠르고 정확, 대부분 적합 (추천!)\n• Crepe = 더 정밀하지만 특징 추출이 2~3배 느림\n• Crepe-tiny = Crepe의 가벼운 버전\n\n💰 Crepe는 RMVPE 대비 약 +20% 비용 증가.\n→ 품질 차이는 미미하여 RMVPE 권장.\n💡 학습·변환 시 같은 방식을 사용하세요.">ⓘ</i></label>
           <select id="train-f0" onchange="estimateTrainingCost()">
-            <option value="rmvpe" selected>RMVPE (권장 · 빠르고 비용 절약)</option>
-            <option value="crepe">Crepe (특징 추출 2~3배 느림 · 비용 증가)</option>
-            <option value="crepe-tiny">Crepe-tiny (Crepe보다 빠른 경량 버전)</option>
+            <option value="rmvpe" selected>RMVPE (권장 · 빠르고 안정적)</option>
+            <option value="fcpe">FCPE (풍성한 보컬 · RMVPE 대비 5배 빠름)</option>
+            <option value="crepe">Crepe (섬세한 피치 · 2~3배 느림)</option>
+            <option value="crepe-tiny">Crepe-tiny (Crepe 경량 버전)</option>
           </select>
         </div>
         <div>
@@ -3303,6 +3304,7 @@ input[type="range"]::-moz-range-track {
             </div>
             <select id="convert-f0" onchange="onF0MethodChange()" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px">
               <option value="rmvpe" selected>RMVPE (빠름 · 안정적 · 노래에 권장)</option>
+              <option value="fcpe">FCPE (풍성한 보컬 · RMVPE 대비 5배 빠름)</option>
               <option value="crepe">Crepe ⚠️ (화음/코러스 곡 비권장 · 속도 느림)</option>
               <option value="crepe-tiny">Crepe-tiny ⚠️ (Crepe 경량 버전)</option>
             </select>
@@ -3414,6 +3416,16 @@ input[type="range"]::-moz-range-track {
               </span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">가성·고음의 AI 기계음 완화 — 프레즌스·공기감 보정 (가성 많은 곡에 ON 권장)</div>
+          </div>
+
+          <!-- v36: 원본 보컬 블렌딩 -->
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">원본 보컬 블렌딩 <i class="tip" data-tip="변환된 보컬에 원본 보컬을 살짝 섞어 자연스러움을 높입니다.\n\n📖 원리:\nRVC 변환 시 사라지는 숨소리, 자음 질감, 마이크 뉘앙스를 원본 보컬에서 가져와 복원합니다.\n\n🔢 설정 가이드:\n• 0% = 비활성 (AI 보컬만 사용)\n• 10~15% = 권장 (숨결감 자연 복원)\n• 20~30% = 강한 블렌딩 (원본 색감 더 많이)\n\n💡 기계음이 심할 때 10~15%로 설정하면 크게 개선됩니다.">ⓘ</i></span>
+              <span class="slider-value" id="vocal-blend-val">0%</span>
+            </div>
+            <input type="range" id="vocal-blend-slider" min="0" max="30" value="0" class="has-fill" aria-label="원본 보컬 블렌딩" oninput="document.getElementById('vocal-blend-val').textContent=this.value+'%'; updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">숨결감·자연스러움 복원 — 원본 보컬 10~15% 블렌딩 권장 (0%=비활성)</div>
           </div>
 
           <!-- v22: 화음 필터 -->
@@ -4877,7 +4889,8 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 40,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: 'v36 기본 — rms=0(다이나믹 보존), index 0.40, hop 128'
+      vocalBlend: 10,
+      desc: 'v36 기본 — rms=0, index 0.40, 원본 10% 블렌딩'
     },
     falsetto: {
       // 가성/고음: filter=1(비브라토 보존) + 고음모드 + rms=0
@@ -4885,7 +4898,8 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 35,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: true, harmonyFilter: 0,
-      desc: '가성/고음 — 비브라토 보존, 고음모드 ON, 다이나믹 보존'
+      vocalBlend: 10,
+      desc: '가성/고음 — 비브라토 보존, 고음모드 ON, 원본 10% 블렌딩'
     },
     natural: {
       // 최대 자연스러움: rms=0 + 낮은 index(pretrained 극대화) + hop 128
@@ -4893,7 +4907,8 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 30,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: '최대 자연스러움 — rms=0, index 0.30, 원곡 뉘앙스 극대화'
+      vocalBlend: 15,
+      desc: '최대 자연스러움 — rms=0, index 0.30, 원본 15% 블렌딩'
     },
     studio: {
       // 스튜디오: 기본 + 부드러운 공간감
@@ -4901,7 +4916,8 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 40,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: '스튜디오 품질 — rms=0, index 0.40, 공간감 리버브'
+      vocalBlend: 10,
+      desc: '스튜디오 품질 — rms=0, index 0.40, 공간감 리버브, 원본 10%'
     },
     chorus: {
       // 화음/코러스: 피치 안정화 + index 낮춤 + rms=0
@@ -4909,7 +4925,8 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: '화음/코러스 — 피치 안정화, index 0.25, 다이나믹 보존'
+      vocalBlend: 10,
+      desc: '화음/코러스 — 피치 안정화, index 0.25, 원본 10% 블렌딩'
     },
     indie: {
       // 인디/차분한 곡: rms=0 + 낮은 index + 공간감
@@ -4917,7 +4934,8 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 35,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      desc: '인디/차분한 곡 — rms=0, index 0.35, 공간감'
+      vocalBlend: 15,
+      desc: '인디/차분한 곡 — rms=0, index 0.35, 공간감, 원본 15%'
     },
     chorus_v2: {
       // 화음/그룹 곡 v2 — 기다릴게 분석 기반 + v36 rms=0 적용
@@ -4927,7 +4945,8 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 15,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      desc: '화음 v2 (발음선명) — rms=0, index 0.15, hop 128 (기다릴게 최적)'
+      vocalBlend: 10,
+      desc: '화음 v2 (발음선명) — rms=0, index 0.15, 원본 10% (기다릴게 최적)'
     },
     duet: {
       // 남녀 듀엣곡 — comethru 분석 기반 + v36 rms=0 적용
@@ -4937,7 +4956,8 @@ function applyConvertPreset(preset) {
       clean: false, cleanStr: 70, index: 10,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      desc: '듀엣곡 — rms=0, 여성 timbre 보호, index 0.10 (comethru 최적)'
+      vocalBlend: 15,
+      desc: '듀엣곡 — rms=0, 여성 보호, index 0.10, 원본 15% (comethru 최적)'
     }
   };
   var p = presets[preset];
@@ -4997,6 +5017,12 @@ function applyConvertPreset(preset) {
   if (harmonySlider && p.harmonyFilter !== undefined) {
     harmonySlider.value = p.harmonyFilter;
     document.getElementById('harmony-filter-val').textContent = (p.harmonyFilter / 100).toFixed(2);
+  }
+  // v36: vocal blend
+  var blendSlider = document.getElementById('vocal-blend-slider');
+  if (blendSlider && p.vocalBlend !== undefined) {
+    blendSlider.value = p.vocalBlend;
+    document.getElementById('vocal-blend-val').textContent = p.vocalBlend + '%';
   }
   // 모든 슬라이더 fill 업데이트 (JS로 value 변경 시 CSS fill이 자동 갱신되지 않음)
   document.querySelectorAll('#convert-panel input[type="range"].has-fill').forEach(function(el) {
@@ -6469,6 +6495,8 @@ async function startConversion() {
   form.append('vocal_pitch_pre_shift', parseInt(getVal('vocal-pre-shift-slider', '0')));
   // v22: harmony filter
   form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
+  // v36: 원본 보컬 블렌딩
+  form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
   form.append('audio', convertFile);
 
   try {
@@ -6883,6 +6911,8 @@ async function startBatchConversion() {
       form.append('high_note_mode', batchHighNoteCb ? batchHighNoteCb.checked : false);
       // v22: harmony filter
       form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
+      // v36: 원본 보컬 블렌딩
+      form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
       form.append('audio', batchResults[i].file);
 
       var res = await api('/convert', { method: 'POST', body: form, noTimeout: true });

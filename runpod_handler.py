@@ -260,11 +260,35 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         if not audio_paths:
             raise ValueError("No valid audio files after extraction")
 
-        # --- Step 3: Vocal separation with Demucs htdemucs_ft ---
-        runpod.serverless.progress_update(job, "Separating vocals (Demucs)... (3/6)")
-        separation = _demucs_separate(audio_paths, vocal_dir)
-        vocal_paths = separation["vocals"]
-        accomp_paths = separation["accompaniment"]
+        # --- Step 3: Vocal separation (BS-Roformer → Demucs fallback) ---
+        # v36: BS-Roformer 우선 시도 (SDR 12.9, SOTA) → 더 깨끗한 학습 데이터
+        vocal_paths = []
+        accomp_paths = []
+        _used_roformer = False
+        for ap in audio_paths:
+            try:
+                runpod.serverless.progress_update(job, f"Separating vocals (BS-Roformer)... (3/6) - {ap.name}")
+                roformer_out = ensure_dir(vocal_dir / "roformer")
+                rf_result = _roformer_separate(ap, roformer_out)
+                if rf_result.get("vocals") and rf_result["vocals"].exists():
+                    vocal_paths.append(rf_result["vocals"])
+                    if rf_result.get("accompaniment"):
+                        accomp_paths.append(rf_result["accompaniment"])
+                    _used_roformer = True
+                    log.info(f"BS-Roformer separated: {ap.name}")
+                    continue
+            except Exception as rf_err:
+                log.warning(f"BS-Roformer failed for {ap.name}: {rf_err}")
+            # Demucs fallback
+            log.info(f"Falling back to Demucs for {ap.name}")
+
+        if not vocal_paths:
+            runpod.serverless.progress_update(job, "Separating vocals (Demucs fallback)... (3/6)")
+            separation = _demucs_separate(audio_paths, vocal_dir)
+            vocal_paths = separation["vocals"]
+            accomp_paths = separation["accompaniment"]
+        elif _used_roformer:
+            log.info("All files separated with BS-Roformer (SOTA quality)")
 
         # --- Step 4: Speaker diarization (optional) ---
         runpod.serverless.progress_update(job, "Speaker diarization... (4/6)")
@@ -2224,6 +2248,7 @@ def _post_process_vocal(
     reverb_amount: float = 0.05,
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
+    sample_rate: int = 44100,
 ) -> None:
     """Post-process converted vocal v24 — 자연스러움 최우선.
 
@@ -2312,11 +2337,11 @@ def _post_process_vocal(
         "-i", str(vocal_path),
         "-af", ",".join(filters),
         "-acodec", "pcm_s24le",
-        "-ar", "44100",
+        "-ar", str(sample_rate),
         str(output_path),
     ])
     log.info(
-        f"Vocal post-processed v24 → {output_path.name} "
+        f"Vocal post-processed v36 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
         f"filters={len(filters)})"
     )
@@ -2328,6 +2353,7 @@ def _mix_audio(
     output_path: Path,
     vocal_volume: float = 1.0,
     mr_volume: float = 1.0,
+    sample_rate: int = 44100,
 ) -> None:
     """Mix converted vocals with original accompaniment (MR) v12.
 
@@ -2397,7 +2423,7 @@ def _mix_audio(
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
         f"alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1",
         "-acodec", "pcm_s24le",
-        "-ar", "44100",
+        "-ar", str(sample_rate),
         str(output_path),
     ])
     # 출력 파일 검증
@@ -2745,6 +2771,13 @@ def task_convert(job_input: dict, job: dict) -> dict:
     vocal_volume = max(0.0, min(2.0, vocal_volume))
     mr_volume = max(0.0, min(2.0, mr_volume))
     harmony_filter = max(0.0, min(1.0, harmony_filter))
+    # v36: 원본 보컬 블렌딩 비율 (숨결감/자연스러움 복원)
+    # 0.0=비활성, 0.10~0.20=권장 (원본 보컬의 숨소리/자음 10~20% 혼합)
+    try:
+        vocal_blend: float = float(job_input.get("vocal_blend", 0.0))
+    except (ValueError, TypeError):
+        vocal_blend = 0.0
+    vocal_blend = max(0.0, min(0.3, vocal_blend))
 
     if not pth_b64 and not pth_url:
         raise ValueError("No model provided (pth_data or pth_url required)")
@@ -2810,24 +2843,37 @@ def task_convert(job_input: dict, job: dict) -> dict:
             raw_input = decode_b64_file(audio_b64, work / f"input{input_ext}")
         log.info(f"Audio file ready: {raw_input.stat().st_size / 1024:.1f} KB")
 
+        # v36: 원본 샘플레이트 감지 및 보존
+        # 48kHz WAV 등 고음질 소스의 다운샘플 방지
+        import soundfile as _sf_sr
+        try:
+            _src_info = _sf_sr.info(str(raw_input))
+            _orig_sr = _src_info.samplerate
+        except Exception:
+            _orig_sr = 44100
+        # RVC는 내부적으로 16kHz로 리샘플하지만, 최종 출력은 원본 SR 보존
+        # 중간 처리는 44.1kHz 또는 48kHz 중 원본에 가까운 값 사용
+        _process_sr = 48000 if _orig_sr >= 48000 else 44100
+        log.info(f"Original sample rate: {_orig_sr}Hz → processing at {_process_sr}Hz")
+
         # Normalize to WAV for processing (keep STEREO for Demucs quality)
         # soxr precision=28: 최고품질 리샘플링 — 원음 주파수 특성 최대 보존
-        # pcm_s24le: 24-bit PCM으로 중간 파일 품질 향상 (16-bit 대비 양자화 노이즈 48dB 감소)
+        # pcm_s24le: 24-bit PCM (16-bit 대비 양자화 노이즈 48dB 감소)
         input_stereo = work / "input_stereo.wav"
         run_ffmpeg([
             "-i", str(raw_input),
-            "-af", "aresample=resampler=soxr:precision=28:osr=44100",
+            "-af", f"aresample=resampler=soxr:precision=28:osr={_process_sr}",
             "-acodec", "pcm_s24le",
-            "-ar", "44100",
-            str(input_stereo),  # preserve original channel count (stereo if source is stereo)
+            "-ar", str(_process_sr),
+            str(input_stereo),
         ])
         # Also create mono version for direct RVC use (when skipping Demucs)
         input_wav = work / "input_normalized.wav"
         run_ffmpeg([
             "-i", str(raw_input),
-            "-af", "aresample=resampler=soxr:precision=28:osr=44100",
+            "-af", f"aresample=resampler=soxr:precision=28:osr={_process_sr}",
             "-acodec", "pcm_s24le",
-            "-ar", "44100",
+            "-ar", str(_process_sr),
             "-ac", "1",
             str(input_wav),
         ])
@@ -3007,7 +3053,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                             "-i", str(converted_vocals_path),
                             "-af", f"afade=t=out:st={max(0, _out_dur - 0.5):.2f}:d=0.5,"
                                    f"apad=pad_dur={_missing_sec:.2f}",
-                            "-acodec", "pcm_s24le", "-ar", "44100",
+                            "-acodec", "pcm_s24le", "-ar", str(_process_sr),
                             str(_padded_path),
                         ])
                         if _padded_path.exists() and _padded_path.stat().st_size > 1000:
@@ -3041,6 +3087,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 reverb_amount=post_reverb,
                 harmonic_enhance=harmonic_enhance,
                 high_note_mode=high_note_mode,
+                sample_rate=_process_sr,
             )
             if processed_vocals_path.exists() and processed_vocals_path.stat().st_size > 1000:
                 converted_vocals_path = processed_vocals_path
@@ -3050,6 +3097,31 @@ def task_convert(job_input: dict, job: dict) -> dict:
         except Exception as pp_err:
             log.warning(f"Post-processing failed, using raw RVC output: {pp_err}")
 
+        # --- Step 3c: 원본 보컬 블렌딩 (숨결감/자연스러움 복원) v36 ---
+        # RVC 변환 보컬에 원본 보컬을 vocal_blend 비율로 혼합
+        # 효과: 숨소리, 자음 질감, 마이크 뉘앙스가 자연스럽게 복원됨
+        if vocal_blend > 0.01 and rvc_input.exists():
+            blended_path = work / "vocals_blended.wav"
+            try:
+                _blend_ratio = vocal_blend  # 원본 보컬 비율 (0.1 = 10%)
+                run_ffmpeg([
+                    "-i", str(converted_vocals_path),
+                    "-i", str(rvc_input),
+                    "-filter_complex",
+                    f"[0:a]volume={1.0 - _blend_ratio:.3f}[conv];"
+                    f"[1:a]volume={_blend_ratio:.3f}[orig];"
+                    f"[conv][orig]amix=inputs=2:duration=shortest:normalize=0",
+                    "-acodec", "pcm_s24le", "-ar", str(_process_sr),
+                    str(blended_path),
+                ])
+                if blended_path.exists() and blended_path.stat().st_size > 1000:
+                    converted_vocals_path = blended_path
+                    log.info(f"Vocal blending applied: {_blend_ratio:.0%} original vocal mixed")
+                else:
+                    log.warning("Vocal blending produced empty output, skipping")
+            except Exception as blend_err:
+                log.warning(f"Vocal blending failed: {blend_err}, using unblended vocals")
+
         # --- Step 4: Mix converted vocals + original accompaniment ---
         mixed_path = None
         if accomp_path and accomp_path.exists():
@@ -3057,7 +3129,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
             mixed_path = work / f"mixed_output.{export_format}"
             try:
                 _mix_audio(converted_vocals_path, accomp_path, mixed_path,
-                           vocal_volume=vocal_volume, mr_volume=mr_volume)
+                           vocal_volume=vocal_volume, mr_volume=mr_volume,
+                           sample_rate=_process_sr)
                 if mixed_path.exists():
                     log.info("Mixed output created successfully")
                 else:

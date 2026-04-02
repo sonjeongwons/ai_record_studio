@@ -2451,6 +2451,7 @@ async def start_conversion(
     harmony_filter: float = Form(0.0),
     separate_vocals: str = Form("true"),
     vocal_pitch_pre_shift: int = Form(0),
+    vocal_blend: float = Form(0.0),    # v36: 원본 보컬 블렌딩 비율 (0.0~0.3, 0=비활성)
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2473,7 +2474,7 @@ async def start_conversion(
         raise HTTPException(400, f"Filter Radius는 0~12 사이여야 합니다. (입력: {filter_radius})")
     if hop_length not in (32, 64, 128, 256, 512):
         hop_length = 64  # 잘못된 값은 기본값으로
-    if f0_method not in ("rmvpe", "crepe", "crepe-tiny", "harvest", "pm"):
+    if f0_method not in ("rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"):
         raise HTTPException(400, f"유효하지 않은 F0 방법입니다: {f0_method}")
     if not (0.0 <= vocal_volume <= 2.0):
         raise HTTPException(400, f"보컬 볼륨은 0.0~2.0 사이여야 합니다. (입력: {vocal_volume})")
@@ -2483,6 +2484,7 @@ async def start_conversion(
         raise HTTPException(400, f"Clean Strength는 0.0~1.0 사이여야 합니다. (입력: {clean_strength})")
     if not (0.0 <= post_reverb <= 0.5):
         raise HTTPException(400, f"Post Reverb는 0.0~0.5 사이여야 합니다. (입력: {post_reverb})")
+    vocal_blend = max(0.0, min(0.3, vocal_blend))  # 0~30% 클램프
 
     # FormData boolean 파싱 (JS는 "true"/"false" 문자열 전송)
     clean_audio = _parse_form_bool(clean_audio, False)
@@ -2556,6 +2558,7 @@ async def start_conversion(
             "high_note_mode": high_note_mode,
             "harmony_filter": max(0.0, min(1.0, harmony_filter)),
             "vocal_pitch_pre_shift": max(-12, min(12, vocal_pitch_pre_shift)),
+            "vocal_blend": vocal_blend,
             "bucket_name": r2_bucket,
         }
 
