@@ -141,9 +141,8 @@ RUN python -m pip install --no-cache-dir \
         pydub==0.25.1 \
         numba==0.59.1 \
         pedalboard==0.9.10 \
-    && python -m pip install --no-cache-dir \
-        local_attention \
     && python -m pip install --no-cache-dir --no-deps \
+        local_attention \
         torchcrepe==0.0.22 \
         torchfcpe==0.0.4
 
@@ -294,12 +293,17 @@ print('htdemucs_ft cached successfully.'); \
 
 # -- BS-Roformer SOTA 보컬 분리 모델 (~350 MB) --
 # model_bs_roformer_ep_317_sdr_12.9755: 현재 SOTA (SDR 12.9)
-# audio-separator 패키지가 이 경로에서 모델을 로드
+# audio-separator 패키지의 내장 다운로드 기능 사용 (HuggingFace URL이 자주 변경됨)
+# load_model()이 파일 없으면 자동 다운로드 → 빌드 시 사전 캐시
 RUN mkdir -p /app/models/audio-separator \
-    && wget -q -O /app/models/audio-separator/model_bs_roformer_ep_317_sdr_12.9755.ckpt \
-       "https://huggingface.co/anvuew/dereverb_bs_roformer/resolve/main/model_bs_roformer_ep_317_sdr_12.9755.ckpt" \
-    && ls -lh /app/models/audio-separator/model_bs_roformer_ep_317_sdr_12.9755.ckpt \
-    && echo "BS-Roformer model downloaded successfully"
+    && python -c "\
+from audio_separator.separator import Separator; \
+s = Separator(model_file_dir='/app/models/audio-separator', output_dir='/tmp'); \
+s.load_model('model_bs_roformer_ep_317_sdr_12.9755.ckpt'); \
+print('BS-Roformer model downloaded and loaded successfully'); \
+" \
+    && ls -lh /app/models/audio-separator/*.ckpt \
+    && echo "BS-Roformer model cached"
 
 # -- Verify all models --
 RUN echo "=== MODEL VERIFICATION ===" \
