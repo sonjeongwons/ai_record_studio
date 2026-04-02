@@ -5,6 +5,9 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:docs.applio.org)",
       "Bash(python -m ruff check server.py runpod_handler.py tests/)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\SDS\\.claude\\projects\\c--Users-SDS-ai-record-studio\\memory"
     ]
   }
 }

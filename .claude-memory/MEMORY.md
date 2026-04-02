@@ -22,7 +22,13 @@
 - **v35 모델 "My Voice v35" 학습 완료** (150ep, 21000 steps, KLM49_HFG, Demucs 보컬분리 적용)
 - v35 모델 R2 클라우드 업로드 완료 (index 357MB + pth 53MB)
 - R2 전체: 9,207개 파일, 28.6GB (모델/변환/전처리/학습 데이터 모두 포함)
-- **v36 변환 파라미터 최적화 완료**: rms=0, index 0.40, BS-Roformer, loudnorm
+- **v36 음질 최적화 전체 적용 완료**:
+  - rms=0, index 0.40, protect 0.35, FCPE F0 추가
+  - BS-Roformer SOTA 분리 (전처리+변환, 모델 가중치 Dockerfile 포함)
+  - 2-pass loudnorm -14 LUFS, 원본 보컬 10% 블렌딩
+  - 48kHz SR 보존, 숨소리 보존 강화, 에폭 체크포인트 비교 지원
+- Seed-VC 평가 완료: RVC 유지 결정 (Seed-VC DNSMOS↓, 아카이브됨)
+- YingMusic-SVC: 향후 주목할 차세대 SVC (코드 공개 진행 중)
 - KLM49_HFG (한국어 노래) + RIN_E3 (영어 팝/다국어) 이중 pretrained 지원
 - PC 간 클라우드 동기화 (Cloudflare R2 백업/복원) 구현 완료
 - 테스트 43/43 통과 (pytest)
