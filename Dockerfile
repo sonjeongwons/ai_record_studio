@@ -126,7 +126,9 @@ RUN python -m pip install --no-cache-dir fairseq==0.12.2 \
     || echo "WARNING: fairseq install failed, will rely on Applio bundled version"
 
 # Group 3: faiss (cpu version avoids CUDA build issues)
-RUN python -m pip install --no-cache-dir faiss-cpu==1.8.0
+# faiss-cpu 1.8.0: numpy<2.0 호환 (1.13.x+ 는 numpy>=1.25 요구)
+RUN python -m pip install --no-cache-dir faiss-cpu==1.8.0 \
+    || python -m pip install --no-cache-dir "faiss-cpu<1.9"
 
 # Group 4: Audio/ML tools (pinned for reproducibility)
 # torchfcpe/torchcrepe는 --no-deps로 설치 (torch 2.11.0 끌어오기 방지 — 2.1.0+cu121 유지)
@@ -139,6 +141,8 @@ RUN python -m pip install --no-cache-dir \
         pydub==0.25.1 \
         numba==0.59.1 \
         pedalboard==0.9.10 \
+    && python -m pip install --no-cache-dir \
+        local_attention \
     && python -m pip install --no-cache-dir --no-deps \
         torchcrepe==0.0.22 \
         torchfcpe==0.0.4
