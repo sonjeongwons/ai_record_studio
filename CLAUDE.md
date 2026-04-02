@@ -35,12 +35,19 @@
 
 - ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **43/43 통과**
 - ✅ RunPod Serverless Handler 구현 완료
-- ✅ 네트워크 장애 복원력 (서버 재시작/네트워크 끊김 시 자동 복구)
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원)
-- ✅ 배치 변환 + 변환 프리셋 8종
 - ✅ 보안 감사 완료 (path traversal, XSS, race condition 수정)
-- ✅ **v36 음질 개선**: rms=0 다이나믹 보존, BS-Roformer SOTA 분리, loudnorm 적용
+- ✅ **v36 음질 최적화 (전체 적용 완료)**:
+  - rms=0 (다이나믹 100% 보존), index 0.40, protect 0.35
+  - BS-Roformer SOTA 보컬 분리 (전처리+변환 모두, SDR 12.9)
+  - 2-pass loudnorm -14 LUFS (선형 모드, 다이나믹 보존)
+  - 원본 보컬 10% 블렌딩 (숨결감/자연스러움 복원)
+  - FCPE F0 방법 추가 (풍성한 보컬, 5배 빠름)
+  - 48kHz 샘플레이트 보존 (다운샘플 방지)
+  - 숨소리 보존 강화 (NR 임계값/강도 낮춤)
+  - 에폭 체크포인트 비교 지원
 - ⚠️ **CVE-2025-32434**: PyTorch 2.1.0 RCE — 2.6.0+ 업그레이드 예정
+- 📝 Seed-VC 평가 완료: RVC 유지 결정 (Seed-VC는 DNSMOS↓, 아카이브됨)
 
 ## 4. 변환 파라미터 (v36 — 분석 기반 최적화)
 
