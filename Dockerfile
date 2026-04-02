@@ -75,19 +75,8 @@ RUN python -m pip install --no-cache-dir \
         torchaudio==2.1.0+cu121 \
         --index-url https://download.pytorch.org/whl/cu121
 
-# -- Compatibility shim: Applio uses torch.amp.GradScaler (PyTorch 2.3+ API) --
-# In PyTorch 2.1.x, GradScaler only lives in torch.cuda.amp.
-RUN python -c "\
-import torch, os; \
-amp_init = os.path.join(os.path.dirname(torch.__file__), 'amp', '__init__.py'); \
-f = open(amp_init, 'a'); \
-f.write('\n# Compat shim: GradScaler moved to torch.amp in PyTorch 2.3\n'); \
-f.write('try:\n    from torch.cuda.amp import GradScaler\nexcept ImportError:\n    pass\n'); \
-f.close(); \
-import importlib; importlib.reload(torch.amp); \
-assert hasattr(torch.amp, 'GradScaler'), 'Patch verification failed'; \
-print('torch.amp.GradScaler shim installed OK') \
-"
+# NOTE: torch.amp.GradScaler shim 제거됨 — 순환 import 유발 (torch.__init__ → torch.amp → torch.cuda.amp → torch.amp 재귀)
+# 대신 step 1.3에서 Applio 소스를 직접 패치하여 torch.amp.GradScaler → torch.cuda.amp.GradScaler 치환
 
 # ── 1.3 Clone Applio (RVC v2) ───────────────────────────────────
 WORKDIR /app
@@ -109,18 +98,18 @@ RUN git clone --depth 1 https://github.com/IAHispano/Applio.git /app/Applio \
 # ── 1.4 Applio Python Dependencies ──────────────────────────────
 WORKDIR /app/Applio
 
-# Install Applio requirements (filter out torch/numpy — we pin our own versions)
-# Applio의 최신 requirements.txt가 numpy>=2.3.5 (Python 3.11+), torch>=2.3 등을 요구할 수 있음
-# 우리는 torch==2.1.0+cu121, numpy<2.0 고정이므로 이들을 필터링
+# Install Applio requirements (filter out packages we pin ourselves)
+# Applio 최신판이 Python 3.11+ 전용 버전을 요구하는 패키지들:
+#   torch>=2.3, numpy>=2.3.5, scipy>=1.16.3 → 우리는 Python 3.10이므로 필터링
 RUN if [ -f requirements.txt ]; then \
-        grep -viE "^(torch|numpy)" requirements.txt > /tmp/applio_filtered.txt 2>/dev/null; \
+        grep -viE "^(torch|numpy|scipy)" requirements.txt > /tmp/applio_filtered.txt 2>/dev/null; \
         python -m pip install --no-cache-dir -r /tmp/applio_filtered.txt || true; \
         rm -f /tmp/applio_filtered.txt; \
     fi \
     && if [ -d requirements ]; then \
         for req_file in requirements/*.txt; do \
             if [ -f "$req_file" ]; then \
-                grep -viE "^(torch|numpy)" "$req_file" > /tmp/extra_req.txt 2>/dev/null; \
+                grep -viE "^(torch|numpy|scipy)" "$req_file" > /tmp/extra_req.txt 2>/dev/null; \
                 python -m pip install --no-cache-dir -r /tmp/extra_req.txt || true; \
                 rm -f /tmp/extra_req.txt; \
             fi; \
@@ -144,7 +133,7 @@ RUN python -m pip install --no-cache-dir faiss-cpu==1.8.0
 RUN python -m pip install --no-cache-dir \
         praat-parselmouth==0.4.4 \
         pyworld==0.3.4 \
-        scipy==1.11.4 \
+        scipy==1.13.1 \
         librosa==0.10.2.post1 \
         soundfile==0.12.1 \
         pydub==0.25.1 \
@@ -167,15 +156,23 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
 # ⚠️ audio-separator>=0.25.0은 torch>=2.3 요구하지만 우리는 torch==2.1.0 (Applio 필수).
 #    --no-deps로 설치하고, 실제 필요한 의존성(einops, onnx 등)만 별도 설치.
 #    런타임에 torch 2.1.0으로도 BS-Roformer 추론은 정상 동작.
+# Step A: audio-separator/demucs 런타임 의존성 먼저 설치 (torch 의존 없는 것들)
 RUN python -m pip install --no-cache-dir \
         noisereduce==3.0.2 \
         einops \
         ml_collections \
-    && python -m pip install --no-cache-dir --no-deps \
+        julius \
+        "beartype>=0.18.5,<0.19.0" \
+        "onnx>=1.14" \
+        onnx2torch \
+        "resampy>=0.4" \
+        "rotary-embedding-torch>=0.6.1,<0.7.0" \
+        "samplerate==0.1.0" \
+        diffq dora-search lameenc openunmix treetable
+# Step B: demucs + audio-separator --no-deps (torch 의존성 끌어오기 방지)
+RUN python -m pip install --no-cache-dir --no-deps \
         "git+https://github.com/adefossez/demucs.git" \
         audio-separator==0.25.1 \
-    && python -m pip install --no-cache-dir \
-        diffq dora-search lameenc openunmix treetable \
     && python -c "import demucs; print('demucs OK')" \
     && python -c "from audio_separator.separator import Separator; print('audio-separator OK')"
 
