@@ -272,6 +272,15 @@ model2 = get_model('htdemucs_ft'); \
 print('htdemucs_ft cached successfully.'); \
 "
 
+# -- BS-Roformer SOTA 보컬 분리 모델 (~350 MB) --
+# model_bs_roformer_ep_317_sdr_12.9755: 현재 SOTA (SDR 12.9)
+# audio-separator 패키지가 이 경로에서 모델을 로드
+RUN mkdir -p /app/models/audio-separator \
+    && wget -q -O /app/models/audio-separator/model_bs_roformer_ep_317_sdr_12.9755.ckpt \
+       "https://huggingface.co/anvuew/dereverb_bs_roformer/resolve/main/model_bs_roformer_ep_317_sdr_12.9755.ckpt" \
+    && ls -lh /app/models/audio-separator/model_bs_roformer_ep_317_sdr_12.9755.ckpt \
+    && echo "BS-Roformer model downloaded successfully"
+
 # -- Verify all models --
 RUN echo "=== MODEL VERIFICATION ===" \
     && echo "-- pretrained_v2 --" \
@@ -282,6 +291,8 @@ RUN echo "=== MODEL VERIFICATION ===" \
     && ls -lh /app/Applio/rvc/models/predictors/rmvpe.pt \
     && echo "-- demucs --" \
     && find /app/torch_hub -type f \( -name "*.th" -o -name "*.pt" -o -name "*.yaml" \) | head -10 \
+    && echo "-- bs-roformer --" \
+    && ls -lh /app/models/audio-separator/*.ckpt \
     && echo "=== ALL MODELS VERIFIED ==="
 
 
@@ -353,6 +364,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # ── 2.3 Copy Applio, models, and torch hub from builder ─────────
 COPY --from=builder /app/Applio /app/Applio
 COPY --from=builder /app/torch_hub /app/torch_hub
+COPY --from=builder /app/models /app/models
 
 # ── 2.4 Create non-root user for security ───────────────────────
 # Handler runs as unprivileged user. Models and workspace are

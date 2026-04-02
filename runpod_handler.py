@@ -830,9 +830,9 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
 
             out_path = output_dir / f"{ap.stem}_clean.wav"
 
-            if snr_db > 25:
-                # 높은 SNR (깨끗한 신호) → NR 완전 스킵
-                # Demucs 분리 후 또는 스튜디오 녹음 → 고음 하모닉스 보존 우선
+            if snr_db > 20:
+                # v36: 임계값 25→20dB — BS-Roformer/Demucs 분리 후에는 대부분 깨끗
+                # 불필요한 NR을 줄여 숨소리/자음 질감 최대 보존
                 sf.write(str(out_path), audio_data, samplerate=sr, subtype="FLOAT")
                 cleaned.append(out_path)
                 skipped_clean += 1
@@ -840,17 +840,18 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
                 continue
 
             if snr_db > 15:
-                prop = 0.12  # 매우 약한 NR — 숨소리/가성 고주파 텍스처 최대 보존
+                prop = 0.10  # v36: 0.12→0.10 — 숨소리/가성 고주파 텍스처 최대 보존
             else:
-                prop = 0.20  # 약한 NR — 명백한 노이즈가 있는 소스
+                prop = 0.18  # v36: 0.20→0.18 — 약한 NR, 숨소리 보호 강화
 
             reduced = nr.reduce_noise(
                 y=audio_data,
                 sr=sr,
                 prop_decrease=prop,
-                stationary=False,   # v17: True→False — 음악 소스는 비정상 노이즈 (커뮤니티 권장: 음악에 non-stationary가 적합)
-                n_fft=2048,         # 2048: 46ms 윈도우 — 고음 하모닉스 보존 (4096은 과도한 스펙트럼 평활화)
-                hop_length=128,     # 128: 2.9ms → 더 세밀한 시간적 해상도
+                stationary=False,   # 음악 소스는 비정상 노이즈 (커뮤니티 권장)
+                n_fft=2048,         # 46ms 윈도우 — 고음 하모닉스 보존
+                hop_length=128,     # 2.9ms → 세밀한 시간적 해상도
+                freq_mask_smooth_hz=500,  # v36: 숨소리 보호 — 주파수 마스크 부드럽게 (급격한 컷 방지)
             )
 
             sf.write(str(out_path), reduced, samplerate=sr, subtype="FLOAT")
@@ -1289,12 +1290,28 @@ def task_train(job_input: dict, job: dict) -> dict:
         pth_size_mb = pth_path.stat().st_size / 1024 / 1024
         log.info(f"Uploading model: {pth_path.name} ({pth_size_mb:.1f} MB)")
 
+        # v36: 모든 체크포인트 목록 수집 (에폭별 비교 청취용)
+        _all_checkpoints = []
+        for _ckpt_loc in [logs_dir, logs_dir / "weights",
+                          APPLIO_ROOT / "logs" / model_name / "weights"]:
+            if _ckpt_loc.exists():
+                for _ckpt in _ckpt_loc.glob("*.pth"):
+                    if not _ckpt.stem.startswith(("G_", "D_")):
+                        _all_checkpoints.append({
+                            "filename": _ckpt.name,
+                            "size_mb": round(_ckpt.stat().st_size / 1024 / 1024, 1),
+                            "is_best": "best_epoch" in _ckpt.name,
+                        })
+        _all_checkpoints.sort(key=lambda x: x["filename"])
+        log.info(f"Found {len(_all_checkpoints)} epoch checkpoints for comparison")
+
         result = {
             "model_name": model_name,
             "epochs_trained": epochs,
             "sample_rate": sample_rate,
             "training_time_seconds": round(elapsed, 1),
             "pth_filename": pth_path.name,
+            "checkpoints": _all_checkpoints,  # v36: 에폭별 비교 청취용
         }
 
         # --- Upload strategy: R2 bucket → base64 fallback ---
@@ -2305,12 +2322,7 @@ def _post_process_vocal(
     if high_note_mode:
         filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
 
-    # ━━━ 7. Loudness 노멀라이즈 + 안전 리미터 ━━━
-    # v36: 분석 결과 변환 후 -17~30% 볼륨 저하 확인 → loudnorm으로 보정
-    # loudnorm: EBU R128 표준 기반, -14 LUFS 타겟 (스트리밍 표준)
-    # linear=true: 2-pass 선형 모드로 다이나믹 레인지 보존
-    filters.append("loudnorm=I=-14:TP=-1:LRA=11:linear=true")
-    # 안전 리미터: loudnorm 이후 피크 안전장치
+    # ━━━ 7. 안전 리미터 ━━━
     filters.append("alimiter=limit=0.98:attack=5:release=100:level=disabled")
 
     # ━━━ 6. 리버브 (선택적) ━━━
@@ -2333,17 +2345,69 @@ def _post_process_vocal(
             f"{c5:.4f}|{c6:.4f}|{c7:.4f}|{c8:.4f}"
         )
 
+    # EQ/리미터/리버브 처리
+    _eq_tmp = output_path.with_suffix(".eq.wav")
     run_ffmpeg([
         "-i", str(vocal_path),
         "-af", ",".join(filters),
         "-acodec", "pcm_s24le",
         "-ar", str(sample_rate),
-        str(output_path),
+        str(_eq_tmp),
     ])
+
+    # ━━━ 8. 2-pass Loudness 노멀라이즈 (EBU R128, -14 LUFS) ━━━
+    # v36: 단일 패스 loudnorm linear=true는 측정 데이터 없이 비선형 폴백됨
+    # 2-pass: Pass 1에서 측정 → Pass 2에서 선형 적용 → 다이나믹 레인지 완벽 보존
+    try:
+        import subprocess as _sp
+        import json as _json
+        # Pass 1: 측정
+        _measure_cmd = [
+            "ffmpeg", "-i", str(_eq_tmp), "-hide_banner",
+            "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
+            "-f", "null", "-"
+        ]
+        _measure = _sp.run(_measure_cmd, capture_output=True, text=True, timeout=120)
+        # loudnorm JSON은 stderr 마지막에 출력됨
+        _stderr = _measure.stderr
+        _json_start = _stderr.rfind("{")
+        _json_end = _stderr.rfind("}") + 1
+        if _json_start >= 0 and _json_end > _json_start:
+            _stats = _json.loads(_stderr[_json_start:_json_end])
+            # Pass 2: 측정값으로 선형 노멀라이즈
+            _ln_filter = (
+                f"loudnorm=I=-14:TP=-1:LRA=11:linear=true"
+                f":measured_I={_stats['input_i']}"
+                f":measured_LRA={_stats['input_lra']}"
+                f":measured_TP={_stats['input_tp']}"
+                f":measured_thresh={_stats['input_thresh']}"
+            )
+            run_ffmpeg([
+                "-i", str(_eq_tmp),
+                "-af", _ln_filter,
+                "-acodec", "pcm_s24le",
+                "-ar", str(sample_rate),
+                str(output_path),
+            ])
+            _eq_tmp.unlink(missing_ok=True)
+            log.info(f"2-pass loudnorm applied: {_stats['input_i']} → -14 LUFS")
+        else:
+            # 측정 실패 시 EQ 결과를 그대로 사용
+            _eq_tmp.rename(output_path)
+            log.warning("loudnorm measurement failed, using EQ output as-is")
+    except Exception as _ln_err:
+        # loudnorm 전체 실패 시 EQ 결과를 그대로 사용
+        if _eq_tmp.exists():
+            if not output_path.exists():
+                _eq_tmp.rename(output_path)
+            else:
+                _eq_tmp.unlink(missing_ok=True)
+        log.warning(f"2-pass loudnorm failed: {_ln_err}, using EQ output")
+
     log.info(
         f"Vocal post-processed v36 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
-        f"filters={len(filters)})"
+        f"filters={len(filters)}, loudnorm=2pass)"
     )
 
 
