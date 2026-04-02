@@ -69,5 +69,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=docker-v2
+          cache-to: type=gha,mode=max,scope=docker-v2
+          # scope 변경으로 손상된 이전 캐시 무효화 (blob not found 해결)

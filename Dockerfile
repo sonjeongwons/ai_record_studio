@@ -109,16 +109,18 @@ RUN git clone --depth 1 https://github.com/IAHispano/Applio.git /app/Applio \
 # ── 1.4 Applio Python Dependencies ──────────────────────────────
 WORKDIR /app/Applio
 
-# Install Applio requirements (filter out torch lines to protect our CUDA build)
+# Install Applio requirements (filter out torch/numpy — we pin our own versions)
+# Applio의 최신 requirements.txt가 numpy>=2.3.5 (Python 3.11+), torch>=2.3 등을 요구할 수 있음
+# 우리는 torch==2.1.0+cu121, numpy<2.0 고정이므로 이들을 필터링
 RUN if [ -f requirements.txt ]; then \
-        grep -vi "^torch" requirements.txt > /tmp/applio_filtered.txt 2>/dev/null; \
+        grep -viE "^(torch|numpy)" requirements.txt > /tmp/applio_filtered.txt 2>/dev/null; \
         python -m pip install --no-cache-dir -r /tmp/applio_filtered.txt || true; \
         rm -f /tmp/applio_filtered.txt; \
     fi \
     && if [ -d requirements ]; then \
         for req_file in requirements/*.txt; do \
             if [ -f "$req_file" ]; then \
-                grep -vi "^torch" "$req_file" > /tmp/extra_req.txt 2>/dev/null; \
+                grep -viE "^(torch|numpy)" "$req_file" > /tmp/extra_req.txt 2>/dev/null; \
                 python -m pip install --no-cache-dir -r /tmp/extra_req.txt || true; \
                 rm -f /tmp/extra_req.txt; \
             fi; \
