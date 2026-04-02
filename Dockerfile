@@ -142,7 +142,7 @@ RUN python -m pip install --no-cache-dir \
         numba==0.59.1 \
         pedalboard==0.9.10 \
     && python -m pip install --no-cache-dir --no-deps \
-        local_attention \
+        "local_attention==1.9.0" \
         torchcrepe==0.0.22 \
         torchfcpe==0.0.4
 
