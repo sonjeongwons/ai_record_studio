@@ -3068,20 +3068,42 @@ def _r2_key_from_presigned(url: str, bucket: str) -> str:
 
 
 def _sync_upload_dir(s3, bucket: str, local_dir: Path, r2_prefix: str) -> int:
-    """로컬 디렉토리의 모든 파일을 R2에 업로드. 업로드한 파일 수 반환."""
+    """로컬 디렉토리의 파일을 R2에 업로드. 이미 동일 파일이 있으면 스킵. 업로드한 파일 수 반환."""
     count = 0
+    skipped = 0
     if not local_dir.exists():
         return count
+
+    # R2에 이미 존재하는 파일 목록 (key → size) 미리 조회
+    existing: dict[str, int] = {}
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=r2_prefix):
+            for obj in page.get("Contents", []):
+                existing[obj["Key"]] = obj["Size"]
+    except Exception as e:
+        logger.debug("[Sync] R2 목록 조회 실패 (전체 업로드 진행): %s", e)
+
     for fpath in local_dir.rglob("*"):
         if not fpath.is_file():
             continue
         rel = fpath.relative_to(local_dir).as_posix()
         key = f"{r2_prefix}{rel}"
+        local_size = fpath.stat().st_size
+
+        # 중복 체크: R2에 동일 key + 동일 크기 파일이 있으면 스킵
+        if key in existing and existing[key] == local_size:
+            skipped += 1
+            continue
+
         try:
             s3.upload_file(str(fpath), bucket, key)
             count += 1
         except Exception as e:
             logger.warning("[Sync] Upload skip %s: %s", rel, e)
+
+    if skipped > 0:
+        logger.info("[Sync] %s: %d개 업로드, %d개 중복 스킵", r2_prefix, count, skipped)
     return count
 
 
@@ -3163,8 +3185,8 @@ async def sync_backup():
         result["uploaded"]["config"] = True
 
     total = sum(v for v in result["uploaded"].values() if isinstance(v, int))
-    logger.info("[Sync] 백업 완료: 총 %d개 파일", total)
-    result["message"] = f"백업 완료: 총 {total}개 파일 업로드됨"
+    logger.info("[Sync] 백업 완료: %d개 파일 업로드 (중복 파일은 자동 스킵됨)", total)
+    result["message"] = f"백업 완료: {total}개 파일 업로드 (중복 파일은 자동 스킵)"
     return result
 
 
