@@ -3257,11 +3257,11 @@ input[type="range"]::-moz-range-track {
       </div>
       <div class="slider-group">
         <div class="slider-header">
-          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존\n• 0.20~0.40 = 자연스러운 AI 목소리 (기본값 0.35, 권장)\n• 0.45~0.65 = 강한 AI 적용\n• 0.70~1.0 = AI 목소리 최대 (아티팩트 주의)\n\n⚠️ 0.9 이상은 아티팩트/버징 위험.\n💡 기본값 0.35는 모델 음색 35% + 원곡 특성 65%의 균형점입니다.">ⓘ</i></span>
-          <span class="slider-value" id="index-val">0.35</span>
+          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.20~0.35 = 자연스러운 AI 목소리\n• 0.35~0.50 = 권장 범위 (기본값 0.40)\n• 0.50~1.0 = 강한 AI 적용 (아티팩트 주의)\n\n💡 기본값 0.40는 모델 음색 40% + 원곡 특성 60%의 균형점입니다.\n커뮤니티 권장: 0.30~0.50">ⓘ</i></span>
+          <span class="slider-value" id="index-val">0.40</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="35" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.45~0.65 권장)</div>
+        <input type="range" id="index-slider" min="0" max="100" value="40" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.30~0.50 권장)</div>
       </div>
       <!-- Advanced settings (collapsible) -->
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
@@ -3332,18 +3332,18 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.40 = 기본값 (한국어 커뮤니티 권장 0.33~0.40)\n• 0.40~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.35 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.40~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.40에서 조금씩 낮추기">ⓘ</i></span>
-              <span class="slider-value" id="protect-val">0.40</span>
+              <span class="slider-value" id="protect-val">0.35</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="50" value="40" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 원본 질감 보존 (한국어 노래 권장: 0.33~0.40, 기본 0.40)</div>
+            <input type="range" id="protect-slider" min="0" max="50" value="35" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 원본 질감 보존 (한국어 노래 권장: 0.33~0.40, 기본 0.35)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0~0.2 = 원본 음량 유지 (추천! 자연스러움)\n• 0.3~0.5 = AI가 적당히 음량 조절\n• 0.5 이상 = 강한 음량 조절 (부자연스러울 수 있음)\n\n💡 기본값 0.25 (커뮤니티 권장 0.20~0.25). 소리가 밋밋하면 0.15로 낮추세요.">ⓘ</i></span>
-              <span class="slider-value" id="rms-val">0.25</span>
+              <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0 = 원본 다이나믹 100% 보존 (기본값, 강력 권장!)\n• 0.1~0.2 = 약간의 모델 다이나믹 반영\n• 0.3 이상 = 다이나믹 레인지 압축 (기계음 원인!)\n\n⚠️ 이 값이 기계음의 최대 원인입니다.\n💡 0.0으로 두면 원곡의 속삭임/외침 강약이 그대로 보존됩니다.">ⓘ</i></span>
+              <span class="slider-value" id="rms-val">0.00</span>
             </div>
-            <input type="range" id="rms-slider" min="0" max="100" value="25" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">원본 다이나믹 보존 (기본 0.25, 권장 0.20~0.25, 낮을수록 원본 음량 패턴 유지)</div>
+            <input type="range" id="rms-slider" min="0" max="100" value="0" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">⚠️ 0이 가장 자연스러움! 높일수록 다이나믹 압축 → 기계음 증가 (기본 0.00)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4871,74 +4871,73 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // v35 KLM49: 한국어 노래 index 0.35 (pretrained 보컬 범위 활용), filter 3, rms 0.25
-      f0: 'rmvpe', protect: 33, rms: 25, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 35,
-      postReverb: 5, useReverb: false, harmonicEnhance: false,
+      // v36 기본: rms=0(원곡 다이나믹 100% 보존), index 0.40(음색↑), protect 0.35
+      // v35→v36: rms 0.25→0, index 0.35→0.40, protect 0.33→0.35 (분석 기반 최적화)
+      f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
+      clean: false, cleanStr: 70, index: 40,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: 'v35 기본 — KLM49 최적화, index 0.35, filter 3'
+      desc: 'v36 기본 — rms=0(다이나믹 보존), index 0.40, hop 128'
     },
     falsetto: {
-      // 가성/고음: filter=1(비브라토 보존) + 고음모드
-      f0: 'rmvpe', protect: 40, rms: 15, filter: 1, hop: 0,
-      clean: false, cleanStr: 70, index: 30,
-      postReverb: 3, useReverb: false, harmonicEnhance: false,
+      // 가성/고음: filter=1(비브라토 보존) + 고음모드 + rms=0
+      f0: 'rmvpe', protect: 40, rms: 0, filter: 1, hop: 0,
+      clean: false, cleanStr: 70, index: 35,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: true, harmonyFilter: 0,
-      desc: '가성/고음 최적화 — 피치 스무딩 최소, 비브라토 보존, 고음모드 ON'
+      desc: '가성/고음 — 비브라토 보존, 고음모드 ON, 다이나믹 보존'
     },
     natural: {
-      // Natural v35: 최대 자연스러움, pretrained 활용 극대화
-      f0: 'rmvpe', protect: 33, rms: 20, filter: 3, hop: 1,
+      // 최대 자연스러움: rms=0 + 낮은 index(pretrained 극대화) + hop 128
+      f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
+      clean: false, cleanStr: 70, index: 30,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
+      highNote: false, harmonyFilter: 0,
+      desc: '최대 자연스러움 — rms=0, index 0.30, 원곡 뉘앙스 극대화'
+    },
+    studio: {
+      // 스튜디오: 기본 + 부드러운 공간감
+      f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
+      clean: false, cleanStr: 70, index: 40,
+      postReverb: 5, useReverb: true, harmonicEnhance: false,
+      highNote: false, harmonyFilter: 0,
+      desc: '스튜디오 품질 — rms=0, index 0.40, 공간감 리버브'
+    },
+    chorus: {
+      // 화음/코러스: 피치 안정화 + index 낮춤 + rms=0
+      f0: 'rmvpe', protect: 40, rms: 0, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      desc: '최대 자연스러움 — index 0.25, pretrained 보컬 극대화'
-    },
-    studio: {
-      // Studio v35: KLM49 + 리버브 공간감
-      f0: 'rmvpe', protect: 33, rms: 25, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 35,
-      postReverb: 5, useReverb: true, harmonicEnhance: false,
-      highNote: false, harmonyFilter: 0,
-      desc: '스튜디오 품질 — KLM49 최적화, index 0.35, 공간감'
-    },
-    chorus: {
-      // 화음/코러스: filter 3(피치 안정화) + index 낮춤
-      f0: 'rmvpe', protect: 40, rms: 18, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 20,
-      postReverb: 3, useReverb: false, harmonicEnhance: false,
-      highNote: false, harmonyFilter: 0,
-      desc: '화음/코러스 곡 — 피치 안정화(filter 3), 인덱스 낮춤'
+      desc: '화음/코러스 — 피치 안정화, index 0.25, 다이나믹 보존'
     },
     indie: {
-      // 인디/차분한 곡 v35 — 낮은 index + 공간감
-      f0: 'rmvpe', protect: 33, rms: 25, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 30,
+      // 인디/차분한 곡: rms=0 + 낮은 index + 공간감
+      f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
+      clean: false, cleanStr: 70, index: 35,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      desc: '인디/차분한 곡 — index 0.30, KLM49 공간감'
+      desc: '인디/차분한 곡 — rms=0, index 0.35, 공간감'
     },
     chorus_v2: {
-      // 화음/그룹 곡 v2 — 기다릴게 분석 기반 (발음 뭉개짐+삑사리 문제 수정)
-      // index 0.10: HFC 손실 완화 (발음 선명도 우선)
-      // filter 3: v21 복원 — v20 filter=5가 RVC 합성 상호작용 시 역효과 확인
-      // hop 128(index 2): 시간 평균화로 화음 변환 안정화
-      // v23: HPSS 제거 — 자음/발음 파괴 확인됨
-      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
-      clean: false, cleanStr: 70, index: 10,
-      postReverb: 3, useReverb: false, harmonicEnhance: false,
+      // 화음/그룹 곡 v2 — 기다릴게 분석 기반 + v36 rms=0 적용
+      // index 0.15: v35의 0.10에서 약간 올림 (HFC 손실 완화 + 음색 반영)
+      // hop 128: 시간 평균화로 화음 변환 안정화
+      f0: 'rmvpe', protect: 40, rms: 0, filter: 3, hop: 2,
+      clean: false, cleanStr: 70, index: 15,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      desc: '화음 v2 (발음선명) — index↓, hop↑, filter 3 (기다릴게 최적)'
+      desc: '화음 v2 (발음선명) — rms=0, index 0.15, hop 128 (기다릴게 최적)'
     },
     duet: {
-      // 남녀 듀엣곡 — comethru 분석 기반
-      // index 0.08: 여성 음색 강제 변환 최소화 (가래낀 소리 감소)
-      // v23: HPSS 제거 — 자음/발음 파괴 확인됨
-      f0: 'rmvpe', protect: 45, rms: 18, filter: 3, hop: 1,
-      clean: false, cleanStr: 70, index: 8,
+      // 남녀 듀엣곡 — comethru 분석 기반 + v36 rms=0 적용
+      // index 0.10: 여성 음색 강제 변환 최소화 (v35의 0.08에서 약간 올림)
+      // protect 0.45: 여성 timbre 보호 극대화
+      f0: 'rmvpe', protect: 45, rms: 0, filter: 3, hop: 2,
+      clean: false, cleanStr: 70, index: 10,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      desc: '듀엣곡 — 여성 timbre 보호, index↓ (comethru 최적)'
+      desc: '듀엣곡 — rms=0, 여성 timbre 보호, index 0.10 (comethru 최적)'
     }
   };
   var p = presets[preset];

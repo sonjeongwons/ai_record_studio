@@ -2435,14 +2435,14 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.35),   # v35: 한국어 커뮤니티 최적값
+    index_rate: float = Form(0.40),   # v36: 0.35→0.40 (장홍권 음색 더 반영, 커뮤니티 0.3-0.5 권장)
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.40),        # v17: 0.50→0.40 (한국어 노래 커뮤니티 권장 0.33-0.40)
-    rms_mix_rate: float = Form(0.25),   # v35: 커뮤니티 권장 0.20-0.25 (원곡 다이나믹스 75% 보존)
+    protect: float = Form(0.35),        # v36: 0.40→0.35 (자음/숨소리 보호 + 자연스러운 전환)
+    rms_mix_rate: float = Form(0.0),    # v36: 0.25→0.0 (원곡 다이나믹스 100% 보존 — 기계음 최대 원인)
     filter_radius: int = Form(3),
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),

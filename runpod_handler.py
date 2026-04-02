@@ -478,6 +478,48 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
             cleanup_gpu()
 
 
+def _roformer_separate(audio_path: Path, output_dir: Path) -> dict:
+    """BS-Roformer SOTA 보컬 분리 (audio-separator 패키지, SDR 12.9).
+    Demucs(SDR ~8.5)보다 훨씬 깨끗한 보컬 분리.
+    Returns dict with "vocals" and "accompaniment" paths (or None).
+    """
+    try:
+        from audio_separator.separator import Separator
+    except ImportError:
+        log.warning("audio-separator not installed, falling back to Demucs")
+        return {"vocals": None, "accompaniment": None}
+
+    ensure_dir(output_dir)
+    try:
+        separator = Separator(
+            output_dir=str(output_dir),
+            output_format="wav",
+            # BS-Roformer-ViperX-1297: 현재 SOTA 보컬 분리 모델
+            model_file_dir="/app/models/audio-separator",
+        )
+        separator.load_model("model_bs_roformer_ep_317_sdr_12.9755.ckpt")
+        result = separator.separate(str(audio_path))
+
+        vocal_path = None
+        accomp_path = None
+        for f in result:
+            fp = Path(f)
+            if "vocal" in fp.name.lower() or "primary" in fp.name.lower():
+                vocal_path = fp
+            elif "instrument" in fp.name.lower() or "secondary" in fp.name.lower():
+                accomp_path = fp
+
+        if vocal_path and vocal_path.exists():
+            log.info(f"BS-Roformer separated: vocal={vocal_path.name}, accomp={accomp_path}")
+            return {"vocals": vocal_path, "accompaniment": accomp_path}
+        else:
+            log.warning("BS-Roformer produced no vocals output")
+            return {"vocals": None, "accompaniment": None}
+    except Exception as e:
+        log.warning(f"BS-Roformer separation failed: {e}, falling back to Demucs")
+        return {"vocals": None, "accompaniment": None}
+
+
 def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     """
     Run Demucs htdemucs_6s model to separate vocals from accompaniment (v18: 6-stem).
@@ -2227,18 +2269,23 @@ def _post_process_vocal(
     # 7.5kHz: HiFi-GAN 금속성만 최소 보정
     filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-0.8")
 
-    # ━━━ 5. Presence/Air 미세 보상 ━━━
-    # v34: +1.5→+1.0 (v33에서 과부스트 → SC +344Hz 증가 = 밝기 과다)
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.0")
-    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=1.0")
+    # ━━━ 5. Presence/Air 보상 ━━━
+    # v36: 분석 결과 2-4kHz 존재감 -2.3% 손실 확인 → 부스트 1.0→1.5dB
+    # 3.2kHz: 보컬 명료도(presence) 핵심 대역
+    # 10kHz: 숨소리/공기감(air) — HiFi-GAN이 삼키는 영역
+    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.5")
+    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=1.2")
 
     # ━━━ 6. 고음/가성 모드 ━━━
     if high_note_mode:
         filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
 
-    # ━━━ 7. 안전 리미터 (소프트 새츄레이션 제거) ━━━
-    # v34: asoftclip 제거 — 디지털감 완화보다 자연스러움 보존이 우선
-    # asoftclip이 피크 부근에서 미세하게 파형을 왜곡 → AI스러움의 한 원인
+    # ━━━ 7. Loudness 노멀라이즈 + 안전 리미터 ━━━
+    # v36: 분석 결과 변환 후 -17~30% 볼륨 저하 확인 → loudnorm으로 보정
+    # loudnorm: EBU R128 표준 기반, -14 LUFS 타겟 (스트리밍 표준)
+    # linear=true: 2-pass 선형 모드로 다이나믹 레인지 보존
+    filters.append("loudnorm=I=-14:TP=-1:LRA=11:linear=true")
+    # 안전 리미터: loudnorm 이후 피크 안전장치
     filters.append("alimiter=limit=0.98:attack=5:release=100:level=disabled")
 
     # ━━━ 6. 리버브 (선택적) ━━━
@@ -2613,14 +2660,13 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 기본값 0.35: 한국어 커뮤니티 최적값 (v35)
-    # 모델 음색 35% + 원곡 특성 65% — 자연스러운 변환
-    # 커뮤니티 권장 범위: 0.20-0.50 (너무 높으면 아티팩트/버징, 너무 낮으면 음색 부족)
-    # UI 프리셋에서 장르별로 조절: 자연(0.25), 기본(0.35), 코러스(0.20), 듀엣(0.08)
+    # index_rate 기본값 0.40: v36 최적값 (이전 0.35)
+    # 모델 음색 40% + 원곡 특성 60% — 음색 반영 강화 (커뮤니티 0.3-0.5 권장)
+    # UI 프리셋에서 장르별로 조절: 자연(0.30), 기본(0.40), 코러스(0.25), 듀엣(0.10)
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.35))
+        index_rate: float = float(job_input.get("index_rate", 0.40))
     except (ValueError, TypeError):
-        index_rate = 0.35
+        index_rate = 0.40
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
     f0_method: str = job_input.get("f0_method", "rmvpe")
@@ -2632,20 +2678,18 @@ def task_convert(job_input: dict, job: dict) -> dict:
         filter_radius: int = int(job_input.get("filter_radius", 3))
     except (ValueError, TypeError):
         filter_radius = 3
-    # rms_mix_rate 0.15: v24 — 원곡 다이나믹스 85% 보존 (v17: 0.20→v24: 0.15, 더 자연스러운 강약)
-    # 0.10(기존): 너무 낮음 → 과도하게 플랫한 다이나믹스, 음악적 숨결/강약 소실
-    # 0.20: 커뮤니티 권장 0.20-0.25 범위 — 자연스러운 원곡 강약 유지 + 모델 보컬 특성 반영
-    # 0.25: 더 강한 보컬 개성, 원곡 다이나믹스 일부 희생 (향후 옵션)
+    # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
+    # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
+    # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과
+    # 커뮤니티 권장: 0.0 (원곡 다이나믹 보존) 또는 0.1 (약간의 모델 다이나믹 반영)
     try:
-        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.25))
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.0))
     except (ValueError, TypeError):
-        rms_mix_rate = 0.25
-    # protect 0.40: v17 — 한국어 노래 최적화
-    # 0.50(기존): 과보호 → 유성음/무성음 경계에서 부자연스러운 전환, 자음 딱딱함
-    # 0.40: 커뮤니티 권장 0.33-0.40 범위 — 한국어 빈번한 유/무성 전환에 자연스러운 보컬
-    # 0.33: 더 자연스러운 전환, 다이나믹스 위험은 낮음 (향후 실험 가능)
+        rms_mix_rate = 0.0
+    # protect 0.35: v36 — 자음/숨소리 보호 + 자연스러운 유/무성 전환 (이전 0.40)
+    # 커뮤니티 권장 0.33-0.40 범위 중 0.35: 한국어 빈번한 자음 보호 + 자연스러움 균형
     try:
-        protect: float = float(job_input.get("protect", 0.40))
+        protect: float = float(job_input.get("protect", 0.35))
     except (ValueError, TypeError):
         protect = 0.40
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
@@ -2788,23 +2832,38 @@ def task_convert(job_input: dict, job: dict) -> dict:
             str(input_wav),
         ])
 
-        # --- Step 2: Vocal separation with Demucs ---
+        # --- Step 2: Vocal separation (BS-Roformer → Demucs fallback) ---
         accomp_path = None
         if separate_vocals:
-            runpod.serverless.progress_update(job, "Separating vocals (Demucs)... (2/4)")
-            demucs_dir = ensure_dir(work / "demucs")
-            # Use STEREO input for Demucs — stereo cues improve separation quality
-            separation = _demucs_separate([input_stereo], demucs_dir)
+            # v36: BS-Roformer 우선 시도 (SDR 12.9, SOTA)
+            # 실패 시 Demucs로 폴백 (SDR ~8.5, 안정적)
+            roformer_result = None
+            try:
+                runpod.serverless.progress_update(job, "Separating vocals (BS-Roformer)... (2/4)")
+                roformer_dir = ensure_dir(work / "roformer")
+                roformer_result = _roformer_separate(input_stereo, roformer_dir)
+            except Exception as e:
+                log.warning(f"BS-Roformer attempt failed: {e}")
 
-            if separation["vocals"]:
-                rvc_input = separation["vocals"][0]
+            if roformer_result and roformer_result.get("vocals"):
+                rvc_input = roformer_result["vocals"]
+                accomp_path = roformer_result.get("accompaniment")
+                log.info("Using BS-Roformer separation (SOTA quality)")
             else:
-                log.warning("Demucs produced no vocals, using original audio for RVC")
-                rvc_input = input_wav
+                # Demucs fallback
+                runpod.serverless.progress_update(job, "Separating vocals (Demucs)... (2/4)")
+                demucs_dir = ensure_dir(work / "demucs")
+                separation = _demucs_separate([input_stereo], demucs_dir)
 
-            if separation["accompaniment"]:
-                accomp_path = separation["accompaniment"][0]
-                log.info(f"Accompaniment saved: {accomp_path.name}")
+                if separation["vocals"]:
+                    rvc_input = separation["vocals"][0]
+                else:
+                    log.warning("Demucs produced no vocals, using original audio for RVC")
+                    rvc_input = input_wav
+
+                if separation["accompaniment"]:
+                    accomp_path = separation["accompaniment"][0]
+                    log.info(f"Accompaniment saved: {accomp_path.name}")
         else:
             rvc_input = input_wav
 

@@ -155,15 +155,14 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
     || python -m pip install --no-cache-dir onnxruntime-gpu \
     || python -m pip install --no-cache-dir onnxruntime
 
-# ── 1.6 Audio ML Tools (Demucs + noisereduce) ───────────────────
-# Install demucs from GitHub main branch (v4.1.0a2+) — PyPI v4.0.1
-# does NOT have demucs.api module which our handler requires.
-# NOTE: pyannote.audio EXCLUDED — requires torchaudio>=2.2.0 which
-#       conflicts with demucs (torchaudio<2.2) and torch 2.1.0.
-#       Handler already handles pyannote absence gracefully (ImportError skip).
+# ── 1.6 Audio ML Tools (Demucs + noisereduce + audio-separator) ──
+# Demucs: from GitHub main (v4.1.0a2+) — PyPI v4.0.1 lacks demucs.api
+# audio-separator: BS-Roformer/MDX-Net SOTA 보컬 분리 (SDR 12.9, Demucs보다 우수)
+#   전처리에서 더 깨끗한 보컬 분리 → 학습 데이터 품질↑ → 기계음 감소
 RUN python -m pip install --no-cache-dir \
         "git+https://github.com/adefossez/demucs.git" \
-        noisereduce==3.0.2
+        noisereduce==3.0.2 \
+        audio-separator[gpu]==0.25.3
 
 # CRITICAL: Re-pin NumPy <2.0 AFTER all other installs.
 # PyTorch 2.1.0 was compiled with NumPy 1.x C API.
