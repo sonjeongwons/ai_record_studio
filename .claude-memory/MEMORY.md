@@ -31,6 +31,7 @@
 - YingMusic-SVC: 향후 주목할 차세대 SVC (코드 공개 진행 중)
 - KLM49_HFG (한국어 노래) + RIN_E3 (영어 팝/다국어) 이중 pretrained 지원
 - PC 간 클라우드 동기화 (Cloudflare R2 백업/복원) 구현 완료
+  - R2 백업/복원 시 **중복 파일 자동 스킵** (key+size 비교, 변경분만 전송)
 - 테스트 43/43 통과 (pytest)
 - ruff + bandit 정적 분석 클린
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정
