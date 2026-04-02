@@ -31,26 +31,29 @@
 | CI/CD | GitHub Actions (Docker 빌드 + pytest) |
 | 정적분석 | ruff (린터) + bandit (보안) |
 
-## 3. 현재 상태 (2026-04-01)
+## 3. 현재 상태 (2026-04-02)
 
 - ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **43/43 통과**
 - ✅ RunPod Serverless Handler 구현 완료
 - ✅ 네트워크 장애 복원력 (서버 재시작/네트워크 끊김 시 자동 복구)
-- ✅ 구조화 로깅, 장함수 리팩토링, 에러 처리 개선
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원)
 - ✅ 배치 변환 + 변환 프리셋 8종
 - ✅ 보안 감사 완료 (path traversal, XSS, race condition 수정)
+- ✅ **v36 음질 개선**: rms=0 다이나믹 보존, BS-Roformer SOTA 분리, loudnorm 적용
 - ⚠️ **CVE-2025-32434**: PyTorch 2.1.0 RCE — 2.6.0+ 업그레이드 예정
 
-## 4. 학습 파라미터 (v35 — 한국어 커뮤니티 최적값)
+## 4. 변환 파라미터 (v36 — 분석 기반 최적화)
 
-| 파라미터 | 값 |
-|----------|-----|
-| Pretrained | **KLM49_HFG** (한국어) / **RIN_E3** (다국어/팝송) — UI에서 선택 |
-| Epochs | 150, Batch: 4, Sample rate: 40kHz |
-| F0 | RMVPE, Embedder: ContentVec (768-dim) |
-| index_rate | 0.35, rms_mix_rate: 0.25, filter_radius: 3 |
-| Overtraining detector | 50 epoch threshold |
+| 파라미터 | 값 | 변경 이유 |
+|----------|-----|-----------|
+| Pretrained | **KLM49_HFG** (한국어) / **RIN_E3** (다국어) | |
+| Epochs | 150, Batch: 4, SR: 40kHz | |
+| F0 | RMVPE | |
+| **index_rate** | **0.40** (이전 0.35) | 음색 반영 강화 (커뮤니티 0.3-0.5) |
+| **rms_mix_rate** | **0.0** (이전 0.25) | 원곡 다이나믹 100% 보존 (기계음 최대 원인) |
+| **protect** | **0.35** (이전 0.40) | 자음 보호 + 자연스러운 전환 |
+| 보컬 분리 | **BS-Roformer → Demucs** 폴백 | SDR 12.9 (SOTA) |
+| 후처리 | loudnorm -14 LUFS + presence +1.5dB | 볼륨/명료도 보정 |
 
 ## 5. 컨벤션
 
@@ -116,10 +119,15 @@ librosa STFT phase vocoder가 formant 미보존 → 이중 적용(pre+post) 시 
 4개 에이전트 병렬 감사: 보안 9건(path traversal, XSS, race condition), 버그 3건 수정. 테스트 34→43. CVE-2025-32434 인지.
 > 상세: `.claude-memory/project_code_audit_2026_04.md`
 
+### 2026-04-02 v36 음질 개선 (분석 기반)
+6곡 변환 결과 나노 분석: F0 피치 상관계수 0.34-0.73 (목표 0.9+), 다이나믹 레인지 -93dB 압축, 2-4kHz -2.3% 손실.
+수정: rms=0, index 0.40, protect 0.35, presence +1.5dB, loudnorm -14 LUFS, BS-Roformer 분리.
+
 ### 향후 로드맵
 - PyTorch 2.6.0+ 업그레이드 (CVE 대응, Applio 호환성 검증 필요)
-- UVR5 MDX-Net 리드보컬 분리 (Stage 2)
-- 원본 보컬 블렌딩 (숨결감 복원)
+- 학습 데이터 보강 (43분→60분+ 권장, BS-Roformer 재전처리)
+- 원본 보컬 10-20% 블렌딩 (숨결감 복원)
+- 에폭별 체크포인트 수동 비교 (150이 최적인지 검증)
 - FastAPI lifespan 마이그레이션
 
 ## 10. 주요 명령어

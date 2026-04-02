@@ -22,7 +22,7 @@
 - **v35 모델 "My Voice v35" 학습 완료** (150ep, 21000 steps, KLM49_HFG, Demucs 보컬분리 적용)
 - v35 모델 R2 클라우드 업로드 완료 (index 357MB + pth 53MB)
 - R2 전체: 9,207개 파일, 28.6GB (모델/변환/전처리/학습 데이터 모두 포함)
-- **다음 단계: v35 모델로 3곡 변환 (🔄 기본값 프리셋)**
+- **v36 변환 파라미터 최적화 완료**: rms=0, index 0.40, BS-Roformer, loudnorm
 - KLM49_HFG (한국어 노래) + RIN_E3 (영어 팝/다국어) 이중 pretrained 지원
 - PC 간 클라우드 동기화 (Cloudflare R2 백업/복원) 구현 완료
 - 테스트 43/43 통과 (pytest)
@@ -33,7 +33,7 @@
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
 - Epochs: 150, Batch: 4, Sample rate: 40kHz
 - F0: RMVPE, Embedder: ContentVec (768-dim)
-- index_rate: 0.35, rms_mix_rate: 0.25, filter_radius: 3
+- index_rate: 0.40, rms_mix_rate: 0.0, protect: 0.35, filter_radius: 3
 - Overtraining detector: 50 epoch threshold
 - 학습 데이터: 음원 9개 (장홍권 기존 녹음물)
 
