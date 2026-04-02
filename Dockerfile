@@ -161,10 +161,21 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
 # Demucs: from GitHub main (v4.1.0a2+) — PyPI v4.0.1 lacks demucs.api
 # audio-separator: BS-Roformer/MDX-Net SOTA 보컬 분리 (SDR 12.9, Demucs보다 우수)
 #   전처리에서 더 깨끗한 보컬 분리 → 학습 데이터 품질↑ → 기계음 감소
+#
+# ⚠️ audio-separator>=0.25.0은 torch>=2.3 요구하지만 우리는 torch==2.1.0 (Applio 필수).
+#    --no-deps로 설치하고, 실제 필요한 의존성(einops, onnx 등)만 별도 설치.
+#    런타임에 torch 2.1.0으로도 BS-Roformer 추론은 정상 동작.
 RUN python -m pip install --no-cache-dir \
-        "git+https://github.com/adefossez/demucs.git" \
         noisereduce==3.0.2 \
-        audio-separator[gpu]==0.25.1
+        einops \
+        ml_collections \
+    && python -m pip install --no-cache-dir --no-deps \
+        "git+https://github.com/adefossez/demucs.git" \
+        audio-separator==0.25.1 \
+    && python -m pip install --no-cache-dir \
+        diffq dora-search lameenc openunmix treetable \
+    && python -c "import demucs; print('demucs OK')" \
+    && python -c "from audio_separator.separator import Separator; print('audio-separator OK')"
 
 # CRITICAL: Re-pin NumPy <2.0 AFTER all other installs.
 # PyTorch 2.1.0 was compiled with NumPy 1.x C API.
@@ -185,8 +196,12 @@ RUN python -c "from bs4 import BeautifulSoup; print('bs4 OK')" \
     && python -c "import transformers; print('transformers', transformers.__version__)" \
     && python -c "from transformers import HubertModel; print('HubertModel import OK')" \
     && python -c "import tensorboard; print('tensorboard OK')" \
-    && python -c "import torch; print('torch', torch.__version__)" \
-    && python -c "import numpy; print('numpy', numpy.__version__)"
+    && python -c "import torch; assert torch.__version__.startswith('2.1.0'), f'WRONG TORCH: {torch.__version__}'; print('torch', torch.__version__, '✓')" \
+    && python -c "import numpy; print('numpy', numpy.__version__)" \
+    && python -c "import demucs; print('demucs OK')" \
+    && python -c "from audio_separator.separator import Separator; print('audio-separator OK')" \
+    && python -c "import torchcrepe; print('torchcrepe OK')" \
+    && python -c "import torchfcpe; print('torchfcpe OK')"
 
 # ── 1.8 Pre-download ALL ML Models (FlashBoot critical) ─────────
 # Without pre-caching, first cold start downloads ~3GB of models
