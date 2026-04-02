@@ -138,17 +138,19 @@ RUN python -m pip install --no-cache-dir fairseq==0.12.2 \
 RUN python -m pip install --no-cache-dir faiss-cpu==1.8.0
 
 # Group 4: Audio/ML tools (pinned for reproducibility)
+# torchfcpe/torchcrepe는 --no-deps로 설치 (torch 2.11.0 끌어오기 방지 — 2.1.0+cu121 유지)
 RUN python -m pip install --no-cache-dir \
         praat-parselmouth==0.4.4 \
         pyworld==0.3.4 \
-        torchcrepe==0.0.22 \
-        torchfcpe==0.0.4 \
         scipy==1.11.4 \
         librosa==0.10.2.post1 \
         soundfile==0.12.1 \
         pydub==0.25.1 \
         numba==0.59.1 \
-        pedalboard==0.9.10
+        pedalboard==0.9.10 \
+    && python -m pip install --no-cache-dir --no-deps \
+        torchcrepe==0.0.22 \
+        torchfcpe==0.0.4
 
 # Group 5: ONNX Runtime (pin version compatible with CUDA 12.1)
 RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
@@ -162,7 +164,7 @@ RUN python -m pip install --no-cache-dir onnxruntime-gpu==1.17.1 \
 RUN python -m pip install --no-cache-dir \
         "git+https://github.com/adefossez/demucs.git" \
         noisereduce==3.0.2 \
-        audio-separator[gpu]==0.25.3
+        audio-separator[gpu]==0.25.1
 
 # CRITICAL: Re-pin NumPy <2.0 AFTER all other installs.
 # PyTorch 2.1.0 was compiled with NumPy 1.x C API.
