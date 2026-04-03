@@ -316,6 +316,15 @@ def load_config():
             backup = CONFIG_PATH.with_suffix(".json.bak")
             shutil.copy2(str(CONFIG_PATH), str(backup))
             logger.warning("config.json 손상 → 백업: %s", backup)
+    # download_folder가 다른 PC 경로(예: C:\Users\SDS)인 경우 현재 PC의 Downloads로 교정
+    dl = cfg.get("download_folder", "")
+    if dl:
+        dl_path = Path(dl)
+        # 부모 디렉토리(사용자 홈)가 존재하지 않으면 이식 불가능한 경로 → 기본값 복원
+        if not dl_path.parent.exists():
+            default_dl = str(Path.home() / "Downloads")
+            logger.info("download_folder '%s' 접근 불가 → '%s' 로 교정", dl, default_dl)
+            cfg["download_folder"] = default_dl
     return cfg
 
 def save_config(config):
