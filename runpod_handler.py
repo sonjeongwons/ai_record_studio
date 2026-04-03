@@ -534,7 +534,12 @@ def _roformer_separate(audio_path: Path, output_dir: Path) -> dict:
                 accomp_path = fp
 
         if vocal_path and vocal_path.exists():
-            log.info(f"BS-Roformer separated: vocal={vocal_path.name}, accomp={accomp_path}")
+            # accompaniment 존재 여부도 검증
+            if accomp_path and not accomp_path.exists():
+                log.warning(f"BS-Roformer: accompaniment path found but file missing: {accomp_path}")
+                accomp_path = None
+            log.info(f"BS-Roformer separated: vocal={vocal_path.name}, "
+                     f"accomp={accomp_path.name if accomp_path else 'N/A'}")
             return {"vocals": vocal_path, "accompaniment": accomp_path}
         else:
             log.warning("BS-Roformer produced no vocals output")

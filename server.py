@@ -546,6 +546,18 @@ def recover_orphan_jobs_on_startup():
 
 
 
+def _cleanup_orphan_temp_files():
+    """시작 시 고아 임시 파일 정리 — 변환 시작 후 크래시로 남은 input_* 파일 삭제."""
+    count = 0
+    cutoff = time.time() - 86400  # 24시간 이전
+    for f in UPLOAD_DIR.iterdir():
+        if f.is_file() and f.name.startswith("input_") and f.stat().st_mtime < cutoff:
+            f.unlink(missing_ok=True)
+            count += 1
+    if count:
+        logger.info("[Startup] 고아 임시 파일 %d개 정리", count)
+
+
 def cleanup_stale_jobs():
     """주기적 호출용. 1시간 이상 방치된 작업만 실패 처리.
     진행 중인 정상 작업은 건드리지 않음."""
@@ -1598,6 +1610,7 @@ def _lifespan_sync(app):
     """앱 수명주기 관리 — startup/shutdown."""
     init_db()
     recover_orphan_jobs_on_startup()
+    _cleanup_orphan_temp_files()
 
     # Windows ProactorEventLoop에서 브라우저 연결 끊김 시 발생하는
     # ConnectionResetError [WinError 10054] 로그 억제
@@ -2044,8 +2057,8 @@ async def start_training(
         raise HTTPException(400, f"배치 사이즈는 0~64 사이여야 합니다. (입력: {batch_size})")
     if sample_rate not in (32000, 40000, 48000):
         raise HTTPException(400, f"샘플레이트는 32000/40000/48000 중 하나여야 합니다. (입력: {sample_rate})")
-    if f0_method not in ("rmvpe", "crepe", "crepe-tiny"):
-        raise HTTPException(400, f"피치 추출 방식은 rmvpe/crepe/crepe-tiny 중 하나여야 합니다. (입력: {f0_method})")
+    if f0_method not in ("rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"):
+        raise HTTPException(400, f"피치 추출 방식은 rmvpe/fcpe/crepe/crepe-tiny 중 하나여야 합니다. (입력: {f0_method})")
     if pretrained_model not in ("klm49", "rin_e3"):
         raise HTTPException(400, f"사전학습 모델은 klm49/rin_e3 중 하나여야 합니다. (입력: {pretrained_model})")
 
@@ -2532,8 +2545,10 @@ async def start_conversion(
             pth_url = refresh_presigned_url(model["pth_url"])
         except Exception as e:
             logger.error("[Convert] pth presigned URL 갱신 실패: %s", e)
-            # job 생성 전이므로 update_job 없이 바로 HTTP 에러 반환
-            raise HTTPException(500, f"모델 파일 URL 갱신 실패 (R2 설정 확인 필요): {e}")
+            temp_path.unlink(missing_ok=True)  # 임시 파일 정리 (job 생성 전 실패)
+            raise HTTPException(500,
+                f"모델 파일 URL 갱신 실패: {e}. "
+                "R2 설정을 확인하거나, 모델을 재학습하세요.")
     if model["index_url"]:
         try:
             index_url = refresh_presigned_url(model["index_url"])
@@ -2551,7 +2566,7 @@ async def start_conversion(
         db.execute("""
             INSERT INTO conversions (model_id, input_file, pitch_shift, status, job_id)
             VALUES (?, ?, ?, 'pending', ?)
-        """, (model_id, audio.filename, pitch_shift, job_id))
+        """, (model_id, Path(audio.filename).name, pitch_shift, job_id))  # .name: 안전한 파일명
 
     try:
         config = load_config()
@@ -3259,6 +3274,9 @@ async def sync_restore():
     except Exception as e:
         logger.warning("[Sync] DB 복원 실패: %s", e)
         result["downloaded"]["database"] = False
+        # 임시 파일 정리
+        db_tmp = DATA_DIR / "studio_remote.db"
+        db_tmp.unlink(missing_ok=True)
 
     # 2) uploads
     n = _sync_download_prefix(s3, bucket, f"{_SYNC_PREFIX}uploads/", UPLOAD_DIR)
