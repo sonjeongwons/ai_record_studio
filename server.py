@@ -2467,7 +2467,7 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.40),   # v36: 0.35→0.40 (장홍권 음색 더 반영, 커뮤니티 0.3-0.5 권장)
+    index_rate: float = Form(0.25),   # v37: 0.40→0.25 (MP3 학습데이터에 높은 index = 가래소리 원인)
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),

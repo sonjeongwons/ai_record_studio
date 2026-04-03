@@ -3264,7 +3264,7 @@ input[type="range"]::-moz-range-track {
           <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.20~0.35 = 자연스러운 AI 목소리\n• 0.35~0.50 = 권장 범위 (기본값 0.40)\n• 0.50~1.0 = 강한 AI 적용 (아티팩트 주의)\n\n💡 기본값 0.40는 모델 음색 40% + 원곡 특성 60%의 균형점입니다.\n커뮤니티 권장: 0.30~0.50">ⓘ</i></span>
           <span class="slider-value" id="index-val">0.40</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="40" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+        <input type="range" id="index-slider" min="0" max="100" value="25" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
         <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.30~0.50 권장)</div>
       </div>
       <!-- Advanced settings (collapsible) -->
@@ -4889,7 +4889,7 @@ function applyConvertPreset(preset) {
       // v36 기본: rms=0(원곡 다이나믹 100% 보존), index 0.40(음색↑), protect 0.35
       // v35→v36: rms 0.25→0, index 0.35→0.40, protect 0.33→0.35 (분석 기반 최적화)
       f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
-      clean: false, cleanStr: 70, index: 40,
+      clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
       vocalBlend: 10,
@@ -4916,7 +4916,7 @@ function applyConvertPreset(preset) {
     studio: {
       // 스튜디오: 기본 + 부드러운 공간감
       f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
-      clean: false, cleanStr: 70, index: 40,
+      clean: false, cleanStr: 70, index: 25,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
       vocalBlend: 10,
@@ -6475,7 +6475,7 @@ async function startConversion() {
   var form = new FormData();
   form.append('model_id', selectedModelId);
   form.append('pitch_shift', getVal('pitch-slider', '0'));
-  form.append('index_rate', (getVal('index-slider', '35') / 100).toFixed(2));
+  form.append('index_rate', (getVal('index-slider', '25') / 100).toFixed(2));
   form.append('f0_method', getVal('convert-f0', 'rmvpe'));
   form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
@@ -6892,7 +6892,7 @@ async function startBatchConversion() {
       var form = new FormData();
       form.append('model_id', selectedModelId);
       form.append('pitch_shift', getVal('pitch-slider', '0'));
-      form.append('index_rate', (getVal('index-slider', '35') / 100).toFixed(2));
+      form.append('index_rate', (getVal('index-slider', '25') / 100).toFixed(2));
       form.append('f0_method', getVal('convert-f0', 'rmvpe'));
       form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
