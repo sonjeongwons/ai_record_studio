@@ -27,13 +27,13 @@
 | 데스크톱 앱 | PyWebView + PyInstaller (.exe 패키징) |
 | 배포 | 단일 .exe + RunPod Docker 이미지 |
 | 로깅 | Python `logging` (콘솔 + server.log, RotatingFileHandler 5MB x 3) |
-| 테스트 | pytest + FastAPI TestClient — **43개** |
+| 테스트 | pytest + FastAPI TestClient — **48개** |
 | CI/CD | GitHub Actions (Docker 빌드 + pytest) |
 | 정적분석 | ruff (린터) + bandit (보안) |
 
 ## 3. 현재 상태 (2026-04-02)
 
-- ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **43/43 통과**
+- ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **48/48 통과**
 - ✅ RunPod Serverless Handler 구현 완료
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원)
 - ✅ 보안 감사 완료 (path traversal, XSS, race condition 수정)
@@ -144,7 +144,7 @@ librosa STFT phase vocoder가 formant 미보존 → 이중 적용(pre+post) 시 
 
 ```bash
 python server.py                    # 개발 서버
-python3 -m pytest tests/ -v         # 테스트 (43개)
+python3 -m pytest tests/ -v         # 테스트 (48개)
 python app.py                       # 데스크톱 앱
 python build_exe.py                 # EXE 빌드
 docker build -t ai-voice-studio .   # Docker 빌드
@@ -170,7 +170,7 @@ ai_record_studio/
 ├── Dockerfile             ← RunPod Docker 이미지
 ├── app.py                 ← 데스크톱 앱 (PyWebView)
 ├── build_exe.py           ← PyInstaller EXE 빌드
-├── tests/                 ← API 테스트 (43개)
+├── tests/                 ← API 테스트 (48개)
 │   ├── conftest.py
 │   └── test_api.py
 └── .github/workflows/     ← CI/CD

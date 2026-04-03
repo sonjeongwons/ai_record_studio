@@ -4742,8 +4742,8 @@ function estimateTrainingCost() {
   }
 
   var totalMins = totalSecs / 60;
-  var epochs = parseInt(document.getElementById('train-epochs').value) || 150;
-  var batch  = parseInt(document.getElementById('train-batch').value)  || 4;
+  var epochs = parseInt(document.getElementById('train-epochs').value) || 200;
+  var batch  = parseInt(document.getElementById('train-batch').value)  || 8;
   var sr     = parseInt(document.getElementById('train-sr').value)     || 40000;
   var f0     = (document.getElementById('train-f0').value || 'rmvpe').toLowerCase();
 
@@ -6482,8 +6482,8 @@ async function startConversion() {
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
   form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
-  form.append('rms_mix_rate', (getVal('rms-slider', '25') / 100).toFixed(2));
-  form.append('filter_radius', getVal('filter-slider', '3'));
+  form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
+  form.append('filter_radius', getVal('filter-slider', '5'));
   var hopSteps = [32, 64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '1')] || 64);
   // Post-processing for naturalness
@@ -6899,8 +6899,8 @@ async function startBatchConversion() {
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
       form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
-      form.append('rms_mix_rate', (getVal('rms-slider', '25') / 100).toFixed(2));
-      form.append('filter_radius', getVal('filter-slider', '3'));
+      form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
+      form.append('filter_radius', getVal('filter-slider', '5'));
       var hopSteps2 = [32, 64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '1')] || 64);
       // Post-processing for naturalness

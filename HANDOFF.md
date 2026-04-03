@@ -40,8 +40,8 @@
 - F0 추출: RMVPE (가장 정확한 피치)
 - 임베더: ContentVec (768차원, HuBERT 대비 우수)
 - 사전학습 모델: KLM49_HFG (한국어 노래 최적화, 40k/48k/32k)
-- 에폭: 150 (한국어 커뮤니티 최적값, ~25분 데이터 기준)
-- 배치 사이즈: 4 (한국어 커뮤니티 권장)
+- 에폭: 200 (v36: 체크포인트 비교로 최적점 탐색, 과학습 감지기 보호)
+- 배치 사이즈: 8 (v36: 43분 데이터에 안정적, RTX 4090 24GB)
 - 저장 빈도: 10 에폭마다 (세밀한 epoch 선택 가능)
 - 학습 데이터: 10-60분 클린 보컬
 - 과학습 감지: 50 epoch 무개선 시 자동 조기 중단
@@ -118,7 +118,7 @@ ai_record_studio/
 ├── Dockerfile           # ✅ RunPod Docker 이미지 (멀티스테이지)
 ├── requirements.txt     # ✅ Python 의존성
 ├── pytest.ini           # ✅ 테스트 설정
-├── tests/               # ✅ API 테스트 (43/43 통과)
+├── tests/               # ✅ API 테스트 (48/48 통과)
 ├── .github/workflows/   # ✅ CI/CD (Docker 빌드 + pytest)
 ├── CLAUDE.md            # ✅ Claude Code 하네스 제약 문서
 ├── HANDOFF.md           # ✅ 이 파일 (아키텍처 결정사항)

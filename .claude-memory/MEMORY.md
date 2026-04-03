@@ -32,7 +32,7 @@
 - KLM49_HFG (한국어 노래) + RIN_E3 (영어 팝/다국어) 이중 pretrained 지원
 - PC 간 클라우드 동기화 (Cloudflare R2 백업/복원) 구현 완료
   - R2 백업/복원 시 **중복 파일 자동 스킵** (key+size 비교, 변경분만 전송)
-- 테스트 43/43 통과 (pytest)
+- 테스트 48/48 통과 (pytest)
 - ruff + bandit 정적 분석 클린
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정
 
@@ -103,7 +103,7 @@
 ## 코드 감사 이력 (2026-04-01)
 - 보안: path traversal 2건, XSS 6건, SQLite 리소스 누수 1건 수정
 - 버그: 업로드 race condition, JSON 파싱 오류 타입 수정
-- 테스트: 34→43개 (다운로드/취소/청크업로드/전처리리셋 등 추가)
+- 테스트: 34→48개 (다운로드/취소/청크업로드/전처리리셋 등 추가)
 - 데드코드: pitch pre/post-shift 40줄 제거, 미사용 fixture/import 정리
 - Dockerfile: CVE-2025-32434 경고 문서화, 모델 파일 크기 검증 추가
 
