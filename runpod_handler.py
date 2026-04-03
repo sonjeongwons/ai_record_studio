@@ -1071,7 +1071,11 @@ def task_train(job_input: dict, job: dict) -> dict:
         batch_size: int = int(job_input.get("batch_size", 8))
     except (ValueError, TypeError):
         batch_size = 8
+    _VALID_F0 = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
+    if f0_method not in _VALID_F0:
+        log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
+        f0_method = "rmvpe"
     embedder_model: str = job_input.get("embedder_model", "contentvec")
     # pretrained 모델 선택: "klm49" (한국어) 또는 "rin_e3" (다국어/팝송)
     pretrained_model: str = job_input.get("pretrained_model", "klm49")
@@ -2764,8 +2768,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
     except (ValueError, TypeError):
         index_rate = 0.40
     # rmvpe: stable, fast, accurate for singing — better default than crepe
-    # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
+    _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
+    if f0_method not in _VALID_F0_CONVERT:
+        log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
+        f0_method = "rmvpe"
     # filter_radius: v36 분석 — 3→5 (피치 떨림 jitter 2.5-3x 완화)
     # >=3이면 중앙값 필터 적용. 5: 피치 안정화 + 비브라토 보존 균형 (커뮤니티 3-5 권장)
     # 높을수록 발음 약간 뭉개짐 — 노래에서는 피치 안정이 더 중요

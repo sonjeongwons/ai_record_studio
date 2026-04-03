@@ -402,6 +402,22 @@ class TestPreprocessReset:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class TestChunkUpload:
+    def test_chunk_upload_single_chunk_complete(self, app_client, tmp_path):
+        """단일 청크 업로드 완료 — 파일 생성 확인"""
+        chunk = tmp_path / "chunk0"
+        chunk.write_bytes(b"\xff\xfb\x90\x00" + b"\x00" * 1024)
+        with open(chunk, "rb") as f:
+            resp = app_client.post("/api/upload/chunk", data={
+                "upload_id": "test-single-chunk",
+                "chunk_index": "0",
+                "total_chunks": "1",
+                "filename": "test_audio.mp3",
+                "total_size": "1028",
+            }, files={"chunk": ("chunk0", f, "application/octet-stream")})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("status") == "completed"
+
     def test_chunk_upload_invalid_extension(self, app_client, tmp_path):
         """지원하지 않는 파일 형식 청크 업로드 → 400"""
         chunk = tmp_path / "chunk0"
@@ -415,3 +431,59 @@ class TestChunkUpload:
                 "total_size": "100",
             }, files={"chunk": ("chunk0", f, "application/octet-stream")})
         assert resp.status_code == 400
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 통계/상태 검증
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TestStatsAfterUpload:
+    def test_stats_increment_after_upload(self, app_client, sample_audio_file):
+        """파일 업로드 후 stats가 증가하는지 확인"""
+        resp = app_client.get("/api/stats")
+        before = resp.json()["files"]
+        with open(sample_audio_file, "rb") as f:
+            app_client.post("/api/upload",
+                            files={"files": ("test.mp3", f, "audio/mpeg")},
+                            data={"category": "vocal"})
+        resp = app_client.get("/api/stats")
+        after = resp.json()["files"]
+        assert after == before + 1
+
+
+class TestConvertF0Validation:
+    def test_convert_invalid_f0_method(self, app_client, sample_audio_file):
+        """유효하지 않은 F0 방법 → 400"""
+        with open(sample_audio_file, "rb") as f:
+            resp = app_client.post("/api/convert", data={
+                "model_id": "1",
+                "pitch_shift": "0",
+                "f0_method": "invalid_method",
+            }, files={"audio": ("test.mp3", f, "audio/mpeg")})
+        assert resp.status_code == 400
+
+
+class TestDeleteFileTwice:
+    def test_delete_file_idempotency(self, app_client, sample_audio_file):
+        """파일 삭제 후 재삭제"""
+        with open(sample_audio_file, "rb") as f:
+            resp = app_client.post("/api/upload",
+                                   files={"files": ("test.mp3", f, "audio/mpeg")},
+                                   data={"category": "vocal"})
+        data = resp.json()
+        files = data.get("files", [data] if "id" in data else [])
+        assert len(files) >= 1
+        file_id = files[0]["id"]
+        resp = app_client.delete(f"/api/files/{file_id}")
+        assert resp.status_code == 200
+        resp = app_client.delete(f"/api/files/{file_id}")
+        assert resp.status_code in (404, 200)
+
+
+class TestHealthDetail:
+    def test_health_has_db_status(self, app_client):
+        """health 엔드포인트에 상태 정보 포함"""
+        resp = app_client.get("/api/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "db" in data or "status" in data

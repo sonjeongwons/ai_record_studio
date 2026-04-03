@@ -20,7 +20,7 @@ import logging
 import logging.handlers
 from datetime import datetime
 from pathlib import Path
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Optional
 
 import asyncio
@@ -335,6 +335,9 @@ def get_db():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")           # 5초 대기 (SQLITE_BUSY 즉시 실패 방지)
+    conn.execute("PRAGMA synchronous=NORMAL")           # WAL 모드에서 안전 + 쓰기 성능 향상
+    conn.execute("PRAGMA cache_size=-8000")              # 8MB 캐시 (기본 2MB)
     try:
         yield conn
         conn.commit()
@@ -559,7 +562,7 @@ def cleanup_stale_jobs():
                 try:
                     runpod_client.cancel_runpod_job(row["runpod_job_id"])
                 except Exception:
-                    logger.debug("Silent exception in %s", __name__, exc_info=True)
+                    logger.warning("Silent exception in %s", __name__, exc_info=True)
         stale = db.execute("""
             UPDATE jobs
             SET status='failed',
@@ -620,7 +623,7 @@ def classify_runpod_error(exc: Exception, response=None) -> str:
             if "insufficient" in body or "balance" in body or "funds" in body:
                 return RUNPOD_ERROR_MESSAGES["funds"]
         except Exception:
-            logger.debug("Silent exception in %s", __name__, exc_info=True)
+            logger.warning("Silent exception in %s", __name__, exc_info=True)
         return RUNPOD_ERROR_MESSAGES["unknown"].format(
             detail=f"HTTP {status}: {response.text[:200]}"
         )
@@ -978,7 +981,7 @@ def _mark_job_failed_with_conversion(job_id: str, job_type: str, message: str):
             with get_db() as db:
                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
         except Exception:
-            logger.debug("Silent exception in %s", __name__, exc_info=True)
+            logger.warning("Silent exception in %s", __name__, exc_info=True)
 
 
 def _spawn_polling_thread(job_id: str, runpod_job_id: str, job_type: str):
@@ -1039,7 +1042,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             with get_db() as db:
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
-                            logger.debug("Silent exception in %s", __name__, exc_info=True)
+                            logger.warning("Silent exception in %s", __name__, exc_info=True)
                     with _poll_errors_lock:
                         _poll_error_counts.pop(job_id, None)
                     return
@@ -1053,7 +1056,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                             with get_db() as db:
                                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                         except Exception:
-                            logger.debug("Silent exception in %s", __name__, exc_info=True)
+                            logger.warning("Silent exception in %s", __name__, exc_info=True)
                     with _poll_errors_lock:
                         _poll_error_counts.pop(job_id, None)
                 return
@@ -1085,7 +1088,7 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                         with get_db() as db:
                             db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
                     except Exception:
-                        logger.debug("Silent exception in %s", __name__, exc_info=True)
+                        logger.warning("Silent exception in %s", __name__, exc_info=True)
                 return
 
             elif status == "IN_QUEUE":
@@ -1159,6 +1162,9 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
     finally:
         with _poll_errors_lock:
             _poll_error_counts.pop(job_id, None)
+        # 정상 완료/실패 모두 스레드 참조 정리 (메모리 누수 방지)
+        with _poll_threads_lock:
+            _active_poll_threads.pop(job_id, None)
 
 
 def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
@@ -1453,7 +1459,7 @@ def handle_job_result(job_id: str, job_type: str, output: dict):
                 with get_db() as db:
                     db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
             except Exception:
-                logger.debug("Silent exception in %s", __name__, exc_info=True)
+                logger.warning("Silent exception in %s", __name__, exc_info=True)
     finally:
         with _poll_errors_lock:
             _poll_error_counts.pop(job_id, None)
@@ -1543,7 +1549,7 @@ def _run_batched_preprocess_inner(job_id: str, batches: list[list[dict]]):
                         try:
                             runpod_client.cancel_runpod_job(runpod_job_id)
                         except Exception:
-                            logger.debug("Silent exception in %s", __name__, exc_info=True)
+                            logger.warning("Silent exception in %s", __name__, exc_info=True)
                     update_job(job_id, status="failed",
                                message=f"{batch_label} 시간 초과 (1시간)")
                     return
@@ -1587,7 +1593,48 @@ def _run_batched_preprocess_inner(job_id: str, batches: list[list[dict]]):
 # FastAPI 앱
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-app = FastAPI(title="AI Voice Studio")
+@contextmanager
+def _lifespan_sync(app):
+    """앱 수명주기 관리 — startup/shutdown."""
+    init_db()
+    recover_orphan_jobs_on_startup()
+
+    # Windows ProactorEventLoop에서 브라우저 연결 끊김 시 발생하는
+    # ConnectionResetError [WinError 10054] 로그 억제
+    loop = asyncio.get_event_loop()
+    _original_handler = loop.get_exception_handler()
+
+    def _suppress_connection_reset(loop, context):
+        exc = context.get("exception")
+        if isinstance(exc, ConnectionResetError):
+            return
+        if _original_handler:
+            _original_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
+
+    loop.set_exception_handler(_suppress_connection_reset)
+
+    # 30분마다 오래된 청크 업로드 세션 자동 정리
+    def _chunk_cleanup_loop():
+        while True:
+            time.sleep(1800)
+            try:
+                _cleanup_stale_chunk_uploads()
+            except Exception:
+                logger.warning("Chunk cleanup failed", exc_info=True)
+    threading.Thread(target=_chunk_cleanup_loop, daemon=True).start()
+
+    yield  # 앱 실행 중
+
+
+@asynccontextmanager
+async def lifespan(app):
+    with _lifespan_sync(app):
+        yield
+
+
+app = FastAPI(title="AI Voice Studio", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1601,35 +1648,7 @@ app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="stati
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
-@app.on_event("startup")
-async def startup():
-    init_db()
-    recover_orphan_jobs_on_startup()
-
-    # Windows ProactorEventLoop에서 브라우저 연결 끊김 시 발생하는
-    # ConnectionResetError [WinError 10054] 로그 억제
-    loop = asyncio.get_event_loop()
-    _original_handler = loop.get_exception_handler()
-
-    def _suppress_connection_reset(loop, context):
-        exc = context.get("exception")
-        if isinstance(exc, ConnectionResetError):
-            return  # 무시 — 브라우저가 연결을 먼저 닫은 것
-        if _original_handler:
-            _original_handler(loop, context)
-        else:
-            loop.default_exception_handler(context)
-
-    loop.set_exception_handler(_suppress_connection_reset)
-    # 30분마다 오래된 청크 업로드 세션 자동 정리
-    def _chunk_cleanup_loop():
-        while True:
-            time.sleep(1800)
-            try:
-                _cleanup_stale_chunk_uploads()
-            except Exception:
-                logger.debug("Silent exception in %s", __name__, exc_info=True)
-    threading.Thread(target=_chunk_cleanup_loop, daemon=True).start()
+    # startup은 lifespan 컨텍스트 매니저에서 처리됨 (FastAPI 0.93+ 표준)
 
 
 # ─── 메인 페이지 ───
@@ -2340,7 +2359,7 @@ def _preprocess_status_sync():
                 else:
                     total_dur += size / 96000.0
             except Exception:
-                logger.debug("Silent exception in %s", __name__, exc_info=True)
+                logger.warning("Silent exception in %s", __name__, exc_info=True)
 
     return {
         "preprocessed": has_segments,  # 세그먼트가 있으면 학습 가능 (전체 완료 불필요)
@@ -2635,7 +2654,7 @@ async def start_conversion(
             if temp_path.exists():
                 temp_path.unlink()
         except Exception:
-            logger.debug("Silent exception in %s", __name__, exc_info=True)
+            logger.warning("Silent exception in %s", __name__, exc_info=True)
 
         update_job(job_id, status="running", progress=10,
                   message="GPU 변환 시작", runpod_job_id=runpod_job_id)
@@ -2657,13 +2676,13 @@ async def start_conversion(
             with get_db() as db:
                 db.execute("UPDATE conversions SET status='failed' WHERE job_id=?", (job_id,))
         except Exception:
-            logger.debug("Silent exception in %s", __name__, exc_info=True)
+            logger.warning("Silent exception in %s", __name__, exc_info=True)
         # 임시 입력 파일 정리 (실패 시에도 누수 방지)
         try:
             if temp_path.exists():
                 temp_path.unlink()
         except Exception:
-            logger.debug("Silent exception in %s", __name__, exc_info=True)
+            logger.warning("Silent exception in %s", __name__, exc_info=True)
         raise HTTPException(500, f"변환 제출 실패: {error_msg}")
 
     return {"job_id": job_id}
@@ -2704,7 +2723,7 @@ async def get_job(job_id: str):
         try:
             result["result"] = json.loads(result["result_json"])
         except Exception:
-            logger.debug("Silent exception in %s", __name__, exc_info=True)
+            logger.warning("Silent exception in %s", __name__, exc_info=True)
     return result
 
 
@@ -2780,7 +2799,7 @@ async def cleanup_all_stuck_jobs():
                 try:
                     runpod_client.cancel_runpod_job(row["runpod_job_id"])
                 except Exception:
-                    logger.debug("Silent exception in %s", __name__, exc_info=True)
+                    logger.warning("Silent exception in %s", __name__, exc_info=True)
         result = db.execute("""
             UPDATE jobs
             SET status='cancelled',
@@ -2809,7 +2828,7 @@ async def list_jobs():
             try:
                 d["result"] = json.loads(d["result_json"])
             except Exception:
-                logger.debug("Silent exception in %s", __name__, exc_info=True)
+                logger.warning("Silent exception in %s", __name__, exc_info=True)
         results.append(d)
     return {"jobs": results}
 
@@ -2861,7 +2880,7 @@ async def delete_model(model_id: int):
                     try:
                         fpath.unlink(missing_ok=True)
                     except Exception:
-                        logger.debug("Silent exception in %s", __name__, exc_info=True)
+                        logger.warning("Silent exception in %s", __name__, exc_info=True)
         # 연결된 변환 기록도 삭제 (cascade)
         db.execute("DELETE FROM conversions WHERE model_id = ?", (model_id,))
         db.execute("DELETE FROM voice_models WHERE id=?", (model_id,))
