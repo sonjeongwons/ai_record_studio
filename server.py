@@ -1993,9 +1993,9 @@ async def upload_chunk(
 @app.post("/api/train")
 async def start_training(
     model_name: str = Form(...),
-    epochs: int = Form(150),           # v35: KLM49 + 한국어 커뮤니티: 50-150 epoch
+    epochs: int = Form(200),           # v36: 150→200 (체크포인트 비교로 최적점 찾기, 과학습 감지기 보호)
     sample_rate: int = Form(40000),    # v32: 커뮤니티 표준 40k
-    batch_size: int = Form(4),         # v35: 한국어 커뮤니티: batch 4 권장
+    batch_size: int = Form(8),         # v36: 4→8 (43분+ 데이터에 더 안정적, 커뮤니티 권장)
     f0_method: str = Form("rmvpe"),
     pretrained_model: str = Form("klm49"),  # "klm49" 한국어 / "rin_e3" 다국어(팝송)
     file_ids: str = Form("")  # comma-separated
@@ -2443,7 +2443,7 @@ async def start_conversion(
     clean_strength: float = Form(0.7),
     protect: float = Form(0.35),        # v36: 0.40→0.35 (자음/숨소리 보호 + 자연스러운 전환)
     rms_mix_rate: float = Form(0.0),    # v36: 0.25→0.0 (원곡 다이나믹스 100% 보존 — 기계음 최대 원인)
-    filter_radius: int = Form(3),
+    filter_radius: int = Form(5),       # v36: 3→5 (피치 떨림 2.5-3x 완화, 커뮤니티 3-5 권장)
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),
     harmonic_enhance: str = Form("false"),

@@ -1059,17 +1059,18 @@ def task_train(job_input: dict, job: dict) -> dict:
         sample_rate: int = int(job_input.get("sample_rate", 40000))
     except (ValueError, TypeError):
         sample_rate = 40000  # v32: 48k→40k 복원 (48k 보코더 기계음 이슈 — RVC Issue #119/#514)
-    # v35: KLM49 + 한국어 커뮤니티 권장 50-150 epoch (KLM은 적은 epoch으로 충분)
-    # 25분 데이터 기준 150이 최적. save_every=10으로 체크포인트별 청취 테스트 가능
+    # v36: 200에폭 기본 (150에서 상향) — 체크포인트 비교로 최적점 탐색
+    # 과학습 감지기(50 threshold)가 자동 보호. save_every=10으로 매 10에폭 저장
     try:
-        epochs: int = int(job_input.get("epochs", 150))
+        epochs: int = int(job_input.get("epochs", 200))
     except (ValueError, TypeError):
-        epochs = 150
-    # 한국어 커뮤니티: batch_size 4 권장 (소규모 데이터에 최적)
+        epochs = 200
+    # v36: batch 8 기본 (4에서 상향) — 43분+ 데이터에 더 안정적 (커뮤니티 권장)
+    # RTX 4090 24GB VRAM에서 batch 8 안정 동작
     try:
-        batch_size: int = int(job_input.get("batch_size", 4))
+        batch_size: int = int(job_input.get("batch_size", 8))
     except (ValueError, TypeError):
-        batch_size = 4
+        batch_size = 8
     f0_method: str = job_input.get("f0_method", "rmvpe")
     embedder_model: str = job_input.get("embedder_model", "contentvec")
     # pretrained 모델 선택: "klm49" (한국어) 또는 "rin_e3" (다국어/팝송)
@@ -2305,14 +2306,19 @@ def _post_process_vocal(
     # ━━━ 3. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 4. 최소 EQ — 과보정 금지 원칙 ━━━
-    # v34: 디에서/저역커팅 최소화. RVC 보컬은 이미 Demucs로 분리된 깨끗한 보컬.
-    # 과도한 EQ 체인이 오히려 자연스러움을 해침 (v24~v33 교훈)
-    # 7.5kHz: HiFi-GAN 금속성만 최소 보정
+    # ━━━ 4. Mid-frequency bloat 보정 (가래 낀 소리 해결) ━━━
+    # v36 분석: 500-2kHz 대역이 +68~137% 부풀림 = 가래/두터운 소리 원인
+    # RVC HiFi-GAN 보코더가 중역을 과도하게 생성하는 특성 보정
+    # 800Hz: 가래/목이 메인 소리의 핵심 주파수 — 부드럽게 컷
+    # 1.2kHz: 박스감/콧소리 대역 — 부드럽게 컷
+    filters.append("equalizer=f=800:width_type=o:width=1.0:g=-2.0")
+    filters.append("equalizer=f=1200:width_type=o:width=0.8:g=-1.5")
+
+    # ━━━ 4b. HiFi-GAN 금속성 보정 ━━━
     filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-0.8")
 
     # ━━━ 5. Presence/Air 보상 ━━━
-    # v36: 분석 결과 2-4kHz 존재감 -2.3% 손실 확인 → 부스트 1.0→1.5dB
+    # v36: 기다릴게 2-4kHz -24.6% 손실, air -19.6% 손실 확인
     # 3.2kHz: 보컬 명료도(presence) 핵심 대역
     # 10kHz: 숨소리/공기감(air) — HiFi-GAN이 삼키는 영역
     filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.5")
@@ -2760,14 +2766,13 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     # Crepe는 재변환곡3에서 삑사리 5배 증가(4→20회) — rmvpe가 이 곡에 적합
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    # filter_radius 2: v11 — 약간의 피치 스무딩으로 코러스/화음 안정화
-    # v10의 1: 스무딩 없음 → 코러스 구간에서 피치점프 다발 (PJ 4-8)
-    # 2: 미세한 피치 중앙값 필터 → 코러스 안정화 + 비브라토 보존
-    # (솔로 구간에서도 자연스러움 유지되는 최소 스무딩)
+    # filter_radius: v36 분석 — 3→5 (피치 떨림 jitter 2.5-3x 완화)
+    # >=3이면 중앙값 필터 적용. 5: 피치 안정화 + 비브라토 보존 균형 (커뮤니티 3-5 권장)
+    # 높을수록 발음 약간 뭉개짐 — 노래에서는 피치 안정이 더 중요
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 3))
+        filter_radius: int = int(job_input.get("filter_radius", 5))
     except (ValueError, TypeError):
-        filter_radius = 3
+        filter_radius = 5
     # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
     # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
     # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과
