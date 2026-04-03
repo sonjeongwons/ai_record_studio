@@ -36,12 +36,13 @@
 - ruff + bandit 정적 분석 클린
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정
 
-## Training Parameters (v35 — 한국어 커뮤니티 최적값)
+## Training Parameters (v36 — 분석 기반 최적화)
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
-- Epochs: 150, Batch: 4, Sample rate: 40kHz
-- F0: RMVPE, Embedder: ContentVec (768-dim)
-- index_rate: 0.40, rms_mix_rate: 0.0, protect: 0.35, filter_radius: 3
+- Epochs: 200, Batch: 8, Sample rate: 40kHz
+- F0: RMVPE + FCPE (신규), Embedder: ContentVec (768-dim)
+- index_rate: 0.40, rms_mix_rate: 0.0, protect: 0.35, filter_radius: 5
 - Overtraining detector: 50 epoch threshold
+- vocal_blend: 10% (원본 보컬 블렌딩)
 - 학습 데이터: 음원 9개 (장홍권 기존 녹음물)
 
 ## Workflow Rules (하네스 제약)
@@ -100,12 +101,13 @@
 - **히스토리_tomorrow** — ✓ 깨끗한 보컬 (66초)
 - 장이정 학습용 데이터 (1) — 20분, 혼합 (보컬 12분 + MR 8분, Demucs 분리 필요)
 
-## 코드 감사 이력 (2026-04-01)
-- 보안: path traversal 2건, XSS 6건, SQLite 리소스 누수 1건 수정
-- 버그: 업로드 race condition, JSON 파싱 오류 타입 수정
-- 테스트: 34→48개 (다운로드/취소/청크업로드/전처리리셋 등 추가)
-- 데드코드: pitch pre/post-shift 40줄 제거, 미사용 fixture/import 정리
-- Dockerfile: CVE-2025-32434 경고 문서화, 모델 파일 크기 검증 추가
+## 코드 감사 이력 (2026-04-01 ~ 04-03, 3라운드 44건)
+- 보안: path traversal, XSS, f0_method 화이트리스트, 파일명 위생처리
+- 버그: 업로드 race condition, JSON 파싱, 메모리 누수, 임시 파일 고아
+- 성능: SQLite busy_timeout/synchronous/cache_size, FastAPI lifespan
+- 관측: silent exceptions → warning (16곳)
+- 테스트: 34→48개
+- 데드코드: pitch pre/post-shift 제거, 미사용 fixture 정리
 
 ## Detailed Memories
 - [feedback_no_unnecessary_questions.md](feedback_no_unnecessary_questions.md) — 인프라 질문 금지

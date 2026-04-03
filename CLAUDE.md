@@ -31,14 +31,14 @@
 | CI/CD | GitHub Actions (Docker 빌드 + pytest) |
 | 정적분석 | ruff (린터) + bandit (보안) |
 
-## 3. 현재 상태 (2026-04-02)
+## 3. 현재 상태 (2026-04-03)
 
 - ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **48/48 통과**
 - ✅ RunPod Serverless Handler 구현 완료
-- ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원)
-- ✅ 보안 감사 완료 (path traversal, XSS, race condition 수정)
+- ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원, 중복 스킵)
+- ✅ 보안 감사 3회 완료 (44건 수정: path traversal, XSS, race condition, 메모리누수 등)
 - ✅ **v36 음질 최적화 (전체 적용 완료)**:
-  - rms=0 (다이나믹 100% 보존), index 0.40, protect 0.35
+  - rms=0 (다이나믹 100% 보존), index 0.40, protect 0.35, filter_radius 5
   - BS-Roformer SOTA 보컬 분리 (전처리+변환 모두, SDR 12.9)
   - 2-pass loudnorm -14 LUFS (선형 모드, 다이나믹 보존)
   - 원본 보컬 10% 블렌딩 (숨결감/자연스러움 복원)
@@ -46,15 +46,25 @@
   - 48kHz 샘플레이트 보존 (다운샘플 방지)
   - 숨소리 보존 강화 (NR 임계값/강도 낮춤)
   - 에폭 체크포인트 비교 지원
+  - 중역 블로트 EQ (800Hz -2dB, 1200Hz -1.5dB — 가래 소리 해결)
+- ✅ **시스템 총점검 완료 (3라운드, 44건)**:
+  - SQLite busy_timeout/synchronous/cache_size 최적화
+  - FastAPI lifespan 마이그레이션 (DeprecationWarning 해소)
+  - 메모리 누수 수정 (폴링 스레드 dict)
+  - f0_method 화이트리스트 검증 (학습+변환)
+  - Silent exceptions → warning (16곳)
+  - 고아 임시 파일 자동 정리
+  - DB/presigned URL/sync 에러 처리 강화
 - ⚠️ **CVE-2025-32434**: PyTorch 2.1.0 RCE — 2.6.0+ 업그레이드 예정
 - 📝 Seed-VC 평가 완료: RVC 유지 결정 (Seed-VC는 DNSMOS↓, 아카이브됨)
+- 📝 YingMusic-SVC: 향후 주목할 차세대 SVC (코드 공개 진행 중)
 
 ## 4. 변환 파라미터 (v36 — 분석 기반 최적화)
 
 | 파라미터 | 값 | 변경 이유 |
 |----------|-----|-----------|
 | Pretrained | **KLM49_HFG** (한국어) / **RIN_E3** (다국어) | |
-| Epochs | 150, Batch: 4, SR: 40kHz | |
+| Epochs | **200**, Batch: **8**, SR: 40kHz | v36: 150→200, 4→8 (안정적 학습) |
 | F0 | RMVPE | |
 | **index_rate** | **0.40** (이전 0.35) | 음색 반영 강화 (커뮤니티 0.3-0.5) |
 | **rms_mix_rate** | **0.0** (이전 0.25) | 원곡 다이나믹 100% 보존 (기계음 최대 원인) |
