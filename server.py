@@ -2475,7 +2475,7 @@ async def start_conversion(
     clean_strength: float = Form(0.7),
     protect: float = Form(0.35),        # v36: 0.40→0.35 (자음/숨소리 보호 + 자연스러운 전환)
     rms_mix_rate: float = Form(0.0),    # v36: 0.25→0.0 (원곡 다이나믹스 100% 보존 — 기계음 최대 원인)
-    filter_radius: int = Form(5),       # v36: 3→5 (피치 떨림 2.5-3x 완화, 커뮤니티 3-5 권장)
+    filter_radius: int = Form(3),       # v37: 5→3 복원 (5는 과스무딩 → 발음 뭉개짐, 커뮤니티 표준 3)
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),
     harmonic_enhance: str = Form("false"),

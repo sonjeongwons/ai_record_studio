@@ -2316,12 +2316,11 @@ def _post_process_vocal(
     filters.append("highpass=f=50:poles=2")
 
     # ━━━ 4. Mid-frequency bloat 보정 (가래 낀 소리 해결) ━━━
-    # v36 분석: 500-2kHz 대역이 +68~137% 부풀림 = 가래/두터운 소리 원인
+    # v37 분석: 기다릴게 71개 구간에서 mud/clarity ratio > 50 (정상 < 10)
+    # 800Hz -2.0dB로는 부족 → -3.5dB로 강화
     # RVC HiFi-GAN 보코더가 중역을 과도하게 생성하는 특성 보정
-    # 800Hz: 가래/목이 메인 소리의 핵심 주파수 — 부드럽게 컷
-    # 1.2kHz: 박스감/콧소리 대역 — 부드럽게 컷
-    filters.append("equalizer=f=800:width_type=o:width=1.0:g=-2.0")
-    filters.append("equalizer=f=1200:width_type=o:width=0.8:g=-1.5")
+    filters.append("equalizer=f=800:width_type=o:width=1.0:g=-3.5")
+    filters.append("equalizer=f=1200:width_type=o:width=0.8:g=-2.0")
 
     # ━━━ 4b. HiFi-GAN 금속성 보정 ━━━
     filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-0.8")
@@ -2778,13 +2777,13 @@ def task_convert(job_input: dict, job: dict) -> dict:
     if f0_method not in _VALID_F0_CONVERT:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # filter_radius: v36 분석 — 3→5 (피치 떨림 jitter 2.5-3x 완화)
-    # >=3이면 중앙값 필터 적용. 5: 피치 안정화 + 비브라토 보존 균형 (커뮤니티 3-5 권장)
-    # 높을수록 발음 약간 뭉개짐 — 노래에서는 피치 안정이 더 중요
+    # filter_radius: v37 분석 — 5→3 복원 (5는 과도한 스무딩 → 발음 뭉개짐/비브라토 손실)
+    # v37에서 피치 점프 28개(>200cents) + 가래소리 71구간 — filter=5가 해결 못함
+    # 3: 커뮤니티 표준, 발음 선명도 + 피치 안정화 균형점
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 5))
+        filter_radius: int = int(job_input.get("filter_radius", 3))
     except (ValueError, TypeError):
-        filter_radius = 5
+        filter_radius = 3
     # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
     # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
     # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과

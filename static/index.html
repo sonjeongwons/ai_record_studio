@@ -3355,7 +3355,7 @@ input[type="range"]::-moz-range-track {
               <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음 많은 노래, 빠른 멜로디\n• 3~4 = 일반 노래 (기본 3, 추천)\n• 5~7 = 발라드 등 느린 곡\n\n💡 음정이 '뚝뚝' 끊기면 높이고, 너무 밋밋하면 낮추세요.\n💡 비브라토 보존하려면 4 이하 권장.">ⓘ</i></span>
               <span class="slider-value" id="filter-val">5</span>
             </div>
-            <input type="range" id="filter-slider" min="0" max="12" value="5" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
+            <input type="range" id="filter-slider" min="0" max="12" value="3" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
             <div style="font-size:11px;color:var(--text3);margin-top:2px">피치 안정화 (기본 5, 권장 3~7, 높을수록 삑사리↓ 비브라토↓)</div>
           </div>
           <div class="slider-group">
@@ -4888,7 +4888,7 @@ function applyConvertPreset(preset) {
     default: {
       // v36 기본: rms=0(원곡 다이나믹 100% 보존), index 0.40(음색↑), protect 0.35
       // v35→v36: rms 0.25→0, index 0.35→0.40, protect 0.33→0.35 (분석 기반 최적화)
-      f0: 'rmvpe', protect: 35, rms: 0, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 40,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4906,7 +4906,7 @@ function applyConvertPreset(preset) {
     },
     natural: {
       // 최대 자연스러움: rms=0 + 낮은 index(pretrained 극대화) + hop 128
-      f0: 'rmvpe', protect: 35, rms: 0, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4915,7 +4915,7 @@ function applyConvertPreset(preset) {
     },
     studio: {
       // 스튜디오: 기본 + 부드러운 공간감
-      f0: 'rmvpe', protect: 35, rms: 0, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 40,
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4924,7 +4924,7 @@ function applyConvertPreset(preset) {
     },
     chorus: {
       // 화음/코러스: 피치 안정화 + index 낮춤 + rms=0
-      f0: 'rmvpe', protect: 40, rms: 0, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 0, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4933,7 +4933,7 @@ function applyConvertPreset(preset) {
     },
     indie: {
       // 인디/차분한 곡: rms=0 + 낮은 index + 공간감
-      f0: 'rmvpe', protect: 35, rms: 0, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 35, rms: 0, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 35,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -4944,7 +4944,7 @@ function applyConvertPreset(preset) {
       // 화음/그룹 곡 v2 — 기다릴게 분석 기반 + v36 rms=0 적용
       // index 0.15: v35의 0.10에서 약간 올림 (HFC 손실 완화 + 음색 반영)
       // hop 128: 시간 평균화로 화음 변환 안정화
-      f0: 'rmvpe', protect: 40, rms: 0, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 0, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 15,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -4955,7 +4955,7 @@ function applyConvertPreset(preset) {
       // 남녀 듀엣곡 — comethru 분석 기반 + v36 rms=0 적용
       // index 0.10: 여성 음색 강제 변환 최소화 (v35의 0.08에서 약간 올림)
       // protect 0.45: 여성 timbre 보호 극대화
-      f0: 'rmvpe', protect: 45, rms: 0, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 45, rms: 0, filter: 3, hop: 2,
       clean: false, cleanStr: 70, index: 10,
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
