@@ -2764,9 +2764,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 기본값 0.40: v36 최적값 (이전 0.35)
-    # 모델 음색 40% + 원곡 특성 60% — 음색 반영 강화 (커뮤니티 0.3-0.5 권장)
-    # UI 프리셋에서 장르별로 조절: 자연(0.30), 기본(0.40), 코러스(0.25), 듀엣(0.10)
+    # index_rate 기본값 0.10: v38 — MP3 학습데이터에 index 올리면 기계음만 증가
+    # 커뮤니티: "인덱스는 올리면 어떤 짓을 해도 기계음만 나온다"
+    # 0.10: pretrained(KLM49) 보컬 특성에 최대 의존, index 아티팩트 최소화
     try:
         index_rate: float = float(job_input.get("index_rate", 0.10))
     except (ValueError, TypeError):
@@ -2797,7 +2797,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     try:
         protect: float = float(job_input.get("protect", 0.35))
     except (ValueError, TypeError):
-        protect = 0.40
+        protect = 0.35
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     try:
         hop_length: int = int(job_input.get("hop_length", 64))
