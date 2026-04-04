@@ -2315,22 +2315,21 @@ def _post_process_vocal(
     # ━━━ 3. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 4. Mid-frequency bloat 보정 (가래 낀 소리 해결) ━━━
-    # v37 분석: 기다릴게 71개 구간에서 mud/clarity ratio > 50 (정상 < 10)
-    # 800Hz -2.0dB로는 부족 → -3.5dB로 강화
-    # RVC HiFi-GAN 보코더가 중역을 과도하게 생성하는 특성 보정
-    filters.append("equalizer=f=800:width_type=o:width=1.0:g=-3.5")
-    filters.append("equalizer=f=1200:width_type=o:width=0.8:g=-2.0")
+    # ━━━ 4. RVC 아티팩트 EQ (업계 표준 타겟) ━━━
+    # 글로벌 커뮤니티: RVC HiFi-GAN 아티팩트는 2.5-3.5kHz에 집중 (BizToolPack, SageAudio)
+    # 이전 800Hz 커팅은 비표준 → 보컬 F1 영역을 손상시켜 오히려 가래소리 유발 가능
+    # 2.5kHz: RVC 특유의 harsh/metallic 아티팩트 핵심 대역
+    # 3.5kHz: 추가 harsh 대역 (좁은 Q)
+    filters.append("equalizer=f=2500:width_type=o:width=0.8:g=-2.5")
+    filters.append("equalizer=f=3500:width_type=o:width=0.6:g=-1.5")
 
     # ━━━ 4b. HiFi-GAN 금속성 보정 ━━━
     filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-0.8")
 
-    # ━━━ 5. Presence/Air 보상 ━━━
-    # v36: 기다릴게 2-4kHz -24.6% 손실, air -19.6% 손실 확인
-    # 3.2kHz: 보컬 명료도(presence) 핵심 대역
-    # 10kHz: 숨소리/공기감(air) — HiFi-GAN이 삼키는 영역
-    filters.append("equalizer=f=3200:width_type=o:width=0.8:g=1.5")
-    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=1.2")
+    # ━━━ 5. Air 보상 ━━━
+    # 10kHz: 숨소리/공기감 — HiFi-GAN이 삼키는 영역
+    # 3.2kHz 부스트 제거 (2.5kHz 커팅과 충돌 방지)
+    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=1.0")
 
     # ━━━ 6. 고음/가성 모드 ━━━
     if high_note_mode:
@@ -2764,26 +2763,26 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 기본값 0.10: v38 — MP3 학습데이터에 index 올리면 기계음만 증가
-    # 커뮤니티: "인덱스는 올리면 어떤 짓을 해도 기계음만 나온다"
-    # 0.10: pretrained(KLM49) 보컬 특성에 최대 의존, index 아티팩트 최소화
+    # index_rate 0.30: MP3 데이터 균형점 (글로벌: 0.70 최적, 한국: "올리면 기계음")
+    # MP3 학습데이터 → 인덱스에 아티팩트 → 높으면 기계음, 너무 낮으면 음색 없음
+    # 0.30: 모델 음색 30% 반영 + pretrained 70% — MP3 아티팩트와 음색의 균형
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.10))
+        index_rate: float = float(job_input.get("index_rate", 0.30))
     except (ValueError, TypeError):
-        index_rate = 0.10
+        index_rate = 0.30
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
     if f0_method not in _VALID_F0_CONVERT:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # filter_radius: v37 분석 — 5→3 복원 (5는 과도한 스무딩 → 발음 뭉개짐/비브라토 손실)
-    # v37에서 피치 점프 28개(>200cents) + 가래소리 71구간 — filter=5가 해결 못함
-    # 3: 커뮤니티 표준, 발음 선명도 + 피치 안정화 균형점
+    # filter_radius 5: 글로벌 커뮤니티 — 노래에 5-7 권장 (GitHub #2180)
+    # 피치 jitter가 가래소리의 주원인일 수 있음 → 5로 충분한 스무딩
+    # 이전 3에서 가래소리 해결 안 됨 → 5 재시도
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 3))
+        filter_radius: int = int(job_input.get("filter_radius", 5))
     except (ValueError, TypeError):
-        filter_radius = 3
+        filter_radius = 5
     # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
     # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
     # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과

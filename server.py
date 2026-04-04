@@ -2476,7 +2476,7 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.10),   # v38: 0.25→0.10 (커뮤니티: index 올리면 기계음만 증가)
+    index_rate: float = Form(0.30),   # v39: MP3 데이터 균형점 (글로벌 0.70, 한국 "낮추라" → 0.30)
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
@@ -2484,7 +2484,7 @@ async def start_conversion(
     clean_strength: float = Form(0.7),
     protect: float = Form(0.35),        # v36: 0.40→0.35 (자음/숨소리 보호 + 자연스러운 전환)
     rms_mix_rate: float = Form(0.0),    # v36: 0.25→0.0 (원곡 다이나믹스 100% 보존 — 기계음 최대 원인)
-    filter_radius: int = Form(3),       # v37: 5→3 복원 (5는 과스무딩 → 발음 뭉개짐, 커뮤니티 표준 3)
+    filter_radius: int = Form(5),       # v39: 3→5 (글로벌: 노래에 5-7 권장, 피치 jitter=가래소리 원인)
     hop_length: int = Form(64),
     post_reverb: float = Form(0.05),
     harmonic_enhance: str = Form("false"),
