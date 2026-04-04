@@ -2768,9 +2768,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # 모델 음색 40% + 원곡 특성 60% — 음색 반영 강화 (커뮤니티 0.3-0.5 권장)
     # UI 프리셋에서 장르별로 조절: 자연(0.30), 기본(0.40), 코러스(0.25), 듀엣(0.10)
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.25))
+        index_rate: float = float(job_input.get("index_rate", 0.10))
     except (ValueError, TypeError):
-        index_rate = 0.25
+        index_rate = 0.10
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
