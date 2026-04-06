@@ -3019,8 +3019,8 @@ input[type="range"]::-moz-range-track {
           <select id="train-epochs" onchange="estimateTrainingCost()">
             <option value="50">50 (테스트용 · 빠른 결과 확인)</option>
             <option value="100">100 (10분 이하 데이터)</option>
-            <option value="150" selected>150 (권장 · KLM49 + 25분 데이터 최적)</option>
-            <option value="200">200 (30분+ 데이터)</option>
+            <option value="150">150 (25분 이하 데이터)</option>
+            <option value="200" selected>200 (권장 · 체크포인트 비교로 최적점 탐색)</option>
             <option value="300">300 (최대 · 오버트레이닝 주의)</option>
           </select>
         </div>
@@ -3046,8 +3046,8 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">배치 사이즈 <i class="tip" data-tip="AI가 한 번에 처리하는 데이터 묶음 크기입니다.\n\n🔢 추천:\n• 자동 = GPU 최적화 (권장!)\n• 8 = '메모리 부족' 오류 발생 시\n• 16 = 30% 빠름 / 24 = 50% 빠름 (고사양 GPU 전용)\n\n⚠️ 잘 모르면 '자동'으로 두세요.\n💰 배치가 클수록 학습 속도가 빨라져 비용이 절감됩니다.">ⓘ</i></label>
           <select id="train-batch" onchange="estimateTrainingCost()">
-            <option value="4" selected>4 (권장 · KLM49 최적, 25분 데이터)</option>
-            <option value="8">8 (30분+ 데이터)</option>
+            <option value="4">4 (25분 이하 데이터)</option>
+            <option value="8" selected>8 (권장 · 43분+ 데이터에 안정적)</option>
             <option value="16">16 (대규모 데이터 · 30% 빠름)</option>
             <option value="0">자동 (GPU가 알아서 최적화)</option>
           </select>
@@ -3261,8 +3261,8 @@ input[type="range"]::-moz-range-track {
       </div>
       <div class="slider-group">
         <div class="slider-header">
-          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.20~0.35 = 자연스러운 AI 목소리\n• 0.35~0.50 = 권장 범위 (기본값 0.40)\n• 0.50~1.0 = 강한 AI 적용 (아티팩트 주의)\n\n💡 기본값 0.40는 모델 음색 40% + 원곡 특성 60%의 균형점입니다.\n커뮤니티 권장: 0.30~0.50">ⓘ</i></span>
-          <span class="slider-value" id="index-val">0.40</span>
+          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.20~0.35 = 자연스러운 AI 목소리 (기본값 0.30)\n• 0.35~0.50 = 강한 AI 적용\n• 0.50~1.0 = 최대 AI (아티팩트 주의)\n\n💡 기본값 0.30은 글로벌+한국 커뮤니티 권장 균형점입니다.">ⓘ</i></span>
+          <span class="slider-value" id="index-val">0.30</span>
         </div>
         <input type="range" id="index-slider" min="0" max="100" value="30" class="has-fill" aria-label="인��스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
         <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.30~0.50 권장)</div>
@@ -4893,7 +4893,7 @@ function applyConvertPreset(preset) {
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
       vocalBlend: 10,
-      desc: 'v36 기본 — rms=0, index 0.40, filter 5, 원본 10% 블렌딩'
+      desc: 'v39 기본 — rms=0, index 0.30, filter 5, 원본 10% 블렌딩'
     },
     falsetto: {
       // 가성/고음: filter=1(비브라토 보존) + 고음모드 + rms=0
@@ -4920,7 +4920,7 @@ function applyConvertPreset(preset) {
       postReverb: 5, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
       vocalBlend: 10,
-      desc: '스튜디오 품질 — rms=0, index 0.40, 공간감 리버브, 원본 10%'
+      desc: '스튜디오 품질 — rms=0, index 0.30, 공간감 리버브, 원본 10%'
     },
     chorus: {
       // 화음/코러스: 피치 안정화 + index 낮춤 + rms=0
@@ -4929,7 +4929,7 @@ function applyConvertPreset(preset) {
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
       vocalBlend: 10,
-      desc: '화음/코러스 — 피치 안정화, index 0.25, 원본 10% 블렌딩'
+      desc: '화음/코러스 — 피치 안정화, index 0.30, 원본 10% 블렌딩'
     },
     indie: {
       // 인디/차분한 곡: rms=0 + 낮은 index + 공간감
@@ -4960,7 +4960,7 @@ function applyConvertPreset(preset) {
       postReverb: 8, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
       vocalBlend: 15,
-      desc: '듀엣곡 — rms=0, 여성 보호, index 0.10, 원본 15% (comethru 최적)'
+      desc: '듀엣곡 — rms=0, 여성 보호, index 0.30, 원본 15% (comethru 최적)'
     }
   };
   var p = presets[preset];
@@ -6481,7 +6481,7 @@ async function startConversion() {
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-  form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
+  form.append('protect', (getVal('protect-slider', '35') / 100).toFixed(2));
   form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
   form.append('filter_radius', getVal('filter-slider', '5'));
   var hopSteps = [32, 64, 128, 256];
@@ -6898,7 +6898,7 @@ async function startBatchConversion() {
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-      form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
+      form.append('protect', (getVal('protect-slider', '35') / 100).toFixed(2));
       form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
       form.append('filter_radius', getVal('filter-slider', '5'));
       var hopSteps2 = [32, 64, 128, 256];

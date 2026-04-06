@@ -3301,14 +3301,14 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.35,
-    protect: float = 0.50,
+    index_rate: float = 0.30,     # v39: 0.35→0.30
+    protect: float = 0.35,        # v36: 0.50→0.35
     hop_length: int = 64,
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 2,
-    rms_mix_rate: float = 0.10,
+    filter_radius: int = 5,       # v39: 2→5
+    rms_mix_rate: float = 0.0,    # v36: 0.10→0.0
     split_audio: bool = True,
 ) -> None:
     """
