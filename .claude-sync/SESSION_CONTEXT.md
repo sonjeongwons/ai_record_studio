@@ -1,4 +1,4 @@
-# Session Context — 2026-04-06 (PC2 세션)
+# Session Context — 2026-04-07 (v41 세션)
 
 이 파일은 다른 PC/세션에서 Claude Code 대화를 이어가기 위한 컨텍스트 요약입니다.
 
@@ -6,57 +6,92 @@
 
 ### 이번 세션에서 진행한 작업
 
-**1. 시스템 총점검 4차 (v39 기본값 동기화)**
-- _rvc_infer() 함수 시그니처 4개 스탈 기본값 수정 (index 0.35→0.30, protect 0.50→0.35, filter 2→5, rms 0.10→0.0)
-- HTML index-val 표시 0.40→0.30, protect getVal 폴백 40→35
-- epochs select 150→200, batch select 4→8
-- 프리셋 desc 4건 + 버튼 title 3건 현행화
+**1. Claude Code PC간 동기화 시스템 구축**
+- sync-push.bat / sync-pull.bat 생성
+- .claude-sync/ 디렉토리에 메모리+세션 컨텍스트 동기화
+- settings.json은 인증 토큰 포함으로 .gitignore 처리
 
-**2. 클라이언트 전수 현행화 (35건)**
-- 툴팁: protect 기본값 0.40→0.35, filter "기본3"→"기본5", epochs v35→v39
-- 학습 가이드: 에폭 150→200, 비용 테이블 batch 8 기준
-- 시나리오: 25분/150에폭 → 43분/200에폭
-- JS 주석: v35/v36→v39 전면 교체
+**2. v41 음질 종합 개선 (5에이전트 풀가동)**
+- 에이전트팀: 오디오 분석, 한국 커뮤니티(아카라이브/디시), 글로벌(Reddit/AI Hub/GitHub), 기술 논문, 코드 리뷰
+- 3곡 변환 결과 FFmpeg 정량 분석 수행
 
-**3. v40 후처리 전면 개편 (핵심 변경)**
-- **agate 제거**: release=80ms 너무 짧음 + range -32dB 너무 강함 → spectral flux 2.11x 펌핑
-- **adeclick 제거**: burst=4가 P/T/K 자음 transient 삼킴 → 원본보다 -242개
-- **300-600Hz 중역 EQ 추가**: 300Hz -1.5dB + 550Hz -1.0dB (HiFi-GAN 블로트 +68~113%)
-- **highshelf 1.0→0.5dB**: 치찰음 +59% 과도 완화
-- **MR lowshelf 완화**: 80Hz/-1.5→60Hz/-0.8 (서브베이스 -13~18% 보존)
-- 커뮤니티 합의: "최소 후처리가 최선" (AI Hub)
+**3곡 변환 분석 결과:**
+
+| 곡 | LUFS | True Peak | LRA | Peak count | 
+|----|------|-----------|-----|------------|
+| Breaking Through | -10.95 (과대) | +0.45dB (클리핑!) | 4.2 | 59 |
+| 기다릴게 | -9.57 (과대) | +0.42dB (클리핑!) | 3.4 | 152 (심각) |
+| comethru | -14.72 (정상) | +0.02dB | 5.8 | 3.5 |
+
+**v41 변경사항 (commit dcbef59):**
+
+Phase A — 치명적 버그:
+- 44.1kHz 하드코딩 → `_process_sr` (48kHz 보컬/MR SR 불일치 해결)
+- post_reverb 백엔드 기본값 0.05→0.0
+
+Phase B — 후처리 체인 (발음 복원 핵심):
+- EQ 감쇠 -7.3dB→-2.0dB (65% 감소): 2.5kHz/-2.5dB → 2.8kHz/-1.0dB/w=0.4
+- 550Hz, 3.5kHz, 7.5kHz, highshelf +0.5dB 제거
+- 6.5kHz 디에서 추가 (치찰음 정적 감쇠)
+- 후처리 리미터 제거 (이중 리미터 펌핑 해소)
+- loudnorm LRA 11→20 (다이나믹 보존)
+- highpass 50→70Hz (파열음 제어)
+
+Phase C — 믹스:
+- auto_gain 0.5-6.0→0.7-3.0
+- 믹스 리미터 0.95→0.89 (-1dBTP, 클리핑 해결)
+
+Phase D — RVC 파라미터:
+- filter_radius 5→3 (고음 F0 지연 해소)
+- protect 0.35→0.33 (글로벌 합의)
+
+Phase F — 피치 게이트:
+- gain 0.05→0.15 (-26dB→-16dB)
 
 ### 현재 코드 상태
-- 테스트: 48/48 통과
-- ruff: All checks passed
-- git: main 브랜치, 최신 커밋
+- 테스트: 47/48 통과 (1실패: test_reset_preprocess_empty, 기존 이슈)
+- git: main 브랜치, 최신 커밋 dcbef59
+- Docker 이미지 자동 빌드 중 (GitHub Actions)
 
 ### 전처리/학습 재필요 여부
 - **전처리**: 불필요 (기존 전처리 데이터 유효)
 - **모델 학습**: 불필요 (v39 모델 그대로 사용)
-- **변환만 재실행**: v40 후처리 개선은 변환 시점에 적용됨
+- **변환만 재실행**: v41 변경은 변환 시점에 적용됨
 
 ## 다음 할 일
-1. v39 모델 + v40 후처리로 타겟 3곡 재변환
-2. 결과 청취 후 미세 조정
-3. Docker 리빌드 (GitHub Actions 자동)
+1. Docker 빌드 완료 대기 후 v41로 타겟 3곡 재변환
+2. 변환 결과 FFmpeg 분석 재실행 (v40 vs v41 비교)
+3. 결과 청취 후 미세 조정
 
 ## 타겟 곡 3개
 - "01_Breaking Through (4824 Wave).wav" — 영어, 팝/록, 48kHz
 - "플레이브 - 기다릴게.mp3" — 한국어, K-POP, 44.1kHz
 - "Jeremy Zucker - comethru ft. Bea Miller.mp3" — 영어, 인디팝, 44.1kHz
 
-## v40 후처리 체인 (현재)
+## v41 후처리 체인 (현재)
 ```
-highpass 50Hz → 300Hz -1.5dB → 550Hz -1.0dB → 2.5kHz -2.5dB →
-3.5kHz -1.5dB → 7.5kHz -0.8dB → highshelf 10kHz +0.5dB →
-(고음모드) → limiter 0.98 → (리버브) → 2-pass loudnorm -14 LUFS
+highpass 70Hz → 300Hz -1.0dB → 2.8kHz -1.0dB/w=0.4 →
+6.5kHz -2.0dB (디에서) → (고음모드) → (리버브) →
+2-pass loudnorm -14 LUFS (LRA=20)
 ```
 
-## 핵심 파라미터 (v39/v40)
-- index_rate: 0.30, rms_mix_rate: 0.0, protect: 0.35, filter_radius: 5
+## v41 믹스 체인
+```
+보컬: auto_gain(0.7-3.0) → stereo
+MR: lowshelf 60Hz/-0.8 → 800Hz -1.0 → 2500Hz -1.0
+amix → alimiter 0.89 (-1dBTP)
+```
+
+## 핵심 파라미터 (v41)
+- index_rate: 0.30, rms_mix_rate: 0.0, protect: 0.33, filter_radius: 3
 - epochs: 200, batch: 8, SR: 40kHz, F0: RMVPE
 - vocal_blend: 10% (프리셋 기본)
+
+## 5에이전트 리서치 핵심 결론
+- **한국 커뮤니티**: protect 0.33 적절, de-esser 필수, 화음 별도 분리 변환, RMVPE 1순위
+- **글로벌 커뮤니티**: index_rate 0.30 유지(MP3 소스), 오버트레이닝이 #1 원인, 입력 볼륨 증폭 팁
+- **기술 논문**: RMVPE+FCPE 최적 확인, 한국어 protect 0.28-0.33, 고주파 선택적 블렌딩(SYKI-SVC)
+- **코드 리뷰**: 2.5kHz EQ가 발음 파괴 주원인, 이중 리미터 펌핑, 44.1k 하드코딩 버그
 
 ## 핵심 규칙 (CLAUDE.md 참조)
 - 코드 수정 후 반드시 git commit + git push

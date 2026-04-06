@@ -18,31 +18,32 @@
 - `CLAUDE.md` — 하네스 엔지니어링 제약 문서 (린터/테스트 규칙, 컨벤션)
 - `HANDOFF.md` — 전체 아키텍처 결정사항, 비용 분석, 기술 선택 이유
 
-## Current Status (2026-04-06)
-- **v39 모델 학습 완료** + **v40 후처리 전면 개편**
+## Current Status (2026-04-07)
+- **v39 모델 학습 완료** + **v41 음질 종합 개선 (5에이전트 종합)**
 - R2 전체: 9,207개 파일, 28.6GB
-- **v39 변환 파라미터**: index 0.30, rms 0.0, protect 0.35, filter 5
-- **v40 후처리 개선 (치찰음/파열음/음끊김/가래 해결)**:
-  - agate/adeclick 제거 (최소 후처리 원칙)
-  - 300Hz -1.5dB + 550Hz -1.0dB (HiFi-GAN 중역 블로트 보정)
-  - highshelf 1.0→0.5dB (치찰음 완화)
-  - MR lowshelf 60Hz/-0.8 (서브베이스 보존)
-  - 2-pass loudnorm -14 LUFS, 원본 보컬 10% 블렌딩
-  - 48kHz SR 보존, 숨소리 보존 강화
-- Seed-VC 평가 완료: RVC 유지 결정 (Seed-VC DNSMOS↓, 아카이브됨)
-- YingMusic-SVC: 향후 주목할 차세대 SVC (코드 공개 진행 중)
-- KLM49_HFG (한국어 노래) + RIN_E3 (영어 팝/다국어) 이중 pretrained 지원
-- PC 간 클라우드 동기화 (Cloudflare R2 백업/복원) 구현 완료
-  - R2 백업/복원 시 **중복 파일 자동 스킵** (key+size 비교, 변경분만 전송)
-- 테스트 48/48 통과 (pytest)
-- ruff + bandit 정적 분석 클린
+- **v41 변환 파라미터**: index 0.30, rms 0.0, protect 0.33, filter_radius 3
+- **v41 핵심 변경 (v40→v41)**:
+  - [버그] 44.1kHz 하드코딩 → _process_sr (48kHz SR 불일치 해결)
+  - [버그] post_reverb 백엔드 기본값 0.05→0.0
+  - EQ 총 감쇠 -7.3dB→-2.0dB (65% 감소, 발음 대역 2-4kHz 보존)
+  - 550Hz, 3.5kHz, 7.5kHz, highshelf +0.5dB 컷 제거
+  - 6.5kHz 타겟 디에서 추가 (치찰음 정적 감쇠)
+  - 후처리 리미터 제거 (이중 리미터 → 펌핑 해소)
+  - loudnorm LRA 11→20 (다이나믹 보존)
+  - highpass 50→70Hz (파열음 제어)
+  - auto_gain 클램프 0.5-6.0→0.7-3.0
+  - 믹스 리미터 limit 0.95→0.89 (-1dBTP, 클리핑 해결)
+  - filter_radius 5→3 (고음 F0 지연 해소)
+  - protect 0.35→0.33 (글로벌 합의 balanced)
+  - 피치 게이트 gain 0.05→0.15 (-26dB→-16dB)
+- 테스트 47/48 통과 (1실패: test_reset_preprocess_empty, 기존 이슈)
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정
 
-## Parameters (v39 변환 + v40 후처리)
+## Parameters (v41)
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
 - Epochs: 200, Batch: 8, Sample rate: 40kHz
 - F0: RMVPE + FCPE, Embedder: ContentVec (768-dim)
-- index_rate: 0.30, rms_mix_rate: 0.0, protect: 0.35, filter_radius: 5
+- index_rate: 0.30, rms_mix_rate: 0.0, protect: 0.33, filter_radius: 3
 - Overtraining detector: 50 epoch threshold
 - vocal_blend: 10% (원본 보컬 블렌딩)
 - 학습 데이터: 음원 9개 (장홍권 기존 녹음물)
@@ -51,6 +52,7 @@
 - **코드 수정 후 반드시 git commit + git push**
 - **코드 변경 후 반드시 `python3 -m pytest tests/ -v` 실행**
 - **코드 변경 시 관련 주석/설명/툴팁도 현행화**
+- **변경 시 CLAUDE.md + .claude-memory + .claude-sync 3종 동시 현행화**
 - silent `except: pass` 금지 → 최소 `logger.debug()` 포함
 - 새 print() 금지 → logging 사용
 - 장함수(100줄+) 금지 → 헬퍼 분리
@@ -75,21 +77,24 @@
 ## 프로젝트 이력 (중요 결정사항)
 - v22 HPSS → v23 리버트: HPSS harmonic 추출이 자음/숨소리 제거 → 품질 파괴
 - v13 파이프라인 수정: asetrate 피치시프트 제거 (기계음 원인), SLICE_DURATION 3.5→5.0s
-- v15 vocal pitch pre-shift 비활성화: librosa STFT phase vocoder가 formant 미보존 → 이중 적용 시 기계음
-- v31 48kHz 시도 → 보코더 기계음 악화 → v32에서 40kHz 복원 (RVC Issue #119/#514)
-- v33~v34 후처리 최적화: 과도한 고역 EQ 커팅 제거, 노이즈 게이트 추가, asoftclip 제거
+- v15 vocal pitch pre-shift 비활성화: librosa STFT phase vocoder가 formant 미보존
+- v31 48kHz 시도 → 보코더 기계음 악화 → v32에서 40kHz 복원
 - v35 KLM49_HFG 도입 + Demucs 보컬분리 전처리 추가 (근본 원인 해결)
+- v40 agate/adeclick 제거 (최소 후처리 원칙)
+- **v41 5에이전트 종합 음질 개선** (아래 상세)
 
-## 음질 개선 히스토리 (v30~v35)
-- **근본 원인 발견 (2026-03-31)**: 학습 소스 9개 중 6개에 MR(반주) 포함
-  → 모델이 베이스/드럼/기타를 "목소리의 일부"로 학습 = 기계음 80%의 원인
-- v30: 기본 pretrained, 800ep → 심각한 오버트레이닝 + MR 오염
-- v31: 48kHz 시도 → 보코더 기계음 악화
-- v32: 40kHz 복원, 300ep → MR 오염 미해결
-- v33 (KLM49): 한국어 pretrained, 150ep, batch4 → 약간 개선, MR 미해결
-- v35: 전처리에 Demucs 보컬분리 추가 → MR 자동 제거 → 학습 완료 (My Voice v35)
-- **v36 (현재)**: BS-Roformer SOTA 분리, rms=0, loudnorm -14 LUFS, 원본 블렌딩 → **학습 완료 (My Voice v36)**
-- **다음: v36 모델로 3곡 변환 (기본값 프리셋)**
+## v41 음질 개선 (2026-04-07, 5에이전트 종합)
+- **분석 방법**: 오디오 분석 + 한국 커뮤니티(아카라이브/디시) + 글로벌(Reddit/AI Hub/GitHub) + 기술 논문 + 코드 리뷰
+- **3곡 변환 분석 결과**:
+  - Breaking Through: LUFS -10.95, TP +0.45dB (클리핑!)
+  - 기다릴게: LUFS -9.57, TP +0.42dB, Peak count 152 (심각)
+  - comethru: LUFS -14.72, 36 silence gaps (끊김)
+- **핵심 발견**:
+  - 2.5kHz/-2.5dB/w=0.8 EQ가 발음 포먼트(F3/F4) 파괴의 주원인
+  - 44.1kHz 하드코딩 버그: 48kHz→40k→44.1k (48k로 복원 안됨)
+  - 이중 리미터(후처리+믹스)가 펌핑/기계음 유발
+  - filter_radius=5의 11프레임 미디언이 고음 F0 지연 유발
+- **커뮤니티 합의**: protect 0.33 balanced, de-esser 필수, 화음 별도 분리 변환
 
 ## 타겟 곡 3개
 - "01_Breaking Through (4824 Wave).wav" — 영어, 팝/록, 48kHz/24bit WAV
@@ -99,17 +104,9 @@
 ## 학습 소스 음원 9개 (mp3record/ 폴더)
 - 07a51a19, 5a8a4c9a, a2eebb1e, 90d37ee7, 79dde5c2 — MR 포함 (Demucs 분리 필요)
 - 장이정-살다가한번쯤 — MR 포함 (Demucs 분리 필요)
-- **장이정-살다가테스트** — ✓ 깨끗한 보컬 (320kbps, 최고 품질)
-- **히스토리_tomorrow** — ✓ 깨끗한 보컬 (66초)
+- **장이정-살다가테스트** — 깨끗한 보컬 (320kbps, 최고 품질)
+- **히스토리_tomorrow** — 깨끗한 보컬 (66초)
 - 장이정 학습용 데이터 (1) — 20분, 혼합 (보컬 12분 + MR 8분, Demucs 분리 필요)
-
-## 코드 감사 이력 (2026-04-01 ~ 04-03, 3라운드 44건)
-- 보안: path traversal, XSS, f0_method 화이트리스트, 파일명 위생처리
-- 버그: 업로드 race condition, JSON 파싱, 메모리 누수, 임시 파일 고아
-- 성능: SQLite busy_timeout/synchronous/cache_size, FastAPI lifespan
-- 관측: silent exceptions → warning (16곳)
-- 테스트: 34→48개
-- 데드코드: pitch pre/post-shift 제거, 미사용 fixture 정리
 
 ## Detailed Memories
 - [feedback_no_unnecessary_questions.md](feedback_no_unnecessary_questions.md) — 인프라 질문 금지
