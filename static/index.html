@@ -2997,9 +2997,9 @@ input[type="range"]::-moz-range-track {
         <div style="font-size:12px;font-weight:600;color:#10b981;margin-bottom:8px">✅ 자연스러운 목소리를 위한 권장 설정</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:var(--text2)">
           <div>• <b>데이터 10분 이하</b>: 에폭 100~150, 40kHz</div>
-          <div>• <b>데이터 10~25분</b>: 에폭 150 (기본값, 권장)</div>
-          <div>• <b>데이터 25분 이상</b>: 에폭 150~200</div>
-          <div>• <b>스튜디오 녹음 30분+</b>: 에폭 200~300</div>
+          <div>• <b>데이터 10~25분</b>: 에폭 150~200</div>
+          <div>• <b>데이터 25~60분</b>: 에폭 200 (기본값, 권장)</div>
+          <div>• <b>스튜디오 녹음 60분+</b>: 에폭 200~300</div>
         </div>
         <div style="margin-top:8px;font-size:11px;color:var(--text3)">
           💡 <b>데이터 품질 최우선</b>: 깨끗한 보컬 10분 > 잡음 있는 보컬 30분.<br>
@@ -3015,7 +3015,7 @@ input[type="range"]::-moz-range-track {
           <input type="text" id="model-name" value="My Voice v1" placeholder="모델 이름" onfocus="this.select()" autocomplete="off">
         </div>
         <div>
-          <label class="label">에폭 수 <i class="tip" data-tip="AI가 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n🔢 추천값 (v35, KLM49/RIN_E3 pretrained 기준):\n• 50 = 빠른 테스트 (품질 낮음)\n• 100 = 소량 데이터 테스트용\n• 150 = 권장 (25분 데이터 최적, 한국어 커뮤니티 검증)\n• 200 = 데이터 충분할 때\n• 300 = 고품질 (긴 학습 시간)\n\n📊 예상 소요 시간 (150에폭, RMVPE 기준):\n• 데이터 10분 → ~20분, ~$0.50\n• 데이터 25분 → ~45분, ~$1.00\n• 데이터 60분 → ~2시간, ~$3.00\n※ Crepe 사용 시 +20% / RTX 4090 기준\n\n⚠️ 과학습 감지가 내장되어 있어, 설정한 에폭에 도달하기 전에 자동으로 최적 시점에 멈출 수 있습니다.\n💰 에폭 2배 ≈ 비용 2배. 처음엔 150으로 시작하세요.">ⓘ</i></label>
+          <label class="label">에폭 수 <i class="tip" data-tip="AI가 목소리를 '몇 번 반복해서 연습할지' 정하는 숫자입니다.\n\n🔢 추천값 (v39, KLM49/RIN_E3 pretrained 기준):\n• 50 = 빠른 테스트 (품질 낮음)\n• 100 = 소량 데이터 테스트용\n• 200 = 권장 (체크포인트 비교로 최적점 탐색)\n• 300 = 고품질 (긴 학습 시간)\n\n📊 예상 소요 시간 (200에폭, RMVPE, batch 8 기준):\n• 데이터 10분 → ~25분, ~$0.60\n• 데이터 25분 → ~50분, ~$1.20\n• 데이터 60분 → ~2시간, ~$3.50\n※ Crepe 사용 시 +20% / RTX 4090 기준\n\n⚠️ 과학습 감지가 내장되어 있어, 자동으로 최적 시점에 멈출 수 있습니다.\n💰 에폭 2배 ≈ 비용 2배. 처음엔 200으로 시작하세요.">ⓘ</i></label>
           <select id="train-epochs" onchange="estimateTrainingCost()">
             <option value="50">50 (테스트용 · 빠른 결과 확인)</option>
             <option value="100">100 (10분 이하 데이터)</option>
@@ -3097,7 +3097,7 @@ input[type="range"]::-moz-range-track {
           </div>
         </div>
         <div class="cost-panel-note">
-          RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>실측 보정 추정값</b>.<br>          <b>현재 기본값:</b> 150에폭 (KLM49/RIN_E3 pretrained 기준, v35 최적화). 25분 데이터 → ~45분, ~$1.00<br>          <b>실측 참고:</b> 30분 데이터 + Crepe + 500에폭 = 약 6시간 · $15 (2026.03 실측)<br>          <b>절약 팁:</b> RMVPE가 Crepe보다 2~3배 빠르며 품질 차이는 미미합니다. 과학습 감지가 내장되어 있으므로 150에폭부터 시작하세요.
+          RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>실측 보정 추정값</b>.<br>          <b>현재 기본값:</b> 200에폭, batch 8 (KLM49/RIN_E3 pretrained, v39 최적화). 43분 데이터 → ~50분, ~$1.20<br>          <b>실측 참고:</b> 30분 데이터 + Crepe + 500에폭 = 약 6시간 · $15 (2026.03 실측)<br>          <b>절약 팁:</b> RMVPE가 Crepe보다 2~3배 빠르며 품질 차이는 미미합니다. 과학습 감지가 내장되어 있으므로 200에폭부터 시작하세요.
         </div>
         <!-- 동적 긴 학습 경고 -->
         <div id="train-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);font-size:12px;color:#fbbf24;line-height:1.55"></div>
@@ -3288,16 +3288,16 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('studio')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(99,102,241,0.4);color:#818cf8" title="깨끗한 스튜디오 녹음에 최적화. 최소한의 후처리로 원본 품질 유지">
               🎧 스튜디오 품질
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(236,72,153,0.4);color:#ec4899" title="화음/코러스가 많은 곡에 최적화. RMVPE 사용 필수 — Crepe는 화음 구간에서 피치 불안정. filter=3으로 피치 안정화. index 낮춰 원곡 화음 구조 보존">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(236,72,153,0.4);color:#ec4899" title="화음/코러스가 많은 곡에 최적화. RMVPE + filter 5 피치 안정화. index 0.30 원곡 화음 구조 보존">
               🎼 화음/코러스 곡
             </button>
             <button class="btn btn-ghost" onclick="applyConvertPreset('indie')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="차분한 인디팝/R&B에 최적화. RMVPE + 부드러운 피치 안정화 + 공간감 리버브">
               🌙 인디/차분한 곡
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus_v2')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(251,146,60,0.4);color:#fb923c" title="화음/그룹 곡 v2 — 발음 선명도 최우선 + 피치 아티팩트 게이트 v15. index 0.10, filter 3, 3.2kHz 프레즌스 EQ 자동 적용 (기다릴게 최적화)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus_v2')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(251,146,60,0.4);color:#fb923c" title="화음/그룹 곡 v2 — 발음 선명도 최우선. index 0.15, filter 5 (기다릴게 최적화)">
               🎤 화음 v2 (발음선명)
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 v2 — index 0.08 여성 음색 강제변환 최소화, phase vocoder 기계음 방지 (comethru 최적화)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 — index 0.30, protect 0.45 여성 timbre 보호 (comethru 최적화)">
               👫 남녀 듀엣곡
             </button>
           </div>
@@ -3336,7 +3336,7 @@ input[type="range"]::-moz-range-track {
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.40 = 기본값 (한국어 커뮤니티 권장 0.33~0.40)\n• 0.40~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.35 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.40~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.40에서 조금씩 낮추기">ⓘ</i></span>
+              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.35 = 기본값 (자음 보호 + 자연스러운 전환)\n• 0.35~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.30 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.35~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.35에서 조금씩 낮추기">ⓘ</i></span>
               <span class="slider-value" id="protect-val">0.35</span>
             </div>
             <input type="range" id="protect-slider" min="0" max="50" value="35" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
@@ -3352,7 +3352,7 @@ input[type="range"]::-moz-range-track {
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음 많은 노래, 빠른 멜로디\n• 3~4 = 일반 노래 (기본 3, 추천)\n• 5~7 = 발라드 등 느린 곡\n\n💡 음정이 '뚝뚝' 끊기면 높이고, 너무 밋밋하면 낮추세요.\n💡 비브라토 보존하려면 4 이하 권장.">ⓘ</i></span>
+              <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음, 빠른 멜로디 (비브라토 보존)\n• 3~4 = 일반 노래\n• 5 = 기본값 (피치 안정화, 삑사리↓)\n• 6~7 = 발라드 등 느린 곡\n\n💡 삑사리가 나면 높이고, 너무 밋밋하면 낮추세요.">ⓘ</i></span>
               <span class="slider-value" id="filter-val">5</span>
             </div>
             <input type="range" id="filter-slider" min="0" max="12" value="5" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
@@ -3810,23 +3810,23 @@ input[type="range"]::-moz-range-track {
       </p>
       <table class="billing-table">
         <thead>
-          <tr><th colspan="6" style="text-align:left;color:var(--text2);font-weight:400;font-size:11px;padding-bottom:4px">⚠️ RTX 4090 기준 추정 (v35: KLM49/RIN_E3 pretrained, 기본 150에폭)</th></tr>
+          <tr><th colspan="6" style="text-align:left;color:var(--text2);font-weight:400;font-size:11px;padding-bottom:4px">⚠️ RTX 4090 기준 추정 (v39: KLM49/RIN_E3 pretrained, 기본 200에폭, batch 8)</th></tr>
         </thead>
         <tbody>
           <tr><th scope="col">데이터</th><th scope="col">에폭</th><th scope="col">F0</th><th scope="col">배치</th><th scope="col">예상 시간</th><th scope="col">RTX 4090 비용</th></tr>
-          <tr><td>5분</td><td>100</td><td>RMVPE</td><td>4</td><td>약 10~15분</td><td><em>~$0.30~$0.50</em></td></tr>
-          <tr><td>10분</td><td>150</td><td>RMVPE</td><td>4</td><td>약 20~35분</td><td><em>~$0.50~$1.00</em></td></tr>
-          <tr style="background:rgba(139,92,246,0.08)"><td><b>25분</b></td><td><b>150</b></td><td><b>RMVPE</b></td><td><b>4</b></td><td><b>약 40~60분</b></td><td><em><b>~$1.00~$1.60</b></em></td></tr>
-          <tr><td>25분</td><td>200</td><td>RMVPE</td><td>4</td><td>약 55~80분</td><td><em>~$1.40~$2.10</em></td></tr>
-          <tr><td>30분</td><td>300</td><td>RMVPE</td><td>4</td><td>약 2~3시간</td><td><em>~$3.00~$5.00</em></td></tr>
-          <tr style="background:rgba(245,158,11,0.08)"><td>30분</td><td>150</td><td>Crepe</td><td>4</td><td>약 55~85분</td><td><em>~$1.40~$2.25</em></td></tr>
+          <tr><td>5분</td><td>100</td><td>RMVPE</td><td>8</td><td>약 8~12분</td><td><em>~$0.25~$0.40</em></td></tr>
+          <tr><td>10분</td><td>150</td><td>RMVPE</td><td>8</td><td>약 15~25분</td><td><em>~$0.40~$0.70</em></td></tr>
+          <tr style="background:rgba(139,92,246,0.08)"><td><b>43분</b></td><td><b>200</b></td><td><b>RMVPE</b></td><td><b>8</b></td><td><b>약 45~65분</b></td><td><em><b>~$1.00~$1.70</b></em></td></tr>
+          <tr><td>43분</td><td>300</td><td>RMVPE</td><td>8</td><td>약 70~100분</td><td><em>~$1.70~$2.70</em></td></tr>
+          <tr><td>60분</td><td>200</td><td>RMVPE</td><td>8</td><td>약 60~90분</td><td><em>~$1.50~$2.40</em></td></tr>
+          <tr style="background:rgba(245,158,11,0.08)"><td>43분</td><td>200</td><td>Crepe</td><td>8</td><td>약 55~85분</td><td><em>~$1.40~$2.25</em></td></tr>
         </tbody>
       </table>
       <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">
         💡 <b>옵션별 영향:</b><br>
-        · <b>에폭:</b> 150→300으로 늘리면 시간·비용 약 2배. 처음엔 150으로 결과 확인 후 재학습 여부를 결정하세요.<br>
+        · <b>에폭:</b> 200→300으로 늘리면 시간·비용 약 1.5배. 처음엔 200으로 결과 확인 후 재학습 여부를 결정하세요.<br>
         · <b>피치 추출 (Crepe vs RMVPE):</b> Crepe는 특징 추출 시간이 RMVPE의 2~3배이며, 품질 차이는 미미합니다. <b>RMVPE 권장.</b><br>
-        · <b>배치 크기:</b> 기본 4 (KLM49 최적). 대용량 데이터 시 8~16으로 올리면 빨라집니다.<br>
+        · <b>배치 크기:</b> 기본 8 (43분+ 데이터 권장). 16으로 올리면 더 빨라집니다.<br>
         · <b>과학습 감지:</b> 50에폭 무개선 시 자동 조기 중단되므로 에폭을 높게 설정해도 불필요한 비용이 발생하지 않습니다.<br>
         · <b>실측 참고:</b> 30분 데이터 + Crepe + 500에폭 ≈ 약 6시간, 약 $15 (2026.03 실측).
       </div>
@@ -3889,9 +3889,9 @@ input[type="range"]::-moz-range-track {
           <tr><th scope="col">시나리오</th><th scope="col">전처리</th><th scope="col">학습</th><th scope="col">변환×10곡</th><th scope="col">합계</th></tr>
         </thead>
         <tbody>
-          <tr><td>빠른 테스트<br><small style="color:var(--text3)">5분 데이터, 100에폭</small></td><td>~$0.20</td><td>~$0.35</td><td>~$0.05</td><td><em>~$0.60</em></td></tr>
-          <tr><td>일반 사용<br><small style="color:var(--text3)">25분 데이터, 150에폭</small></td><td>~$0.50</td><td>~$1.20</td><td>~$0.10</td><td><em>~$1.80</em></td></tr>
-          <tr><td>고품질<br><small style="color:var(--text3)">30분 데이터, 300에폭</small></td><td>~$0.60</td><td>~$4.00</td><td>~$0.15</td><td><em>~$4.75</em></td></tr>
+          <tr><td>빠른 테스트<br><small style="color:var(--text3)">5분 데이터, 100에폭</small></td><td>~$0.20</td><td>~$0.30</td><td>~$0.05</td><td><em>~$0.55</em></td></tr>
+          <tr><td>일반 사용<br><small style="color:var(--text3)">43분 데이터, 200에폭</small></td><td>~$0.50</td><td>~$1.30</td><td>~$0.10</td><td><em>~$1.90</em></td></tr>
+          <tr><td>고품질<br><small style="color:var(--text3)">60분 데이터, 300에폭</small></td><td>~$0.60</td><td>~$3.50</td><td>~$0.15</td><td><em>~$4.25</em></td></tr>
         </tbody>
       </table>
     </div>
@@ -4756,7 +4756,7 @@ function estimateTrainingCost() {
 
   // ── 실측 기반 공식 (2026-03 RTX 4090 실측 보정) ──
   // 실측 데이터: 30분 데이터 + Crepe + 500에폭 = 약 6시간, $15
-  // v35 기본: 150에폭 + RMVPE → 위 기준의 ~30% 수준
+  // v39 기본: 200에폭 + RMVPE + batch 8 → 위 기준의 ~35% 수준
   // 특징 추출 (1회): RMVPE ~1.5x realtime, Crepe ~3.5x realtime
   var featureSecs  = totalSecs * 1.5 * f0FeatureFactor;
   // 학습 epochs: RTX 4090 기준 ~1.10 sec/epoch/min-of-data at batch=auto, 40kHz
@@ -4886,8 +4886,8 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // v36 기본: rms=0(원곡 다이나믹 100% 보존), index 0.40(음색↑), protect 0.35
-      // v35→v36: rms 0.25→0, index 0.35→0.40, protect 0.33→0.35 (분석 기반 최적화)
+      // v39 기본: rms=0(원곡 다이나믹 100% 보존), index 0.30, protect 0.35, filter 5
+      // v36→v39: index 0.40→0.30 (글로벌+한국 커뮤니티 종합), filter 3→5 (피치 안정화)
       f0: 'rmvpe', protect: 35, rms: 0, filter: 5, hop: 2,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
@@ -4941,8 +4941,8 @@ function applyConvertPreset(preset) {
       desc: '인디/차분한 곡 — rms=0, index 0.35, 공간감, 원본 15%'
     },
     chorus_v2: {
-      // 화음/그룹 곡 v2 — 기다릴게 분석 기반 + v36 rms=0 적용
-      // index 0.15: v35의 0.10에서 약간 올림 (HFC 손실 완화 + 음색 반영)
+      // 화음/그룹 곡 v2 — 기다릴게 분석 기반 (v39: rms=0, filter 5)
+      // index 0.15: 화음곡 발음 선명도 우선 (기본 0.30보다 낮춤)
       // hop 128: 시간 평균화로 화음 변환 안정화
       f0: 'rmvpe', protect: 40, rms: 0, filter: 5, hop: 2,
       clean: false, cleanStr: 70, index: 15,
@@ -4952,8 +4952,8 @@ function applyConvertPreset(preset) {
       desc: '화음 v2 (발음선명) — rms=0, index 0.15, 원본 10% (기다릴게 최적)'
     },
     duet: {
-      // 남녀 듀엣곡 — comethru 분석 기반 + v36 rms=0 적용
-      // index 0.10: 여성 음색 강제 변환 최소화 (v35의 0.08에서 약간 올림)
+      // 남녀 듀엣곡 — comethru 분석 기반 (v39: rms=0, filter 5)
+      // index 0.30: v39 기본값 통일 (여성 timbre는 protect 0.45로 보호)
       // protect 0.45: 여성 timbre 보호 극대화
       f0: 'rmvpe', protect: 45, rms: 0, filter: 5, hop: 2,
       clean: false, cleanStr: 70, index: 30,
