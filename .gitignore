@@ -1,3 +1,7 @@
+# ── Claude sync (settings contain auth tokens) ──
+.claude-sync/settings.json
+.claude-sync/settings.local.json
+
 # ── Runtime data (user-specific, not shared) ──
 uploads/
 models/
