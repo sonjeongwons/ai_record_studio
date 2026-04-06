@@ -2277,65 +2277,53 @@ def _post_process_vocal(
     high_note_mode: bool = False,
     sample_rate: int = 44100,
 ) -> None:
-    """Post-process converted vocal v24 — 자연스러움 최우선.
+    """Post-process converted vocal v40 — 최소 후처리 원칙.
 
-    ── v24 개선 (v31 모델 최적화) ──
-    v12 원칙 유지 + 미세 조정:
-      - 디에서 6kHz 추가: RVC 치찰음(ㅅ,ㅆ) 과도 재구성 타겟 제거
-      - EQ 완화: 300/550Hz 컷 -1.0→-0.7dB (자연 음색 보존)
-      - 소프트 새츄레이션: 미세한 아날로그 워밍 (HiFi-GAN 디지털감 완화)
-      - 프레즌스/에어: +1.0→+0.8dB (과부스팅 방지)
+    ── v40 전면 개편 (v39 분석 기반) ──
+    커뮤니티 합의: "최소 후처리가 최선" (AI Hub: "least audio processing as possible")
 
-    ── 처리 순서 ──
-    1. adeclick — 클릭/팝 제거
-    2. highpass — 초저역 제거
-    3. 디에서 6kHz — 치찰음 타겟 제거
-    4. 디에서 7.5kHz — HiFi-GAN 금속 아티팩트 제거
-    5. 저역 EQ 보정 — 먹먹함 최소 보정
-    6. 프레즌스/에어 복원 — HiFi-GAN 하모닉 손실 보상
-    7. 소프트 새츄레이션 — 디지털감 완화
-    8. 안전 리미터
-    9. (리버브) — 공간감 (선택)
+    v39 분석 결과:
+      - 치찰음: highshelf 10kHz +1.0dB → 7.5kHz에서 +4.4dB 과도
+      - 파열음 손상: adeclick burst=4가 자음 transient 삼킴
+      - 음 끊김: agate release=80ms 너무 짧음 + range -32dB 너무 강함
+      - 가래/기계음: 300-600Hz 보정 없이 HiFi-GAN 중역 +68~113% 부풀림
+
+    v40 변경:
+      - agate 제거 (원본 보컬 블렌딩이 더 자연스러운 대안)
+      - adeclick 제거 (자음 transient 보호)
+      - 300-600Hz 중역 컷 추가 (HiFi-GAN 블로트 보정)
+      - highshelf 1.0→0.5dB (치찰음 완화)
+      - 2.5/3.5kHz harsh EQ 유지 (검증된 효과)
     """
     filters = []
 
-    # ━━━ 1. 노이즈 게이트 — 저음량 구간 보코더 아티팩트 제거 ━━━
-    # v34: 무음/저음량 경계에서 HiFi-GAN 잔류 노이즈 증폭이 기계음 주원인
-    # 분석: 기다릴게 3:31 RMS=-87.7dB에서 SF=0.13 (극심한 기계음)
-    # range_size=-40: 게이트 닫힐 때 -40dB 감쇠 (완전 무음이 아닌 자연스러운 페이드)
-    filters.append(
-        "agate=threshold=0.008:range=0.025:attack=5:release=80"
-    )
-
-    # ━━━ 2. 클릭/팝 아티팩트 제거 (비파괴적) ━━━
-    filters.append(
-        "adeclick=window=55:overlap=75:arorder=8:threshold=5:burst=4"
-    )
-
-    # ━━━ 3. 초저역 제거 ━━━
+    # ━━━ 1. 초저역 제거 ━━━
     filters.append("highpass=f=50:poles=2")
 
-    # ━━━ 4. RVC 아티팩트 EQ (업계 표준 타겟) ━━━
-    # 글로벌 커뮤니티: RVC HiFi-GAN 아티팩트는 2.5-3.5kHz에 집중 (BizToolPack, SageAudio)
-    # 이전 800Hz 커팅은 비표준 → 보컬 F1 영역을 손상시켜 오히려 가래소리 유발 가능
-    # 2.5kHz: RVC 특유의 harsh/metallic 아티팩트 핵심 대역
-    # 3.5kHz: 추가 harsh 대역 (좁은 Q)
+    # ━━━ 2. 300-600Hz 중역 블로트 보정 (HiFi-GAN 핵심 문제) ━━━
+    # v40 분석: 500-2kHz +68~113%, 600Hz +7dB (comethru)
+    # 300Hz: 보컬 mudiness 핵심 대역 (넓은 Q로 부드럽게)
+    # 550Hz: HiFi-GAN 보코더가 과도 생성하는 영역
+    filters.append("equalizer=f=300:width_type=o:width=0.7:g=-1.5")
+    filters.append("equalizer=f=550:width_type=o:width=0.7:g=-1.0")
+
+    # ━━━ 3. RVC harsh/metallic 아티팩트 EQ ━━━
+    # 2.5kHz: RVC 특유의 harsh 대역 (커뮤니티 검증)
+    # 3.5kHz: 추가 metallic 대역
+    # 7.5kHz: HiFi-GAN 금속성
     filters.append("equalizer=f=2500:width_type=o:width=0.8:g=-2.5")
     filters.append("equalizer=f=3500:width_type=o:width=0.6:g=-1.5")
-
-    # ━━━ 4b. HiFi-GAN 금속성 보정 ━━━
     filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-0.8")
 
-    # ━━━ 5. Air 보상 ━━━
-    # 10kHz: 숨소리/공기감 — HiFi-GAN이 삼키는 영역
-    # 3.2kHz 부스트 제거 (2.5kHz 커팅과 충돌 방지)
-    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=1.0")
+    # ━━━ 4. Air 보상 (축소) ━━━
+    # v40: 1.0→0.5dB (치찰음 +59% 과도 → 절반으로 축소)
+    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=0.5")
 
-    # ━━━ 6. 고음/가성 모드 ━━━
+    # ━━━ 5. 고음/가성 모드 ━━━
     if high_note_mode:
         filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
 
-    # ━━━ 7. 안전 리미터 ━━━
+    # ━━━ 6. 안전 리미터 ━━━
     filters.append("alimiter=limit=0.98:attack=5:release=100:level=disabled")
 
     # ━━━ 6. 리버브 (선택적) ━━━
@@ -2493,7 +2481,7 @@ def _mix_audio(
         # ── MR 체인 ──
         # 보컬 핵심 대역 경미한 컷 → 보컬 공간 확보 + 반주 보존
         f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.90:.3f},"
-        f"lowshelf=f=80:width_type=o:width=0.8:g=-1.5,"
+        f"lowshelf=f=60:width_type=o:width=0.8:g=-0.8,"  # v40: 80Hz/-1.5→60Hz/-0.8 (서브베이스 보존)
         f"equalizer=f=800:width_type=o:width=1.5:g=-1.0,"
         f"equalizer=f=2500:width_type=o:width=1.0:g=-1.0[m];"
         # ── 최종 믹스 + 단일 리미터 ──
