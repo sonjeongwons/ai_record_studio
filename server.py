@@ -2482,11 +2482,11 @@ async def start_conversion(
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.35),        # v36: 0.40→0.35 (자음/숨소리 보호 + 자연스러운 전환)
-    rms_mix_rate: float = Form(0.0),    # v36: 0.25→0.0 (원곡 다이나믹스 100% 보존 — 기계음 최대 원인)
-    filter_radius: int = Form(5),       # v39: 3→5 (글로벌: 노래에 5-7 권장, 피치 jitter=가래소리 원인)
+    protect: float = Form(0.33),        # v41: 0.35→0.33 (글로벌 합의 balanced default)
+    rms_mix_rate: float = Form(0.0),    # v36: 원곡 다이나믹스 100% 보존
+    filter_radius: int = Form(3),       # v41: 5→3 (고음 전환 F0 지연 해소)
     hop_length: int = Form(64),
-    post_reverb: float = Form(0.05),
+    post_reverb: float = Form(0.0),     # v41: 0.05→0.0 (프리셋과 일치, 기본 리버브 비활성)
     harmonic_enhance: str = Form("false"),
     high_note_mode: str = Form("false"),
     harmony_filter: float = Form(0.0),

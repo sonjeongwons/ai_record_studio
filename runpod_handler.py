@@ -2297,34 +2297,32 @@ def _post_process_vocal(
     """
     filters = []
 
-    # ━━━ 1. 초저역 제거 ━━━
-    filters.append("highpass=f=50:poles=2")
+    # ━━━ 1. 초저역 제거 (파열음 에너지 제어) ━━━
+    # v41: 50→70Hz (보컬 F0 85Hz+ 보존, 파열음 서브 에너지 차단)
+    filters.append("highpass=f=70:poles=2")
 
-    # ━━━ 2. 300-600Hz 중역 블로트 보정 (HiFi-GAN 핵심 문제) ━━━
-    # v40 분석: 500-2kHz +68~113%, 600Hz +7dB (comethru)
-    # 300Hz: 보컬 mudiness 핵심 대역 (넓은 Q로 부드럽게)
-    # 550Hz: HiFi-GAN 보코더가 과도 생성하는 영역
-    filters.append("equalizer=f=300:width_type=o:width=0.7:g=-1.5")
-    filters.append("equalizer=f=550:width_type=o:width=0.7:g=-1.0")
+    # ━━━ 2. 최소 보정 EQ (v41: -7.3dB→-2.0dB, 65% 감소) ━━━
+    # v40→v41: 5개 컷 → 2개 컷 (발음 대역 2-4kHz 보존이 핵심)
+    # 300Hz: HiFi-GAN mudiness 최소 보정 (축소)
+    filters.append("equalizer=f=300:width_type=o:width=0.5:g=-1.0")
+    # 2.8kHz: HiFi-GAN metallic resonance만 좁게 컷 (발음 보존)
+    # v40의 2.5kHz/-2.5dB/w=0.8 → 발음 포먼트 F3/F4 파괴 → 좁고 얕게 변경
+    filters.append("equalizer=f=2800:width_type=o:width=0.4:g=-1.0")
+    # v41: 550Hz, 3.5kHz, 7.5kHz 컷 제거 (발음 대역 보호)
+    # v41: highshelf +0.5dB 제거 (치찰음 증폭 원인)
 
-    # ━━━ 3. RVC harsh/metallic 아티팩트 EQ ━━━
-    # 2.5kHz: RVC 특유의 harsh 대역 (커뮤니티 검증)
-    # 3.5kHz: 추가 metallic 대역
-    # 7.5kHz: HiFi-GAN 금속성
-    filters.append("equalizer=f=2500:width_type=o:width=0.8:g=-2.5")
-    filters.append("equalizer=f=3500:width_type=o:width=0.6:g=-1.5")
-    filters.append("equalizer=f=7500:width_type=o:width=0.3:g=-0.8")
-
-    # ━━━ 4. Air 보상 (축소) ━━━
-    # v40: 1.0→0.5dB (치찰음 +59% 과도 → 절반으로 축소)
-    filters.append("highshelf=f=10000:width_type=o:width=0.8:g=0.5")
+    # ━━━ 3. 타겟 디에서 (v41 신규) ━━━
+    # 6.5kHz: 치찰음 핵심 대역 (ㅅ/ㅆ/s/sh/ch) 정적 감쇠
+    # 멀티밴드 동적 디에서 대신 좁은 정적 컷 (안정성 우선)
+    filters.append("equalizer=f=6500:width_type=o:width=0.8:g=-2.0")
 
     # ━━━ 5. 고음/가성 모드 ━━━
     if high_note_mode:
         filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
 
-    # ━━━ 6. 안전 리미터 ━━━
-    filters.append("alimiter=limit=0.98:attack=5:release=100:level=disabled")
+    # ━━━ v41: 후처리 리미터 제거 ━━━
+    # v40: alimiter=limit=0.98:attack=5:release=100 → 이중 리미터(+mix limiter) = 펌핑
+    # loudnorm + mix 리미터만으로 레벨 관리 충분
 
     # ━━━ 6. 리버브 (선택적) ━━━
     reverb_amount = max(0.0, min(0.5, float(reverb_amount)))
@@ -2365,7 +2363,7 @@ def _post_process_vocal(
         # Pass 1: 측정
         _measure_cmd = [
             "ffmpeg", "-i", str(_eq_tmp), "-hide_banner",
-            "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
+            "-af", "loudnorm=I=-14:TP=-1:LRA=20:print_format=json",
             "-f", "null", "-"
         ]
         _measure = _sp.run(_measure_cmd, capture_output=True, text=True, timeout=120)
@@ -2377,7 +2375,7 @@ def _post_process_vocal(
             _stats = _json.loads(_stderr[_json_start:_json_end])
             # Pass 2: 측정값으로 선형 노멀라이즈
             _ln_filter = (
-                f"loudnorm=I=-14:TP=-1:LRA=11:linear=true"
+                f"loudnorm=I=-14:TP=-1:LRA=20:linear=true"
                 f":measured_I={_stats['input_i']}"
                 f":measured_LRA={_stats['input_lra']}"
                 f":measured_TP={_stats['input_tp']}"
@@ -2454,7 +2452,7 @@ def _mix_audio(
         if _v_rms > 1e-6 and _m_rms > 1e-6:
             _target_ratio = 1.5  # 보컬이 MR보다 +3.5dB 크게
             _auto_gain = (_m_rms * _target_ratio) / _v_rms
-            _auto_gain = max(0.5, min(6.0, _auto_gain))  # 안전 클램프
+            _auto_gain = max(0.7, min(3.0, _auto_gain))  # v41: 0.5-6.0→0.7-3.0 (파열음 증폭 방지)
             log.info(
                 f"Auto-balance: vocal_rms={20*np.log10(max(_v_rms,1e-10)):.1f}dBFS, "
                 f"mr_rms={20*np.log10(max(_m_rms,1e-10)):.1f}dBFS, "
@@ -2486,7 +2484,7 @@ def _mix_audio(
         f"equalizer=f=2500:width_type=o:width=1.0:g=-1.0[m];"
         # ── 최종 믹스 + 단일 리미터 ──
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.95:attack=25:release=300:level=enabled:asc=1",
+        f"alimiter=limit=0.89:attack=25:release=300:level=enabled:asc=1",  # v41: 0.95→0.89 (-1dBTP, EBU R128)
         "-acodec", "pcm_s24le",
         "-ar", str(sample_rate),
         str(output_path),
@@ -2690,11 +2688,11 @@ def _fix_pitch_artifacts(
                     fade = max(1, int(0.1 * sr / hop))
                     for k in range(i, j):
                         if k < i + fade:
-                            gain[k] = max(0.05, 1.0 - (k - i) / fade * 0.95)
+                            gain[k] = max(0.15, 1.0 - (k - i) / fade * 0.85)
                         elif k >= j - fade:
-                            gain[k] = max(0.05, 1.0 - (j - k) / fade * 0.95)
+                            gain[k] = max(0.15, 1.0 - (j - k) / fade * 0.85)
                         else:
-                            gain[k] = 0.05  # ≈ -26 dB
+                            gain[k] = 0.15  # v41: 0.05→0.15 (≈ -16 dB, 자연스러운 감쇠)
                     _med_f0 = float(_np_pa.nanmedian(f0[i:j]))
                     _zone = "Z1" if _med_f0 > max_hz else f"Z2(VP<{vp_threshold})"
                     log.info(
@@ -2764,13 +2762,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
     if f0_method not in _VALID_F0_CONVERT:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # filter_radius 5: 글로벌 커뮤니티 — 노래에 5-7 권장 (GitHub #2180)
-    # 피치 jitter가 가래소리의 주원인일 수 있음 → 5로 충분한 스무딩
-    # 이전 3에서 가래소리 해결 안 됨 → 5 재시도
+    # filter_radius 3: v41 — 11프레임 미디언(5)은 고음 전환에서 F0 지연 → 끊김
+    # 7프레임 미디언(3)이 vibrato 보존 + jitter 제거 균형점
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 5))
+        filter_radius: int = int(job_input.get("filter_radius", 3))
     except (ValueError, TypeError):
-        filter_radius = 5
+        filter_radius = 3
     # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
     # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
     # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과
@@ -2779,12 +2776,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
         rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.0))
     except (ValueError, TypeError):
         rms_mix_rate = 0.0
-    # protect 0.35: v36 — 자음/숨소리 보호 + 자연스러운 유/무성 전환 (이전 0.40)
-    # 커뮤니티 권장 0.33-0.40 범위 중 0.35: 한국어 빈번한 자음 보호 + 자연스러움 균형
+    # protect 0.33: v41 — 글로벌 커뮤니티 합의 balanced default
+    # 0.33: 무성자음 보호 최적점 (0.5=비활성, 0.2=과도 → 비인간적)
     try:
-        protect: float = float(job_input.get("protect", 0.35))
+        protect: float = float(job_input.get("protect", 0.33))
     except (ValueError, TypeError):
-        protect = 0.35
+        protect = 0.33
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     try:
         hop_length: int = int(job_input.get("hop_length", 64))
@@ -3060,14 +3057,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
         try:
             _rvc_out_info = _sf_sr.info(str(converted_vocals_path))
             _rvc_out_sr = _rvc_out_info.samplerate
-            if _rvc_out_sr != 44100:
-                log.info(f"RVC output SR={_rvc_out_sr} → resampling to 44100Hz (soxr)")
-                _resampled_path = work / "converted_vocals_44k.wav"
+            if _rvc_out_sr != _process_sr:
+                log.info(f"RVC output SR={_rvc_out_sr} → resampling to {_process_sr}Hz (soxr)")
+                _resampled_path = work / f"converted_vocals_{_process_sr // 1000}k.wav"
                 run_ffmpeg([
                     "-i", str(converted_vocals_path),
-                    "-af", "aresample=resampler=soxr:precision=28:osr=44100",
+                    "-af", f"aresample=resampler=soxr:precision=28:osr={_process_sr}",
                     "-acodec", "pcm_s24le",
-                    "-ar", "44100",
+                    "-ar", str(_process_sr),
                     str(_resampled_path),
                 ])
                 if _resampled_path.exists() and _resampled_path.stat().st_size > 1000:
@@ -3290,12 +3287,12 @@ def _rvc_infer(
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
     index_rate: float = 0.30,     # v39: 0.35→0.30
-    protect: float = 0.35,        # v36: 0.50→0.35
+    protect: float = 0.33,        # v41: 0.35→0.33 (글로벌 합의 balanced default)
     hop_length: int = 64,
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 5,       # v39: 2→5
+    filter_radius: int = 3,       # v41: 5→3 (고음 전환 F0 지연 해소)
     rms_mix_rate: float = 0.0,    # v36: 0.10→0.0
     split_audio: bool = True,
 ) -> None:
