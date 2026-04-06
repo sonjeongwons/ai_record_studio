@@ -18,15 +18,17 @@
 - `CLAUDE.md` — 하네스 엔지니어링 제약 문서 (린터/테스트 규칙, 컨벤션)
 - `HANDOFF.md` — 전체 아키텍처 결정사항, 비용 분석, 기술 선택 이유
 
-## Current Status (2026-04-03)
-- **v36 모델 "My Voice v36" 학습 완료** (소스 9개 재전처리 + v36 코드로 학습)
-- v35 모델 R2 클라우드 업로드 완료 (index 357MB + pth 53MB)
-- R2 전체: 9,207개 파일, 28.6GB (모델/변환/전처리/학습 데이터 모두 포함)
-- **v36 음질 최적화 전체 적용 완료**:
-  - rms=0, index 0.40, protect 0.35, FCPE F0 추가
-  - BS-Roformer SOTA 분리 (전처리+변환, 모델 가중치 Dockerfile 포함)
+## Current Status (2026-04-06)
+- **v39 모델 학습 완료** + **v40 후처리 전면 개편**
+- R2 전체: 9,207개 파일, 28.6GB
+- **v39 변환 파라미터**: index 0.30, rms 0.0, protect 0.35, filter 5
+- **v40 후처리 개선 (치찰음/파열음/음끊김/가래 해결)**:
+  - agate/adeclick 제거 (최소 후처리 원칙)
+  - 300Hz -1.5dB + 550Hz -1.0dB (HiFi-GAN 중역 블로트 보정)
+  - highshelf 1.0→0.5dB (치찰음 완화)
+  - MR lowshelf 60Hz/-0.8 (서브베이스 보존)
   - 2-pass loudnorm -14 LUFS, 원본 보컬 10% 블렌딩
-  - 48kHz SR 보존, 숨소리 보존 강화, 에폭 체크포인트 비교 지원
+  - 48kHz SR 보존, 숨소리 보존 강화
 - Seed-VC 평가 완료: RVC 유지 결정 (Seed-VC DNSMOS↓, 아카이브됨)
 - YingMusic-SVC: 향후 주목할 차세대 SVC (코드 공개 진행 중)
 - KLM49_HFG (한국어 노래) + RIN_E3 (영어 팝/다국어) 이중 pretrained 지원
@@ -36,11 +38,11 @@
 - ruff + bandit 정적 분석 클린
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정
 
-## Training Parameters (v36 — 분석 기반 최적화)
+## Parameters (v39 변환 + v40 후처리)
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
 - Epochs: 200, Batch: 8, Sample rate: 40kHz
-- F0: RMVPE + FCPE (신규), Embedder: ContentVec (768-dim)
-- index_rate: 0.40, rms_mix_rate: 0.0, protect: 0.35, filter_radius: 5
+- F0: RMVPE + FCPE, Embedder: ContentVec (768-dim)
+- index_rate: 0.30, rms_mix_rate: 0.0, protect: 0.35, filter_radius: 5
 - Overtraining detector: 50 epoch threshold
 - vocal_blend: 10% (원본 보컬 블렌딩)
 - 학습 데이터: 음원 9개 (장홍권 기존 녹음물)
