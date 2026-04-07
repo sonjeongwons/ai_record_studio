@@ -2478,7 +2478,7 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.30),   # v39: MP3 데이터 균형점 (글로벌 0.70, 한국 "낮추라" → 0.30)
+    index_rate: float = Form(0.40),   # v45: 0.30→0.40 (한/영 균형, 한국어 0.55 / 영어 0.30 프리셋)
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),

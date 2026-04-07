@@ -2741,13 +2741,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 0.30: MP3 데이터 균형점 (글로벌: 0.70 최적, 한국: "올리면 기계음")
-    # MP3 학습데이터 → 인덱스에 아티팩트 → 높으면 기계음, 너무 낮으면 음색 없음
-    # 0.30: 모델 음색 30% 반영 + pretrained 70% — MP3 아티팩트와 음색의 균형
+    # index_rate 0.40: v45 한/영 균형 (한국어 프리셋 0.55, 영어 프리셋 0.30)
+    # 커뮤니티: 한국어는 0.50-0.75 권장 (발음 정확도), 영어는 0.30 유지
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.30))
+        index_rate: float = float(job_input.get("index_rate", 0.40))
     except (ValueError, TypeError):
-        index_rate = 0.30
+        index_rate = 0.40
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
@@ -3278,7 +3277,7 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.30,     # v39: 0.35→0.30
+    index_rate: float = 0.40,     # v45: 0.30→0.40 (한/영 균형)
     protect: float = 0.50,        # v45: 0.33→0.50 (자음/가성 최대 보호)
     hop_length: int = 64,
     clean_audio: bool = False,

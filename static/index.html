@@ -3262,9 +3262,9 @@ input[type="range"]::-moz-range-track {
       <div class="slider-group">
         <div class="slider-header">
           <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.15 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.20~0.35 = 자연스러운 AI 목소리 (기본값 0.30)\n• 0.35~0.50 = 강한 AI 적용\n• 0.50~1.0 = 최대 AI (아티팩트 주의)\n\n💡 기본값 0.30은 글로벌+한국 커뮤니티 권장 균형점입니다.">ⓘ</i></span>
-          <span class="slider-value" id="index-val">0.30</span>
+          <span class="slider-value" id="index-val">0.40</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="30" class="has-fill" aria-label="인��스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+        <input type="range" id="index-slider" min="0" max="100" value="40" class="has-fill" aria-label="인��스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
         <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.30~0.50 권장)</div>
       </div>
       <!-- Advanced settings (collapsible) -->
@@ -3278,6 +3278,12 @@ input[type="range"]::-moz-range-track {
           <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
             <button class="btn btn-ghost" onclick="applyConvertPreset('default')" style="font-size:11px;padding:5px 12px;border-radius:8px" title="기본 설정으로 되돌리기">
               🔄 기본값
+            </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('korean')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(239,68,68,0.4);color:#ef4444" title="한국어 노래 최적화 — index 0.55로 한국어 발음(ㄴ/ㅁ/ㅅ/ㅆ) 정확도 향상. K-POP, 발라드, 트로트 권장">
+              🇰🇷 한국어 노래
+            </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('english')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="영어/팝 노래 최적화 — index 0.30으로 원곡 영어 발음(th/r/l) 보존. 팝, 인디, R&B 권장">
+              🌍 영어/팝송
             </button>
             <button class="btn btn-ghost" onclick="applyConvertPreset('falsetto')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(245,158,11,0.4);color:#fbbf24" title="가성·고음이 많은 노래에 최적화된 설정. 자연스러운 고음을 위해 protect↑, filter↓, hop_length↓ 조절">
               🎤 가성/고음 최적화
@@ -4889,13 +4895,31 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // v45 기본: protect 0.50 (자음 최대 보호), filter 2 (비브라토 보존)
+      // v45 기본: index 0.40 (한/영 균형), protect 0.50, filter 2
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      clean: false, cleanStr: 70, index: 40,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
+      highNote: false, harmonyFilter: 0,
+      vocalBlend: 0,
+      desc: 'v45 기본 — index 0.40, protect 0.50, 한/영 균형'
+    },
+    korean: {
+      // 한국어 노래 최적: 커뮤니티 권고 index 0.55 (발음 정확도 향상)
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      clean: false, cleanStr: 70, index: 55,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
+      highNote: false, harmonyFilter: 0,
+      vocalBlend: 0,
+      desc: '🇰🇷 한국어 최적 — index 0.55 (ㄴ/ㅁ/ㅅ 발음 정확도↑)'
+    },
+    english: {
+      // 영어 노래 최적: 낮은 index로 원곡 발음 보존
       f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
       vocalBlend: 0,
-      desc: 'v45 기본 — protect 0.50, filter 2, 단일 목소리 (블렌딩 OFF)'
+      desc: '🌍 영어/팝 최적 — index 0.30 (원곡 발음 보존)'
     },
     falsetto: {
       // 가성/고음: filter=1(비브라토 보존) + 고음모드 + protect 최대
@@ -6483,7 +6507,7 @@ async function startConversion() {
   var form = new FormData();
   form.append('model_id', selectedModelId);
   form.append('pitch_shift', getVal('pitch-slider', '0'));
-  form.append('index_rate', (getVal('index-slider', '30') / 100).toFixed(2));
+  form.append('index_rate', (getVal('index-slider', '40') / 100).toFixed(2));
   form.append('f0_method', getVal('convert-f0', 'rmvpe'));
   form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
@@ -6900,7 +6924,7 @@ async function startBatchConversion() {
       var form = new FormData();
       form.append('model_id', selectedModelId);
       form.append('pitch_shift', getVal('pitch-slider', '0'));
-      form.append('index_rate', (getVal('index-slider', '30') / 100).toFixed(2));
+      form.append('index_rate', (getVal('index-slider', '40') / 100).toFixed(2));
       form.append('f0_method', getVal('convert-f0', 'rmvpe'));
       form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
