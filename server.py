@@ -2123,9 +2123,34 @@ async def start_training(
             ]
             logger.info("[Train] Segment filter: %d mapped → %d found on disk", len(selected_seg_names), len(preprocessed_files))
         else:
-            # 매핑 없으면 (이전 전처리) 전체 사용
-            logger.info("[Train] No segment mapping found, using all %d segments", len(all_preprocessed))
-            preprocessed_files = all_preprocessed
+            # 매핑 없으면 (이전 전처리) 파일명 prefix 매칭으로 필터링
+            # DB filename: {hash8}_{original_name}.mp3 → stem = {hash8}_{original_name}
+            # 세그먼트: {hash8}_{original_name}_seg_XXXX.flac (prefix 매칭 가능)
+            # 구형 세그먼트: seg_XXXX_seg_XXXX.flac (prefix 매칭 불가 → 포함)
+            with get_db() as db:
+                placeholders = ",".join("?" * len(ids))
+                selected_rows = db.execute(
+                    f"SELECT filename FROM training_files WHERE id IN ({placeholders}) AND deleted=0", ids
+                ).fetchall()
+            selected_stems = {Path(r["filename"]).stem for r in selected_rows}
+
+            preprocessed_files = []
+            skipped = []
+            for f in all_preprocessed:
+                # 구형 bare seg_XXXX 형식은 특정 파일에 매핑 불가 → 포함
+                if f.name.startswith("seg_"):
+                    preprocessed_files.append(f)
+                elif any(f.name.startswith(stem) for stem in selected_stems):
+                    preprocessed_files.append(f)
+                else:
+                    skipped.append(f.name)
+
+            logger.info(
+                "[Train] Prefix fallback: %d stems matched → %d segments included, %d skipped",
+                len(selected_stems), len(preprocessed_files), len(skipped)
+            )
+            if skipped:
+                logger.debug("[Train] Skipped segments: %s", skipped[:10])
     else:
         preprocessed_files = all_preprocessed
 
