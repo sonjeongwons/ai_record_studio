@@ -1288,12 +1288,14 @@ def _save_preprocessed_segments(output: dict, job_id: str = "") -> dict:
     merged_dur = prev_dur + total_duration
     meta["total_duration"] = round(merged_dur, 2)
 
-    # file_id → segment filenames 매핑 업데이트
+    # file_id → segment filenames 매핑 업데이트 (중복 방지)
     seg_map = meta.get("file_segments", {})
     if file_ids and saved_files:
         seg_names = [s["filename"] for s in saved_files]
         for fid in file_ids:
-            seg_map[str(fid)] = seg_map.get(str(fid), []) + seg_names
+            existing = set(seg_map.get(str(fid), []))
+            existing.update(seg_names)
+            seg_map[str(fid)] = list(existing)
     meta["file_segments"] = seg_map
     # 원자적 쓰기: 임시 파일에 먼저 쓰고 rename (크래시 시 손상 방지)
     meta_tmp = meta_path.with_suffix(".json.tmp")
@@ -2112,9 +2114,12 @@ async def start_training(
             ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
         except ValueError:
             raise HTTPException(400, "잘못된 파일 ID 형식입니다.")
+        # 삭제된 파일의 세그먼트가 포함되지 않도록 유효 ID만 필터링
+        valid_ids = {str(r["id"]) for r in rows}  # rows는 deleted=0 필터 적용됨
         selected_seg_names = set()
         for fid in ids:
-            selected_seg_names.update(seg_map.get(str(fid), []))
+            if str(fid) in valid_ids:
+                selected_seg_names.update(seg_map.get(str(fid), []))
 
         if selected_seg_names:
             preprocessed_files = [
@@ -2489,10 +2494,21 @@ async def reset_preprocess_selected(file_ids: str = Form(...)):
             f"UPDATE training_files SET preprocessed=0 WHERE id IN ({placeholders})", ids
         )
 
-    # 메타데이터 갱신 (남은 세그먼트 기준으로 재계산)
+    # 메타데이터에서 리셋된 파일 ID만 제거 (전체 삭제 X → 오판 세그먼트 방지)
     meta_path = PREPROCESSED_DIR / "_metadata.json"
     if meta_path.exists():
-        meta_path.unlink()
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            seg_map = meta.get("file_segments", {})
+            for fid in ids:
+                seg_map.pop(str(fid), None)
+            meta["file_segments"] = seg_map
+            meta_tmp = meta_path.with_suffix(".json.tmp")
+            meta_tmp.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+            meta_tmp.replace(meta_path)
+        except Exception as e:
+            logger.warning("metadata update failed, deleting: %s", e)
+            meta_path.unlink(missing_ok=True)
 
     return {"cleared": removed, "reset_files": len(rows)}
 

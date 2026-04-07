@@ -849,14 +849,17 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
             else:
                 prop = 0.12  # v45: 0.18→0.12 — 약한 NR, 자음/숨소리 보호 강화
 
+            # n_fft/hop_length를 샘플레이트에 정규화 (93ms/12ms 타겟)
+            _nr_nfft = max(256, 2 ** (int(sr * 0.093).bit_length() - 1))  # ~93ms, 2의 거듭제곱
+            _nr_hop = max(64, int(sr * 0.012))  # ~12ms
             reduced = nr.reduce_noise(
                 y=audio_data,
                 sr=sr,
                 prop_decrease=prop,
-                stationary=True,    # v45: False→True — 정상 노이즈 가정 (자음을 노이즈로 오분류 방지)
-                n_fft=4096,         # v45: 2048→4096 — 93ms 윈도우 (고음 하모닉 분해능 향상)
-                hop_length=512,     # v45: 128→512 — 11.6ms (자음 프레임별 과잉 게이팅 방지)
-                freq_mask_smooth_hz=1000,  # v45: 500→1000 — 주파수 마스크 더 부드럽게 (자음 대역 보호)
+                stationary=True,    # v45: 정상 노이즈 가정 (자음을 노이즈로 오분류 방지)
+                n_fft=_nr_nfft,     # SR 정규화: 44.1k→4096, 48k→4096, 16k→1024
+                hop_length=_nr_hop, # SR 정규화: 44.1k→529, 48k→576, 16k→192
+                freq_mask_smooth_hz=1000,
             )
 
             sf.write(str(out_path), reduced, samplerate=sr, subtype="FLOAT")
@@ -2456,6 +2459,10 @@ def _mix_audio(
         log.warning(f"Auto-balance 실패: {_bal_err}, 기본 gain=1.5 사용")
 
     _effective_vocal = vocal_volume * _auto_gain
+    # 클리핑 방지: vocal gain이 4.0x(+12dB)를 넘지 않도록 제한
+    if _effective_vocal > 4.0:
+        log.warning(f"Vocal gain clamped: {_effective_vocal:.2f} → 4.0 (clipping prevention)")
+        _effective_vocal = 4.0
 
     run_ffmpeg([
         "-i", str(vocal_path),
