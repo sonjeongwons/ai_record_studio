@@ -31,49 +31,40 @@
 | CI/CD | GitHub Actions (Docker 빌드 + pytest) |
 | 정적분석 | ruff (린터) + bandit (보안) |
 
-## 3. 현재 상태 (2026-04-03)
+## 3. 현재 상태 (2026-04-07)
 
 - ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **48/48 통과**
 - ✅ RunPod Serverless Handler 구현 완료
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원, 중복 스킵)
-- ✅ 보안 감사 3회 완료 (44건 수정: path traversal, XSS, race condition, 메모리누수 등)
-- ✅ **v36 음질 최적화 (전체 적용 완료)**:
-  - rms=0 (다이나믹 100% 보존), index 0.40, protect 0.35, filter_radius 5
-  - BS-Roformer SOTA 보컬 분리 (전처리+변환 모두, SDR 12.9)
-  - 2-pass loudnorm -14 LUFS (선형 모드, 다이나믹 보존)
-  - 원본 보컬 10% 블렌딩 (숨결감/자연스러움 복원)
-  - FCPE F0 방법 추가 (풍성한 보컬, 5배 빠름)
-  - 48kHz 샘플레이트 보존 (다운샘플 방지)
-  - 숨소리 보존 강화 (NR 임계값/강도 낮춤)
-  - 에폭 체크포인트 비교 지원
-  - 중역 블로트 EQ (800Hz -2dB, 1200Hz -1.5dB — 가래 소리 해결)
-- ✅ **시스템 총점검 완료 (3라운드, 44건)**:
-  - SQLite busy_timeout/synchronous/cache_size 최적화
-  - FastAPI lifespan 마이그레이션 (DeprecationWarning 해소)
-  - 메모리 누수 수정 (폴링 스레드 dict)
-  - f0_method 화이트리스트 검증 (학습+변환)
-  - Silent exceptions → warning (16곳)
-  - 고아 임시 파일 자동 정리
-  - DB/presigned URL/sync 에러 처리 강화
+- ✅ 보안 감사 완료 (44건+ 수정)
+- ✅ **v41 음질 종합 개선 (5에이전트 풀가동)**:
+  - [버그 수정] 44.1kHz 하드코딩 → _process_sr (48kHz SR 불일치 해결)
+  - [버그 수정] post_reverb 백엔드 기본값 0.05→0.0
+  - EQ 총 감쇠 -7.3dB→-2.0dB (65% 감소, 발음 2-4kHz 보존)
+  - agate/adeclick 제거 + 6.5kHz 디에서 추가 (최소 후처리 원칙)
+  - 후처리 리미터 제거 (이중 리미터 펌핑 해소)
+  - loudnorm LRA 11→20 (다이나믹 보존)
+  - 믹스 리미터 0.95→0.89 (-1dBTP, 클리핑 해결)
+  - filter_radius 5→3 (고음 F0 지연 해소)
+  - protect 0.35→0.33 (글로벌 합의)
 - ⚠️ **CVE-2025-32434**: PyTorch 2.1.0 RCE — 2.6.0+ 업그레이드 예정
-- 📝 Seed-VC 평가 완료: RVC 유지 결정 (Seed-VC는 DNSMOS↓, 아카이브됨)
-- 📝 YingMusic-SVC: 향후 주목할 차세대 SVC (코드 공개 진행 중)
 
-## 4. 변환 파라미터 (v36 — 분석 기반 최적화)
+## 4. 변환 파라미터 (v41 — 5에이전트 종합 최적화)
 
-| 파라미터 | 값 | 변경 이유 |
+| 파라미터 | 값 | 변경 이력 |
 |----------|-----|-----------|
 | Pretrained | **KLM49_HFG** (한국어) / **RIN_E3** (다국어) | |
-| Epochs | **200**, Batch: **8**, SR: 40kHz | v36: 150→200, 4→8 (안정적 학습) |
-| F0 | RMVPE | |
-| **index_rate** | **0.40** (이전 0.35) | 음색 반영 강화 (커뮤니티 0.3-0.5) |
-| **rms_mix_rate** | **0.0** (이전 0.25) | 원곡 다이나믹 100% 보존 (기계음 최대 원인) |
-| **protect** | **0.35** (이전 0.40) | 자음 보호 + 자연스러운 전환 |
-| **vocal_blend** | **10%** (신규) | 원본 보컬 블렌딩으로 숨결감 복원 |
-| F0 옵션 | RMVPE + **FCPE** (신규) | FCPE: 풍성한 보컬, 5배 빠름 |
-| 보컬 분리 | **BS-Roformer → Demucs** 폴백 | 전처리+변환 모두 SOTA 적용 |
-| 후처리 | loudnorm -14 LUFS + presence +1.5dB | 볼륨/명료도 보정 |
-| 샘플레이트 | 원본 SR 보존 (48kHz→48kHz) | 다운샘플 방지 |
+| Epochs | **200**, Batch: **8**, SR: 40kHz | |
+| F0 | RMVPE + FCPE | |
+| **index_rate** | **0.30** | v39: 글로벌+한국 커뮤니티 종합 |
+| **rms_mix_rate** | **0.0** | 원곡 다이나믹 100% 보존 |
+| **protect** | **0.33** | v41: 글로벌 합의 balanced |
+| **filter_radius** | **3** | v41: 5→3 (고음 F0 지연 해소) |
+| **vocal_blend** | **10%** (프리셋) | 원본 보컬 블렌딩 |
+| 보컬 분리 | **BS-Roformer → Demucs** 폴백 | SDR 12.9 SOTA |
+| 후처리 | 2-pass loudnorm -14 LUFS (LRA=20) | 최소 EQ, 디에서 6.5kHz |
+| 믹스 리미터 | **0.89** (-1dBTP) | 클리핑 방지 |
+| 샘플레이트 | 원본 SR 보존 (_process_sr) | 48kHz→48kHz |
 
 ## 5. 컨벤션
 
@@ -139,16 +130,18 @@ librosa STFT phase vocoder가 formant 미보존 → 이중 적용(pre+post) 시 
 4개 에이전트 병렬 감사: 보안 9건(path traversal, XSS, race condition), 버그 3건 수정. 테스트 34→43. CVE-2025-32434 인지.
 > 상세: `.claude-memory/project_code_audit_2026_04.md`
 
-### 2026-04-02 v36 음질 개선 (분석 기반)
-6곡 변환 결과 나노 분석: F0 피치 상관계수 0.34-0.73 (목표 0.9+), 다이나믹 레인지 -93dB 압축, 2-4kHz -2.3% 손실.
-수정: rms=0, index 0.40, protect 0.35, presence +1.5dB, loudnorm -14 LUFS, BS-Roformer 분리.
+### 2026-04-02~03 v36~v40 음질 개선
+rms=0, BS-Roformer, loudnorm, 보컬 블렌딩, agate/adeclick 제거 등.
+
+### 2026-04-07 v41 종합 음질 개선 (5에이전트)
+44.1kHz 하드코딩 버그 수정, EQ 감쇠 65% 축소 (발음 2-4kHz 보존), 이중 리미터 해소,
+filter_radius 5→3, protect 0.35→0.33, 믹스 리미터 0.89 (-1dBTP).
+> 상세: `.claude-sync/SESSION_CONTEXT.md`
 
 ### 향후 로드맵
-- PyTorch 2.6.0+ 업그레이드 (CVE 대응, Applio 호환성 검증 필요)
-- 학습 데이터 보강 (43분→60분+ 권장, BS-Roformer 재전처리)
-- 원본 보컬 10-20% 블렌딩 (숨결감 복원)
-- 에폭별 체크포인트 수동 비교 (150이 최적인지 검증)
-- FastAPI lifespan 마이그레이션
+- PyTorch 2.6.0+ 업그레이드 (CVE 대응)
+- 학습 데이터 보강 (43분→60분+)
+- Seed-VC/YingMusic-SVC 차세대 평가
 
 ## 10. 주요 명령어
 

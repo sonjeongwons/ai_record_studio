@@ -2277,23 +2277,22 @@ def _post_process_vocal(
     high_note_mode: bool = False,
     sample_rate: int = 44100,
 ) -> None:
-    """Post-process converted vocal v40 — 최소 후처리 원칙.
+    """Post-process converted vocal v41 — 최소 후처리 원칙.
 
-    ── v40 전면 개편 (v39 분석 기반) ──
-    커뮤니티 합의: "최소 후처리가 최선" (AI Hub: "least audio processing as possible")
+    ── v41 종합 개편 (5에이전트 분석 + 커뮤니티 합의) ──
+    원칙: "최소 후처리가 최선" (AI Hub: "least audio processing as possible")
 
-    v39 분석 결과:
-      - 치찰음: highshelf 10kHz +1.0dB → 7.5kHz에서 +4.4dB 과도
-      - 파열음 손상: adeclick burst=4가 자음 transient 삼킴
-      - 음 끊김: agate release=80ms 너무 짧음 + range -32dB 너무 강함
-      - 가래/기계음: 300-600Hz 보정 없이 HiFi-GAN 중역 +68~113% 부풀림
+    v41 체인:
+      highpass 70Hz → 300Hz -1.0dB → 2.8kHz -1.0dB/w=0.4 →
+      6.5kHz -2.0dB (디에서) → (고음모드) → (리버브) →
+      2-pass loudnorm -14 LUFS (LRA=20)
 
-    v40 변경:
-      - agate 제거 (원본 보컬 블렌딩이 더 자연스러운 대안)
-      - adeclick 제거 (자음 transient 보호)
-      - 300-600Hz 중역 컷 추가 (HiFi-GAN 블로트 보정)
-      - highshelf 1.0→0.5dB (치찰음 완화)
-      - 2.5/3.5kHz harsh EQ 유지 (검증된 효과)
+    v40→v41 핵심 변경:
+      - EQ 총 감쇠 -7.3dB→-2.0dB (발음 2-4kHz 보존)
+      - 550Hz, 3.5kHz, 7.5kHz, highshelf 제거
+      - 6.5kHz 디에서 추가 (치찰음 정적 감쇠)
+      - 후처리 리미터 제거 (이중 리미터 펌핑 해소)
+      - loudnorm LRA 11→20, highpass 50→70Hz
     """
     filters = []
 
@@ -2479,7 +2478,7 @@ def _mix_audio(
         # ── MR 체인 ──
         # 보컬 핵심 대역 경미한 컷 → 보컬 공간 확보 + 반주 보존
         f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.90:.3f},"
-        f"lowshelf=f=60:width_type=o:width=0.8:g=-0.8,"  # v40: 80Hz/-1.5→60Hz/-0.8 (서브베이스 보존)
+        f"lowshelf=f=60:width_type=o:width=0.8:g=-0.8,"  # v41: 서브베이스 보존 (60Hz/-0.8)
         f"equalizer=f=800:width_type=o:width=1.5:g=-1.0,"
         f"equalizer=f=2500:width_type=o:width=1.0:g=-1.0[m];"
         # ── 최종 믹스 + 단일 리미터 ──
