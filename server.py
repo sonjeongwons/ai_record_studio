@@ -2150,12 +2150,12 @@ async def start_training(
             preprocessed_files = []
             skipped = []
             for f in all_preprocessed:
-                # 구형 bare seg_XXXX 형식은 특정 파일에 매핑 불가 → 포함
-                if f.name.startswith("seg_"):
-                    preprocessed_files.append(f)
-                elif any(f.name.startswith(stem) for stem in selected_stems):
+                # 선택된 파일의 stem으로 시작하는 세그먼트만 포함
+                if any(f.name.startswith(stem) for stem in selected_stems):
                     preprocessed_files.append(f)
                 else:
+                    # 구형 bare seg_XXXX 형식 포함 — 매핑 불가 세그먼트는 제외
+                    # (이전에는 포함했으나, 오염 데이터 유입 방지를 위해 제외로 변경)
                     skipped.append(f.name)
 
             logger.info(
