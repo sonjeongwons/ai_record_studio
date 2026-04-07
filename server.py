@@ -792,7 +792,7 @@ _training_lock = threading.Lock()  # _training_file_map/_training_pretrained_map
 _poll_errors_lock = threading.Lock()
 
 # 작업 유형별 타임아웃 (초)
-_JOB_TIMEOUTS = {"train": 36000, "preprocess": 3600, "convert": 1800}  # convert: 30분
+_JOB_TIMEOUTS = {"train": 36000, "preprocess": 5400, "convert": 2700}  # convert: 45분 (콜드 스타트 15분 + 변환 30분)
 
 
 def _get_r2_client():
@@ -1118,8 +1118,10 @@ def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
                 # 대형 이미지(CUDA+Applio+Demucs)는 5~15분 소요 가능 → 타임아웃 없음 (전체 job 타임아웃이 보호)
                 mins = elapsed // 60
                 secs = elapsed % 60
-                if mins >= 5:
-                    queue_msg = f"GPU 콜드 스타트 중... ({mins}분 {secs}초) — Docker 이미지 로딩 중"
+                if mins >= 10:
+                    queue_msg = f"⏳ 콜드 스타트 지연 ({mins}분 {secs}초) — 대형 Docker 이미지(~13GB) 로딩 중. 최대 15분 소요될 수 있습니다."
+                elif mins >= 5:
+                    queue_msg = f"GPU 콜드 스타트 중... ({mins}분 {secs}초) — Docker 이미지 로딩 중 (정상)"
                 elif mins >= 1:
                     queue_msg = f"GPU 할당 완료, 컨테이너 시작 중... ({mins}분 {secs}초)"
                 else:
