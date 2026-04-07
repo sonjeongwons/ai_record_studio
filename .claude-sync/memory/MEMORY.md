@@ -19,25 +19,26 @@
 - `HANDOFF.md` — 전체 아키텍처 결정사항, 비용 분석, 기술 선택 이유
 
 ## Current Status (2026-04-07)
-- **v39 모델 학습 완료** + **v43 후처리 최적화 (최신)**
+- **v39 모델 학습 완료** + **v45 더블링 제거 + 치찰음 개선 (최신)**
 - R2 전체: 9,207개 파일, 28.6GB
-- **v43 변환 파라미터**: index 0.30, rms 0.0, protect 0.33, filter_radius 3
-- **v43 후처리 체인**:
-  - highpass 70Hz → 300Hz -1.5dB → 600Hz -1.0dB → 3kHz +2.0dB (presence)
-  - 6.5kHz -1.0dB/w=0.3 (디에서) → loudnorm -14 LUFS (LRA=20)
-- **v41→v43 이력**: v41 EQ 축소, v42 발음 EQ 제거, v43 가래/presence 해결
-- 고음곡 프리셋 추가 (pitch -3 권장, protect 0.25, filter 5)
-- 테스트 48/48 통과
+- **v45 변환 파라미터**: index 0.40, rms 0.0, protect 0.33, filter_radius 2
+- **v45 후처리 체인**:
+  - highpass 70Hz → 300Hz -1.0dB → 600Hz -0.8dB → 3kHz +1.0dB (presence)
+  - 5kHz -1.5dB + 8kHz -1.0dB (2단 디에서) → loudnorm -14 LUFS (LRA=20)
+- **v45 핵심 변경**: vocal_blend 0 (더블링 제거), 리버브 4탭/0.55, MR 블리드 감쇄 3대역
+- **v43→v45 이력**: v43 가래/presence, v45 더블링/치찰음/리버브/MR블리드
+- 프리셋 전면 재설계 (protect 0.50, filter 2, vocalBlend 0)
+- 테스트 47/48 통과 (1건 기존 실패: reset empty 422 vs 400)
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정
 
-## Parameters (v41)
+## Parameters (v45)
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
 - Epochs: 200, Batch: 8, Sample rate: 40kHz
 - F0: RMVPE + FCPE, Embedder: ContentVec (768-dim)
-- index_rate: 0.30, rms_mix_rate: 0.0, protect: 0.33, filter_radius: 3
+- index_rate: 0.30, rms_mix_rate: 0.0, protect: 0.50, filter_radius: 2
 - Overtraining detector: 50 epoch threshold
-- vocal_blend: 10% (원본 보컬 블렌딩)
-- 학습 데이터: 음원 9개 (장홍권 기존 녹음물)
+- vocal_blend: 0% (비활성 — 더블링 원인이었음)
+- 학습 데이터: mp3record/ 71개 파일 (장홍권 기존 녹음물 + 대화 녹음)
 
 ## Workflow Rules (하네스 제약)
 - **코드 수정 후 반드시 git commit + git push**
@@ -72,20 +73,24 @@
 - v31 48kHz 시도 → 보코더 기계음 악화 → v32에서 40kHz 복원
 - v35 KLM49_HFG 도입 + Demucs 보컬분리 전처리 추가 (근본 원인 해결)
 - v40 agate/adeclick 제거 (최소 후처리 원칙)
-- **v41 5에이전트 종합 음질 개선** (아래 상세)
+- **v41 5에이전트 종합 음질 개선**
+- **v45 더블링 제거 + 치찰음 개선** (아래 상세)
 
-## v41 음질 개선 (2026-04-07, 5에이전트 종합)
-- **분석 방법**: 오디오 분석 + 한국 커뮤니티(아카라이브/디시) + 글로벌(Reddit/AI Hub/GitHub) + 기술 논문 + 코드 리뷰
-- **3곡 변환 분석 결과**:
-  - Breaking Through: LUFS -10.95, TP +0.45dB (클리핑!)
-  - 기다릴게: LUFS -9.57, TP +0.42dB, Peak count 152 (심각)
-  - comethru: LUFS -14.72, 36 silence gaps (끊김)
-- **핵심 발견**:
-  - 2.5kHz/-2.5dB/w=0.8 EQ가 발음 포먼트(F3/F4) 파괴의 주원인
-  - 44.1kHz 하드코딩 버그: 48kHz→40k→44.1k (48k로 복원 안됨)
-  - 이중 리미터(후처리+믹스)가 펌핑/기계음 유발
-  - filter_radius=5의 11프레임 미디언이 고음 F0 지연 유발
-- **커뮤니티 합의**: protect 0.33 balanced, de-esser 필수, 화음 별도 분리 변환
+## v45 더블링 제거 (2026-04-07)
+- **문제**: 변환 목소리가 여러명이 부르는 것처럼 중첩 + 치찰음/기계음 전체적
+- **더블링 원인 진단**:
+  - vocal_blend 10-20%가 원본+변환 보컬 중첩 → **주요 원인**
+  - aecho 8탭/0.88 decay가 코러스 효과 생성
+  - Demucs 보컬 블리드가 MR에 잔류 → 이중 보컬
+- **치찰음 원인**: presence +2.0dB가 고역 치찰음 강조, de-esser 1개로 부족
+- **수정사항**:
+  - vocal_blend: 10-20% → 0% (전 프리셋)
+  - 리버브: 8탭/0.88 → 4탭/0.55
+  - de-esser: 1단(6.5kHz) → 2단(5kHz 광역 + 8kHz 협역)
+  - presence: +2.0 → +1.0dB
+  - MR EQ: 2kHz -2.0dB, 3.5kHz -1.5dB 추가 (블리드 감쇄)
+  - 리미터: level=enabled→disabled (자동 게인 올림 → 클리핑)
+  - 프리셋: protect 0.33→0.50, filter 3→2
 
 ## 타겟 곡 3개
 - "01_Breaking Through (4824 Wave).wav" — 영어, 팝/록, 48kHz/24bit WAV

@@ -2,7 +2,7 @@
 
 > **이 파일은 Claude Code가 프로젝트를 열 때 자동으로 읽힙니다.**
 > 어떤 PC, 어떤 대화창에서든 `git pull`만 하면 모든 맥락이 복원됩니다.
-> 상세 메모리는 `.claude-memory/` 디렉토리에 별도 보관되어 있으며,
+> 상세 메모리는 `.claude-sync/memory/` 디렉토리에 별도 보관되어 있으며,
 > 필요 시 해당 파일들을 직접 Read하여 참조하세요.
 
 ---
@@ -110,11 +110,11 @@
 ### v22 HPSS 실패 → v23 리버트
 HPSS harmonic 추출이 보컬 자음/숨소리를 percussive로 분류해 제거 → 품질 치명적 파괴.
 v23에서 harmonyFilter=0 비활성, index_rate 0.35→0.50 상향.
-> 상세: `.claude-memory/project_v23_hpss_revert.md`
+> 상세: `.claude-sync/memory/project_v23_hpss_revert.md`
 
 ### v13 파이프라인 수정
 v29 모델의 기계음 원인 진단: asetrate 피치시프트(치명적), SLICE_DURATION 3.5→5.0s, 고음 오버샘플링 축소, adeclick threshold 조정.
-> 상세: `.claude-memory/project_v13_pipeline_fixes.md`
+> 상세: `.claude-sync/memory/project_v13_pipeline_fixes.md`
 
 ### v15 pitch pre-shift 비활성화
 librosa STFT phase vocoder가 formant 미보존 → 이중 적용(pre+post) 시 기계음 유발. 코드 제거 완료.
@@ -124,7 +124,7 @@ librosa STFT phase vocoder가 formant 미보존 → 이중 적용(pre+post) 시 
 
 ### 2026-04-01 코드 감사
 4개 에이전트 병렬 감사: 보안 9건(path traversal, XSS, race condition), 버그 3건 수정. 테스트 34→43. CVE-2025-32434 인지.
-> 상세: `.claude-memory/project_code_audit_2026_04.md`
+> 상세: `.claude-sync/memory/project_code_audit_2026_04.md`
 
 ### 2026-04-02~03 v36~v40 음질 개선
 rms=0, BS-Roformer, loudnorm, 보컬 블렌딩, agate/adeclick 제거 등.
@@ -170,7 +170,7 @@ docker build -t ai-voice-studio .   # Docker 빌드
 ai_record_studio/
 ├── CLAUDE.md              ← 이 파일 (자동 로드, 전체 맥락)
 ├── HANDOFF.md             ← 아키텍처/결정사항 상세 문서
-├── .claude-memory/        ← 상세 메모리 (git 포함)
+├── .claude-sync/memory/        ← 상세 메모리 (git 포함)
 │   ├── MEMORY.md
 │   ├── feedback_harness_engineering.md
 │   ├── feedback_no_unnecessary_questions.md
