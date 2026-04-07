@@ -1034,8 +1034,13 @@ def _poll_thread_wrapper(job_id: str, runpod_job_id: str, job_type: str):
             _active_poll_threads.pop(job_id, None)
 
 
+_VALID_JOB_TYPES = {"train", "convert", "preprocess"}
+
 def poll_runpod_job(job_id: str, runpod_job_id: str, job_type: str):
     """RunPod 작업 완료까지 폴링"""
+    if job_type not in _VALID_JOB_TYPES:
+        logger.error("Invalid job_type '%s' for job %s", job_type, job_id)
+        return
     start_time = time.time()
     try:  # 외부 try: 폴링 스레드 크래시 시 작업을 failed로 마킹 (무한 running 방지)
      while True:
@@ -1903,11 +1908,14 @@ async def delete_file(file_id: int):
         row = db.execute("SELECT filename FROM training_files WHERE id=? AND deleted=0",
                          (file_id,)).fetchone()
         if row:
-            filepath = UPLOAD_DIR / row["filename"]
-            if filepath.exists():
-                filepath.unlink()
-            # Soft delete: 해시 기록을 보존하여 재업로드 시 전처리 상태 복원 가능
+            # Soft delete 먼저 (DB 트랜잭션 내 원자적) → 파일 삭제 (크래시 시에도 DB 일관)
             db.execute("UPDATE training_files SET deleted=1 WHERE id=?", (file_id,))
+            filepath = UPLOAD_DIR / row["filename"]
+            try:
+                if filepath.exists():
+                    filepath.unlink()
+            except OSError as e:
+                logger.warning("File delete failed (soft-deleted in DB): %s", e)
     return {"status": "ok"}
 
 
@@ -2458,7 +2466,7 @@ async def clear_preprocess():
 
 
 @app.post("/api/preprocess/reset")
-async def reset_preprocess_selected(file_ids: str = Form(...)):
+async def reset_preprocess_selected(file_ids: str = Form("")):
     """선택한 파일의 전처리 상태만 초기화 — 해당 파일의 세그먼트 삭제 + DB 플래그 리셋"""
     try:
         ids = [int(x.strip()) for x in file_ids.split(",") if x.strip()]
