@@ -4889,87 +4889,86 @@ function estimateConversionCost() {
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      // v41 기본: protect 0.33, filter 3 (고음 전환 F0 지연 해소)
-      f0: 'rmvpe', protect: 33, rms: 0, filter: 3, hop: 2,
+      // v45 기본: protect 0.50 (자음 최대 보호), filter 2 (비브라토 보존)
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      vocalBlend: 10,
-      desc: 'v41 기본 — protect 0.33, filter 3, 원본 10% 블렌딩'
+      vocalBlend: 0,
+      desc: 'v45 기본 — protect 0.50, filter 2, 단일 목소리 (블렌딩 OFF)'
     },
     falsetto: {
-      // 가성/고음: filter=1(비브라토 보존) + 고음모드
-      f0: 'rmvpe', protect: 38, rms: 0, filter: 1, hop: 0,
-      clean: false, cleanStr: 70, index: 35,
+      // 가성/고음: filter=1(비브라토 보존) + 고음모드 + protect 최대
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 1, hop: 0,
+      clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: true, harmonyFilter: 0,
-      vocalBlend: 10,
-      desc: '가성/고음 — filter 1 비브라토 보존, 고음모드 ON'
+      vocalBlend: 0,
+      desc: '가성/고음 — filter 1 비브라토 보존, protect 0.50, 고음모드 ON'
     },
     natural: {
-      // 최대 자연스러움: 블렌딩 15%
-      f0: 'rmvpe', protect: 33, rms: 0, filter: 3, hop: 2,
-      clean: false, cleanStr: 70, index: 30,
+      // 최대 자연스러움: 원곡 다이나믹 100% 보존
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      vocalBlend: 15,
-      desc: '최대 자연스러움 — protect 0.33, filter 3, 원본 15% 블렌딩'
+      vocalBlend: 0,
+      desc: '최대 자연스러움 — protect 0.50, filter 2, index 낮게 (원곡 발음 보존)'
     },
     studio: {
-      // 스튜디오: 기본 + 부드러운 공간감
-      f0: 'rmvpe', protect: 33, rms: 0, filter: 3, hop: 2,
+      // 스튜디오: 깨끗한 녹음에 최적 + 미세 공간감
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30,
-      postReverb: 5, useReverb: true, harmonicEnhance: false,
+      postReverb: 3, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      vocalBlend: 10,
-      desc: '스튜디오 — protect 0.33, filter 3, 공간감 리버브'
+      vocalBlend: 0,
+      desc: '스튜디오 — protect 0.50, filter 2, 미세 공간감 리버브'
     },
     chorus: {
-      // 화음/코러스: filter 5로 피치 안정화 (화음은 스무딩 필요)
-      f0: 'rmvpe', protect: 38, rms: 0, filter: 5, hop: 2,
-      clean: false, cleanStr: 70, index: 30,
+      // 화음/코러스: filter 3 피치 안정화 (5는 과도)
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 3, hop: 0,
+      clean: false, cleanStr: 70, index: 20,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
-      vocalBlend: 10,
-      desc: '화음/코러스 — filter 5 피치 안정화, protect 0.38'
+      vocalBlend: 0,
+      desc: '화음/코러스 — filter 3 피치 안정화, protect 0.50, index 0.20'
     },
     indie: {
-      // 인디/차분한 곡: 공간감 + 블렌딩 15%
-      f0: 'rmvpe', protect: 33, rms: 0, filter: 3, hop: 2,
-      clean: false, cleanStr: 70, index: 35,
-      postReverb: 8, useReverb: true, harmonicEnhance: false,
+      // 인디/차분한 곡: 미세 공간감
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      clean: false, cleanStr: 70, index: 30,
+      postReverb: 3, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      vocalBlend: 15,
-      desc: '인디/차분한 곡 — index 0.35, 공간감, 원본 15%'
+      vocalBlend: 0,
+      desc: '인디/차분한 곡 — index 0.30, 미세 공간감'
     },
     chorus_v2: {
       // 화음/그룹 곡 v2 — 발음 선명도 우선
-      f0: 'rmvpe', protect: 38, rms: 0, filter: 5, hop: 2,
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 3, hop: 0,
       clean: false, cleanStr: 70, index: 15,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      vocalBlend: 10,
-      desc: '화음 v2 (발음선명) — index 0.15, filter 5 (기다릴게 최적)'
+      vocalBlend: 0,
+      desc: '화음 v2 (발음선명) — index 0.15, filter 3, protect 0.50'
     },
     duet: {
-      // 남녀 듀엣곡 — 여성 timbre 보호
-      f0: 'rmvpe', protect: 45, rms: 0, filter: 3, hop: 2,
-      clean: false, cleanStr: 70, index: 30,
-      postReverb: 8, useReverb: true, harmonicEnhance: false,
+      // 남녀 듀엣곡 — 자음 최대 보호
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      clean: false, cleanStr: 70, index: 25,
+      postReverb: 3, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
-      vocalBlend: 15,
-      desc: '듀엣곡 — 여성 보호 0.45, filter 3, 원본 15% (comethru 최적)'
+      vocalBlend: 0,
+      desc: '듀엣곡 — protect 0.50, filter 2, 미세 공간감 (comethru 최적)'
     },
     high_range: {
       // 고음/음역 불일치 전용 — 플레이브, BTS 고음곡 등
-      // 원곡이 모델보다 훨씬 높을 때: pitch_shift -5, filter 5, protect 0.25
       // 커뮤니티: 옥타브 에러 시 pitch_shift로 입력을 모델 음역에 맞추기
-      f0: 'rmvpe', protect: 25, rms: 0, filter: 5, hop: 2,
-      clean: false, cleanStr: 70, index: 25,
+      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      clean: false, cleanStr: 70, index: 20,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: true, vocalPreShift: 0, harmonyFilter: 0,
-      vocalBlend: 20,
-      desc: '고음곡 전용 — pitch -3 권장 (-5는 과도!), protect↓, filter↑, 원본 20%'
+      vocalBlend: 0,
+      desc: '고음곡 전용 — pitch -3 권장, protect 0.50, filter 2, 고음모드 ON'
     }
   };
   var p = presets[preset];

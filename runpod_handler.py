@@ -2277,65 +2277,60 @@ def _post_process_vocal(
     high_note_mode: bool = False,
     sample_rate: int = 44100,
 ) -> None:
-    """Post-process converted vocal v43 — 발음 명료도 + 가래 해결.
+    """Post-process converted vocal v45 — 치찰음 제거 + 발음 보존 + 더블링 방지.
 
-    ── v43 (v44 변환 분석 기반) ──
-    핵심 발견: 300-800Hz +3.6dB(가래) + 2-4kHz -4.4dB(발음 손실) = 이중 문제.
+    ── v45 (v43→v45 전면 개선) ──
+    핵심 변경:
+      - de-esser 2단: 5kHz(넓은) + 8kHz(좁은) → 치찰음/기계음 제거
+      - presence +2.0→+1.0dB (과도한 고역 부스트가 치찰음 강조)
+      - 300Hz -1.5→-1.0dB (가래 해결하되 저역 너무 안 깎기)
+      - 고음모드: 200Hz -0.5→ 삭제 (이미 기본 EQ로 충분)
 
-    v43 체인:
-      highpass 70Hz → 300Hz -1.5dB → 600Hz -1.0dB →
-      3kHz +2.0dB (presence 복원) → 6.5kHz -1.0dB/w=0.3 (디에서) →
-      (고음모드) → (리버브) → 2-pass loudnorm -14 LUFS (LRA=20)
-
-    v42→v43 변경:
-      - 300Hz -1.0→-1.5dB + 600Hz -1.0dB 추가 (가래/먹먹함 해결)
-      - 3kHz +2.0dB presence 부스트 (발음 명료도 복원)
+    v45 체인:
+      highpass 70Hz → 300Hz -1.0dB → 600Hz -0.8dB →
+      3kHz +1.0dB (presence) → 5kHz -1.5dB/w=1.0 (광역 디에서) →
+      8kHz -1.0dB/w=0.5 (협역 디에서) →
+      (리버브) → 2-pass loudnorm -14 LUFS (LRA=20)
     """
     filters = []
 
     # ━━━ 1. 초저역 제거 (파열음 에너지 제어) ━━━
-    # v41: 50→70Hz (보컬 F0 85Hz+ 보존, 파열음 서브 에너지 차단)
     filters.append("highpass=f=70:poles=2")
 
     # ━━━ 2. 중저역 EQ (가래/먹먹함 해결) ━━━
-    # v44 분석: 300-800Hz +3.6dB 과잉 = 가래 낀 소리 핵심 원인
-    filters.append("equalizer=f=300:width_type=o:width=0.5:g=-1.5")
-    filters.append("equalizer=f=600:width_type=o:width=0.7:g=-1.0")
+    # v45: -1.5→-1.0dB (과도한 저역 삭감 방지)
+    filters.append("equalizer=f=300:width_type=o:width=0.5:g=-1.0")
+    filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.8")
 
     # ━━━ 3. Presence 부스트 (발음 명료도 복원) ━━━
-    # v44 분석: 2-4kHz -4.4dB 손실 → 가래 소리 + 발음 불명확
-    # 커뮤니티: 변환 후 2-4kHz +1.5~2dB 부스트 권장 (SageAudio, MusicGuyMixing)
-    filters.append("equalizer=f=3000:width_type=o:width=0.8:g=+2.0")
+    # v45: +2.0→+1.0dB (과도한 부스트가 치찰음/기계음 강조)
+    filters.append("equalizer=f=3000:width_type=o:width=0.8:g=+1.0")
 
-    # ━━━ 4. 디에서 (v42: 좁은 밴드) ━━━
-    filters.append("equalizer=f=6500:width_type=o:width=0.3:g=-1.0")
-
-    # ━━━ 5. 고음/가성 모드 ━━━
-    if high_note_mode:
-        filters.append("equalizer=f=200:width_type=o:width=0.6:g=-0.5")
+    # ━━━ 4. 2단 디에서 (v45: 광역+협역) ━━━
+    # 커뮤니티 합의: RVC 치찰음은 5-8kHz 전체에 분포
+    # 광역: 4-6kHz (한국어 ㅅ/ㅆ/ㅈ/ㅊ + 영어 s/sh/ch)
+    filters.append("equalizer=f=5000:width_type=o:width=1.0:g=-1.5")
+    # 협역: 7-9kHz (금속성 기계음, RVC 특유의 고역 아티팩트)
+    filters.append("equalizer=f=8000:width_type=o:width=0.5:g=-1.0")
 
     # ━━━ v41: 후처리 리미터 제거 ━━━
     # v40: alimiter=limit=0.98:attack=5:release=100 → 이중 리미터(+mix limiter) = 펌핑
     # loudnorm + mix 리미터만으로 레벨 관리 충분
 
     # ━━━ 6. 리버브 (선택적) ━━━
+    # v45: 8탭→4탭, decay 0.88→0.55 (더블링/코러스 효과 제거)
+    # 커뮤니티 합의: RVC 변환에서 리버브는 최소화 또는 DAW에서 후처리 권장
     reverb_amount = max(0.0, min(0.5, float(reverb_amount)))
     if reverb_amount > 0.005:
-        # 8탭 초기 반사음 — 감쇠를 v11보다 빠르게 하여 울림 줄임
-        c1 = reverb_amount * 0.60
-        c2 = reverb_amount * 0.45
-        c3 = reverb_amount * 0.32
-        c4 = reverb_amount * 0.22
-        c5 = reverb_amount * 0.14
-        c6 = reverb_amount * 0.08
-        c7 = reverb_amount * 0.04
-        c8 = reverb_amount * 0.02
-        # in_gain=1.0: 드라이 신호 감쇄 없음 (기존 0.85는 리버브 켤 때 드라이 -1.4dB 감소 버그)
+        # 4탭 초기 반사음 — 소수 간격, 빠른 감쇠로 자연스러운 공간감만
+        c1 = reverb_amount * 0.35
+        c2 = reverb_amount * 0.18
+        c3 = reverb_amount * 0.08
+        c4 = reverb_amount * 0.03
         filters.append(
-            f"aecho=1.0:0.88:"
-            f"7|13|23|31|41|53|67|83:"
-            f"{c1:.4f}|{c2:.4f}|{c3:.4f}|{c4:.4f}|"
-            f"{c5:.4f}|{c6:.4f}|{c7:.4f}|{c8:.4f}"
+            f"aecho=1.0:0.55:"
+            f"11|23|41|67:"
+            f"{c1:.4f}|{c2:.4f}|{c3:.4f}|{c4:.4f}"
         )
 
     # EQ/리미터/리버브 처리
@@ -2471,14 +2466,16 @@ def _mix_audio(
         f"[0:a]aresample=resampler=soxr,volume={_effective_vocal:.3f},"
         f"aformat=channel_layouts=stereo[v];"
         # ── MR 체인 ──
-        # 보컬 핵심 대역 경미한 컷 → 보컬 공간 확보 + 반주 보존
+        # v45: 보컬 블리드 감쇄 강화 (Demucs 잔류 보컬이 더블링 유발)
+        # 800Hz~4kHz 대역은 보컬 포먼트 핵심 → MR에서 강하게 감쇄
         f"[1:a]aresample=resampler=soxr,volume={mr_volume * 0.90:.3f},"
-        f"lowshelf=f=60:width_type=o:width=0.8:g=-0.8,"  # v41: 서브베이스 보존 (60Hz/-0.8)
-        f"equalizer=f=800:width_type=o:width=1.5:g=-1.0,"
-        f"equalizer=f=2500:width_type=o:width=1.0:g=-1.0[m];"
+        f"lowshelf=f=60:width_type=o:width=0.8:g=-0.8,"
+        f"equalizer=f=800:width_type=o:width=1.5:g=-1.5,"   # v45: -1.0→-1.5 (보컬 블리드)
+        f"equalizer=f=2000:width_type=o:width=1.0:g=-2.0,"  # v45: 추가 (2kHz 보컬 핵심대역)
+        f"equalizer=f=3500:width_type=o:width=0.8:g=-1.5[m];"  # v45: 2.5k→3.5k, -1.0→-1.5
         # ── 최종 믹스 + 단일 리미터 ──
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.89:attack=25:release=300:level=enabled:asc=1",  # v41: 0.95→0.89 (-1dBTP, EBU R128)
+        f"alimiter=limit=0.89:attack=25:release=300:level=disabled",  # v45: level=disabled (자동 게인 올림 방지 → 클리핑 제거)
         "-acodec", "pcm_s24le",
         "-ar", str(sample_rate),
         str(output_path),
