@@ -4998,28 +4998,54 @@ function applyConvertPreset(preset) {
   var p = presets[preset];
   if (!p) return;
 
-  document.getElementById('convert-f0').value = p.f0;
+  // v45: 모든 요소에 null guard 추가 (DOM 비동기 로딩/구조 변경 시 crash 방지)
+  var f0El = document.getElementById('convert-f0');
+  if (f0El) f0El.value = p.f0;
   var protectSlider = document.getElementById('protect-slider');
-  protectSlider.value = p.protect;
-  document.getElementById('protect-val').textContent = (p.protect / 100).toFixed(2);
+  if (protectSlider) {
+    protectSlider.value = p.protect;
+    var protectVal = document.getElementById('protect-val');
+    if (protectVal) protectVal.textContent = (p.protect / 100).toFixed(2);
+  }
   var rmsSlider = document.getElementById('rms-slider');
-  rmsSlider.value = p.rms;
-  document.getElementById('rms-val').textContent = (p.rms / 100).toFixed(2);
+  if (rmsSlider) {
+    rmsSlider.value = p.rms;
+    var rmsVal = document.getElementById('rms-val');
+    if (rmsVal) rmsVal.textContent = (p.rms / 100).toFixed(2);
+  }
   var filterSlider = document.getElementById('filter-slider');
-  filterSlider.value = p.filter;
-  document.getElementById('filter-val').textContent = p.filter;
+  if (filterSlider) {
+    filterSlider.value = p.filter;
+    var filterVal = document.getElementById('filter-val');
+    if (filterVal) filterVal.textContent = p.filter;
+  }
   var hopSlider = document.getElementById('hop-slider');
-  hopSlider.value = p.hop;
-  var hopVals = [32, 64, 128, 256];
-  document.getElementById('hop-val').textContent = hopVals[p.hop];
-  document.getElementById('clean-audio-cb').checked = p.clean;
-  document.getElementById('clean-audio-val').textContent = p.clean ? 'ON' : 'OFF';
-  document.getElementById('clean-strength-row').style.display = p.clean ? '' : 'none';
-  document.getElementById('clean-strength-slider').value = p.cleanStr;
-  document.getElementById('clean-strength-val').textContent = (p.cleanStr / 100).toFixed(2);
+  if (hopSlider) {
+    hopSlider.value = p.hop;
+    var hopVals = [32, 64, 128, 256];
+    var hopVal = document.getElementById('hop-val');
+    if (hopVal) hopVal.textContent = hopVals[p.hop] || 64;
+  }
+  var cleanCb = document.getElementById('clean-audio-cb');
+  if (cleanCb) {
+    cleanCb.checked = p.clean;
+    var cleanVal = document.getElementById('clean-audio-val');
+    if (cleanVal) cleanVal.textContent = p.clean ? 'ON' : 'OFF';
+    var cleanRow = document.getElementById('clean-strength-row');
+    if (cleanRow) cleanRow.style.display = p.clean ? '' : 'none';
+    var cleanSlider = document.getElementById('clean-strength-slider');
+    if (cleanSlider) {
+      cleanSlider.value = p.cleanStr;
+      var cleanStrVal = document.getElementById('clean-strength-val');
+      if (cleanStrVal) cleanStrVal.textContent = (p.cleanStr / 100).toFixed(2);
+    }
+  }
   var indexSlider = document.getElementById('index-slider');
-  indexSlider.value = p.index;
-  document.getElementById('index-val').textContent = (p.index / 100).toFixed(2);
+  if (indexSlider) {
+    indexSlider.value = p.index;
+    var indexVal = document.getElementById('index-val');
+    if (indexVal) indexVal.textContent = (p.index / 100).toFixed(2);
+  }
   // Post-processing controls
   var reverbCb = document.getElementById('post-reverb-cb');
   if (reverbCb) {
