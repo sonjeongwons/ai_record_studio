@@ -56,7 +56,7 @@
 | **filter_radius** | **2** | v45: 3→2 (비브라토 보존, 20ms 윈도우) |
 | **vocal_blend** | **0%** (비활성) | v45: 10%→0% (더블링 원인 제거) |
 | 보컬 분리 | **BS-Roformer → Demucs** 폴백 | SDR 12.9 SOTA |
-| 후처리 | 300Hz -1.0 + 600Hz -0.8 + 3kHz +1.0 + 디에서 5kHz -1.5/8kHz -1.0 + loudnorm -14 LUFS | v45 |
+| 후처리 | 300Hz -0.5 + 600Hz -0.5 + 3kHz +1.0 + 디에서 5kHz -1.5/8kHz -1.0 + loudnorm -14 LUFS | v45 |
 | 믹스 리미터 | **0.89** (-1dBTP, level=disabled) | 클리핑 방지 |
 | MR EQ | 800Hz -1.5 + 2kHz -2.0 + 3.5kHz -1.5 | v45: 보컬 블리드 감쇄 |
 | 리버브 | 4탭/0.55 decay (비활성 기본) | v45: 8탭/0.88→4탭/0.55 |
