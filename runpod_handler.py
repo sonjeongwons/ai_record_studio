@@ -598,14 +598,14 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     # --- Try demucs.api first (GitHub v4.1.0a2+) ---
     try:
         import demucs.api
-        log.info("Using demucs.api (v4.1+) for vocal separation (shifts=5, overlap=0.6)")
+        log.info("Using demucs.api (v4.1+) for vocal separation (shifts=5, overlap=0.25)")
         # seed 파라미터는 demucs 일부 버전에서 미지원 — 대신 torch.manual_seed로 재현성 확보
         torch.manual_seed(0)
         separator = demucs.api.Separator(
             model="htdemucs_6s",    # v18: ft→6s — 피아노/기타 별도 스템 분리 → 보컬 누화 제거
             device=device,
             shifts=5,       # 5 random time shifts → average = dramatically better SDR
-            overlap=0.6,    # 60% overlap between segments = smoother transitions, fewer artifacts
+            overlap=0.25,   # v45: 0.6→0.25 (타이밍 드리프트/스미어링 감소, 더블링 방지)
         )
 
         vocal_paths: list[Path] = []
@@ -674,7 +674,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
             if ref_std < 1e-8:  # 무음 오디오 — 정규화 생략
                 ref_std = torch.tensor(1.0, dtype=ref.dtype, device=ref.device)
             wav = (wav - ref_mean) / ref_std
-            sources = apply_model(model, wav[None], device=device, shifts=5, overlap=0.6)[0]
+            sources = apply_model(model, wav[None], device=device, shifts=5, overlap=0.25)[0]
             sources = sources * ref_std + ref_mean
 
             if vocals_idx >= 0:
@@ -845,18 +845,18 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
                 continue
 
             if snr_db > 15:
-                prop = 0.10  # v36: 0.12→0.10 — 숨소리/가성 고주파 텍스처 최대 보존
+                prop = 0.06  # v45: 0.10→0.06 — 자음 에너지 보호 (P/T/K 파열음, S/Sh 치찰음)
             else:
-                prop = 0.18  # v36: 0.20→0.18 — 약한 NR, 숨소리 보호 강화
+                prop = 0.12  # v45: 0.18→0.12 — 약한 NR, 자음/숨소리 보호 강화
 
             reduced = nr.reduce_noise(
                 y=audio_data,
                 sr=sr,
                 prop_decrease=prop,
-                stationary=False,   # 음악 소스는 비정상 노이즈 (커뮤니티 권장)
-                n_fft=2048,         # 46ms 윈도우 — 고음 하모닉스 보존
-                hop_length=128,     # 2.9ms → 세밀한 시간적 해상도
-                freq_mask_smooth_hz=500,  # v36: 숨소리 보호 — 주파수 마스크 부드럽게 (급격한 컷 방지)
+                stationary=True,    # v45: False→True — 정상 노이즈 가정 (자음을 노이즈로 오분류 방지)
+                n_fft=4096,         # v45: 2048→4096 — 93ms 윈도우 (고음 하모닉 분해능 향상)
+                hop_length=512,     # v45: 128→512 — 11.6ms (자음 프레임별 과잉 게이팅 방지)
+                freq_mask_smooth_hz=1000,  # v45: 500→1000 — 주파수 마스크 더 부드럽게 (자음 대역 보호)
             )
 
             sf.write(str(out_path), reduced, samplerate=sr, subtype="FLOAT")
@@ -2298,9 +2298,10 @@ def _post_process_vocal(
     filters.append("highpass=f=70:poles=2")
 
     # ━━━ 2. 중저역 EQ (가래/먹먹함 해결) ━━━
-    # v45: -1.5→-1.0dB (과도한 저역 삭감 방지)
-    filters.append("equalizer=f=300:width_type=o:width=0.5:g=-1.0")
-    filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.8")
+    # v45: 300Hz F1(한국어 ㄴ/ㅁ 비음) 보호 위해 -1.0→-0.5dB로 축소
+    # 코드 분석: 300Hz/600Hz 삭감이 한국어 비음 포먼트 파괴
+    filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.5")
+    filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.5")
 
     # ━━━ 3. Presence 부스트 (발음 명료도 복원) ━━━
     # v45: +2.0→+1.0dB (과도한 부스트가 치찰음/기계음 강조)
