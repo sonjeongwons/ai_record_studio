@@ -2767,12 +2767,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
         rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.0))
     except (ValueError, TypeError):
         rms_mix_rate = 0.0
-    # protect 0.50: v45 — 자음/가성 최대 보호 (더블링 해소 후 보호 최대화 가능)
-    # v43: 0.33 → v45: 0.50 (vocal_blend 0이므로 protect 올려도 더블링 없음)
+    # protect 0.33: 커뮤니티 합의 balanced default (0.50=비활성!)
+    # RVC 구현: 0.50은 보호 기능 OFF, 0.0은 최대 보호 → 0.25~0.33이 최적
     try:
-        protect: float = float(job_input.get("protect", 0.50))
+        protect: float = float(job_input.get("protect", 0.33))
     except (ValueError, TypeError):
-        protect = 0.50
+        protect = 0.33
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     try:
         hop_length: int = int(job_input.get("hop_length", 64))
@@ -3278,7 +3278,7 @@ def _rvc_infer(
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
     index_rate: float = 0.40,     # v45: 0.30→0.40 (한/영 균형)
-    protect: float = 0.50,        # v45: 0.33→0.50 (자음/가성 최대 보호)
+    protect: float = 0.33,        # 커뮤니티 합의 (0.50=비활성)
     hop_length: int = 64,
     clean_audio: bool = False,
     clean_strength: float = 0.7,

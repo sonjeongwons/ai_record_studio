@@ -3346,10 +3346,10 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.35 = 기본값 (자음 보호 + 자연스러운 전환)\n• 0.35~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.30 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.35~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.35에서 조금씩 낮추기">ⓘ</i></span>
-              <span class="slider-value" id="protect-val">0.50</span>
+              <span class="slider-value" id="protect-val">0.33</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="50" value="50" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 원본 질감 보존 (권장: 0.40~0.50, 기본 0.50)</div>
+            <input type="range" id="protect-slider" min="0" max="50" value="33" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (0.25~0.33 권장, 0.50=비활성, 낮을수록 보호↑)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4896,7 +4896,7 @@ function applyConvertPreset(preset) {
   var presets = {
     default: {
       // v45 기본: index 0.40 (한/영 균형), protect 0.50, filter 2
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 40,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4905,7 +4905,7 @@ function applyConvertPreset(preset) {
     },
     korean: {
       // 한국어 노래 최적: 커뮤니티 권고 index 0.55 (발음 정확도 향상)
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 55,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4914,7 +4914,7 @@ function applyConvertPreset(preset) {
     },
     english: {
       // 영어 노래 최적: 낮은 index로 원곡 발음 보존
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4923,7 +4923,7 @@ function applyConvertPreset(preset) {
     },
     falsetto: {
       // 가성/고음: filter=1(비브라토 보존) + 고음모드 + protect 최대
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 1, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 1, hop: 0,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: true, harmonyFilter: 0,
@@ -4932,7 +4932,7 @@ function applyConvertPreset(preset) {
     },
     natural: {
       // 최대 자연스러움: 원곡 다이나믹 100% 보존
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4941,7 +4941,7 @@ function applyConvertPreset(preset) {
     },
     studio: {
       // 스튜디오: 깨끗한 녹음에 최적 + 미세 공간감
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 3, useReverb: true, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4950,7 +4950,7 @@ function applyConvertPreset(preset) {
     },
     chorus: {
       // 화음/코러스: filter 3 피치 안정화 (5는 과도)
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 3, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 3, hop: 0,
       clean: false, cleanStr: 70, index: 20,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4959,7 +4959,7 @@ function applyConvertPreset(preset) {
     },
     indie: {
       // 인디/차분한 곡: 미세 공간감
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30,
       postReverb: 3, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -4968,7 +4968,7 @@ function applyConvertPreset(preset) {
     },
     chorus_v2: {
       // 화음/그룹 곡 v2 — 발음 선명도 우선
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 3, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 3, hop: 0,
       clean: false, cleanStr: 70, index: 15,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -4977,7 +4977,7 @@ function applyConvertPreset(preset) {
     },
     duet: {
       // 남녀 듀엣곡 — 자음 최대 보호
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 25,
       postReverb: 3, useReverb: true, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -4987,7 +4987,7 @@ function applyConvertPreset(preset) {
     high_range: {
       // 고음/음역 불일치 전용 — 플레이브, BTS 고음곡 등
       // 커뮤니티: 옥타브 에러 시 pitch_shift로 입력을 모델 음역에 맞추기
-      f0: 'rmvpe', protect: 50, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 20,
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: true, vocalPreShift: 0, harmonyFilter: 0,
@@ -6513,7 +6513,7 @@ async function startConversion() {
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-  form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
+  form.append('protect', (getVal('protect-slider', '33') / 100).toFixed(2));
   form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
   form.append('filter_radius', getVal('filter-slider', '2'));
   var hopSteps = [32, 64, 128, 256];
@@ -6930,7 +6930,7 @@ async function startBatchConversion() {
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-      form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
+      form.append('protect', (getVal('protect-slider', '33') / 100).toFixed(2));
       form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
       form.append('filter_radius', getVal('filter-slider', '2'));
       var hopSteps2 = [32, 64, 128, 256];

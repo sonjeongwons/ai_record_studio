@@ -2484,7 +2484,7 @@ async def start_conversion(
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.50),        # v45: 0.33→0.50 (자음/가성 최대 보호)
+    protect: float = Form(0.33),        # v45: 커뮤니티 합의 0.33 (0.50=비활성!)
     rms_mix_rate: float = Form(0.0),    # v36: 원곡 다이나믹스 100% 보존
     filter_radius: int = Form(2),       # v45: 3→2 (비브라토 보존, 20ms 윈도우)
     hop_length: int = Form(64),
