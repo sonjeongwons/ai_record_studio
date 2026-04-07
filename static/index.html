@@ -3046,8 +3046,8 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">배치 사이즈 <i class="tip" data-tip="AI가 한 번에 처리하는 데이터 묶음 크기입니다.\n\n🔢 추천:\n• 자동 = GPU 최적화 (권장!)\n• 8 = '메모리 부족' 오류 발생 시\n• 16 = 30% 빠름 / 24 = 50% 빠름 (고사양 GPU 전용)\n\n⚠️ 잘 모르면 '자동'으로 두세요.\n💰 배치가 클수록 학습 속도가 빨라져 비용이 절감됩니다.">ⓘ</i></label>
           <select id="train-batch" onchange="estimateTrainingCost()">
-            <option value="4">4 (25분 이하 데이터)</option>
-            <option value="8" selected>8 (권장 · 43분+ 데이터에 안정적)</option>
+            <option value="4" selected>4 (권장 · 30분 이하 데이터)</option>
+            <option value="8">8 (30분+ 데이터에 안정적)</option>
             <option value="16">16 (대규모 데이터 · 30% 빠름)</option>
             <option value="0">자동 (GPU가 알아서 최적화)</option>
           </select>
@@ -3097,7 +3097,7 @@ input[type="range"]::-moz-range-track {
           </div>
         </div>
         <div class="cost-panel-note">
-          RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>실측 보정 추정값</b>.<br>          <b>현재 기본값:</b> 200에폭, batch 8 (KLM49/RIN_E3 pretrained, v39 최적화). 43분 데이터 → ~50분, ~$1.20<br>          <b>실측 참고:</b> 30분 데이터 + Crepe + 500에폭 = 약 6시간 · $15 (2026.03 실측)<br>          <b>절약 팁:</b> RMVPE가 Crepe보다 2~3배 빠르며 품질 차이는 미미합니다. 과학습 감지가 내장되어 있으므로 200에폭부터 시작하세요.
+          RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>실측 보정 추정값</b>.<br>          <b>현재 기본값:</b> 250에폭, batch 4 (KLM49 pretrained, v45 최적화). 22분 클린 데이터 권장<br>          <b>실측 참고:</b> 30분 데이터 + Crepe + 500에폭 = 약 6시간 · $15 (2026.03 실측)<br>          <b>절약 팁:</b> RMVPE가 Crepe보다 2~3배 빠르며 품질 차이는 미미합니다. 과학습 감지(25에폭)가 내장되어 있으므로 250에폭부터 시작하세요.
         </div>
         <!-- 동적 긴 학습 경고 -->
         <div id="train-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);font-size:12px;color:#fbbf24;line-height:1.55"></div>
@@ -4752,7 +4752,7 @@ function estimateTrainingCost() {
 
   var totalMins = totalSecs / 60;
   var epochs = parseInt(document.getElementById('train-epochs').value) || 200;
-  var batch  = parseInt(document.getElementById('train-batch').value)  || 8;
+  var batch  = parseInt(document.getElementById('train-batch').value)  || 4;
   var sr     = parseInt(document.getElementById('train-sr').value)     || 40000;
   var f0     = (document.getElementById('train-f0').value || 'rmvpe').toLowerCase();
 

@@ -1076,9 +1076,9 @@ def task_train(job_input: dict, job: dict) -> dict:
     # v36: batch 8 기본 (4에서 상향) — 43분+ 데이터에 더 안정적 (커뮤니티 권장)
     # RTX 4090 24GB VRAM에서 batch 8 안정 동작
     try:
-        batch_size: int = int(job_input.get("batch_size", 8))
+        batch_size: int = int(job_input.get("batch_size", 4))
     except (ValueError, TypeError):
-        batch_size = 8
+        batch_size = 4
     _VALID_F0 = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
     if f0_method not in _VALID_F0:
@@ -1937,7 +1937,7 @@ def _rvc_train(
         "True",                   # 10: save_every_weights
         "True",                   # 11: cache_data_in_gpu (RTX 4090 24GB VRAM → GPU 캐시로 훈련 속도 2× 향상)
         "True",                   # 12: overtraining_detector
-        "50",                     # 13: overtraining_threshold (v23: 100→50 Applio 기본값 복원 — 50 epoch 무개선 시 조기 중단)
+        "25",                     # 13: overtraining_threshold (v45: 50→25 KLM 권장 — 소량 데이터에서 과적합 조기 감지)
         "False",                  # 14: cleanup
         "HiFi-GAN",              # 15: vocoder
         "False",                  # 16: checkpointing
