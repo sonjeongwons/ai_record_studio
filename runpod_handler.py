@@ -2277,18 +2277,19 @@ def _post_process_vocal(
     high_note_mode: bool = False,
     sample_rate: int = 44100,
 ) -> None:
-    """Post-process converted vocal v42 — 극한 최소 후처리.
+    """Post-process converted vocal v43 — 발음 명료도 + 가래 해결.
 
-    ── v42 (v43 분석 기반) ──
-    핵심 발견: 2.8kHz EQ가 발음 포먼트(F3/F4) -4.4dB 파괴, 6.5kHz 디에서가 공기감 -3.9dB 손실.
+    ── v43 (v44 변환 분석 기반) ──
+    핵심 발견: 300-800Hz +3.6dB(가래) + 2-4kHz -4.4dB(발음 손실) = 이중 문제.
 
-    v42 체인 (총 EQ -2.0dB):
-      highpass 70Hz → 300Hz -1.0dB → 6.5kHz -1.0dB/w=0.3 →
+    v43 체인:
+      highpass 70Hz → 300Hz -1.5dB → 600Hz -1.0dB →
+      3kHz +2.0dB (presence 복원) → 6.5kHz -1.0dB/w=0.3 (디에서) →
       (고음모드) → (리버브) → 2-pass loudnorm -14 LUFS (LRA=20)
 
-    v41→v42 핵심 변경:
-      - 2.8kHz/-1.0dB/w=0.4 제거 (발음 보존 — 2-4kHz -4.4dB 손실 해결)
-      - 6.5kHz 디에서: -2.0dB/w=0.8 → -1.0dB/w=0.3 (공기감 보존)
+    v42→v43 변경:
+      - 300Hz -1.0→-1.5dB + 600Hz -1.0dB 추가 (가래/먹먹함 해결)
+      - 3kHz +2.0dB presence 부스트 (발음 명료도 복원)
     """
     filters = []
 
@@ -2296,14 +2297,17 @@ def _post_process_vocal(
     # v41: 50→70Hz (보컬 F0 85Hz+ 보존, 파열음 서브 에너지 차단)
     filters.append("highpass=f=70:poles=2")
 
-    # ━━━ 2. 최소 EQ (v42: 총 -1.0dB만) ━━━
-    # v41→v42: 2.8kHz/-1.0dB/w=0.4 제거 (발음 포먼트 F3/F4 -4.4dB 파괴 주범)
-    # 300Hz만 유지: HiFi-GAN mudiness 최소 보정
-    filters.append("equalizer=f=300:width_type=o:width=0.5:g=-1.0")
+    # ━━━ 2. 중저역 EQ (가래/먹먹함 해결) ━━━
+    # v44 분석: 300-800Hz +3.6dB 과잉 = 가래 낀 소리 핵심 원인
+    filters.append("equalizer=f=300:width_type=o:width=0.5:g=-1.5")
+    filters.append("equalizer=f=600:width_type=o:width=0.7:g=-1.0")
 
-    # ━━━ 3. 디에서 (v42: 좁게 축소) ━━━
-    # v41: 6.5kHz/-2.0dB/w=0.8 → 4.7-9kHz 전체 컷 → 공기감 -3.9dB 손실
-    # v42: -1.0dB/w=0.3 → 5.6-7.5kHz 좁은 밴드만 (치찰음만 타겟, 공기감 보존)
+    # ━━━ 3. Presence 부스트 (발음 명료도 복원) ━━━
+    # v44 분석: 2-4kHz -4.4dB 손실 → 가래 소리 + 발음 불명확
+    # 커뮤니티: 변환 후 2-4kHz +1.5~2dB 부스트 권장 (SageAudio, MusicGuyMixing)
+    filters.append("equalizer=f=3000:width_type=o:width=0.8:g=+2.0")
+
+    # ━━━ 4. 디에서 (v42: 좁은 밴드) ━━━
     filters.append("equalizer=f=6500:width_type=o:width=0.3:g=-1.0")
 
     # ━━━ 5. 고음/가성 모드 ━━━
