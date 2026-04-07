@@ -19,24 +19,15 @@
 - `HANDOFF.md` — 전체 아키텍처 결정사항, 비용 분석, 기술 선택 이유
 
 ## Current Status (2026-04-07)
-- **v39 모델 학습 완료** + **v41 음질 종합 개선 (5에이전트 종합)**
+- **v39 모델 학습 완료** + **v43 후처리 최적화 (최신)**
 - R2 전체: 9,207개 파일, 28.6GB
-- **v41 변환 파라미터**: index 0.30, rms 0.0, protect 0.33, filter_radius 3
-- **v41 핵심 변경 (v40→v41)**:
-  - [버그] 44.1kHz 하드코딩 → _process_sr (48kHz SR 불일치 해결)
-  - [버그] post_reverb 백엔드 기본값 0.05→0.0
-  - EQ 총 감쇠 -7.3dB→-2.0dB (65% 감소, 발음 대역 2-4kHz 보존)
-  - 550Hz, 3.5kHz, 7.5kHz, highshelf +0.5dB 컷 제거
-  - 6.5kHz 타겟 디에서 추가 (치찰음 정적 감쇠)
-  - 후처리 리미터 제거 (이중 리미터 → 펌핑 해소)
-  - loudnorm LRA 11→20 (다이나믹 보존)
-  - highpass 50→70Hz (파열음 제어)
-  - auto_gain 클램프 0.5-6.0→0.7-3.0
-  - 믹스 리미터 limit 0.95→0.89 (-1dBTP, 클리핑 해결)
-  - filter_radius 5→3 (고음 F0 지연 해소)
-  - protect 0.35→0.33 (글로벌 합의 balanced)
-  - 피치 게이트 gain 0.05→0.15 (-26dB→-16dB)
-- 테스트 47/48 통과 (1실패: test_reset_preprocess_empty, 기존 이슈)
+- **v43 변환 파라미터**: index 0.30, rms 0.0, protect 0.33, filter_radius 3
+- **v43 후처리 체인**:
+  - highpass 70Hz → 300Hz -1.5dB → 600Hz -1.0dB → 3kHz +2.0dB (presence)
+  - 6.5kHz -1.0dB/w=0.3 (디에서) → loudnorm -14 LUFS (LRA=20)
+- **v41→v43 이력**: v41 EQ 축소, v42 발음 EQ 제거, v43 가래/presence 해결
+- 고음곡 프리셋 추가 (pitch -3 권장, protect 0.25, filter 5)
+- 테스트 48/48 통과
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지 — 2.6.0+ 업그레이드 예정
 
 ## Parameters (v41)

@@ -3424,7 +3424,7 @@ input[type="range"]::-moz-range-track {
             <div style="font-size:11px;color:var(--text3);margin-top:2px">가성·고음의 AI 기계음 완화 — 프레즌스·공기감 보정 (가성 많은 곡에 ON 권장)</div>
           </div>
 
-          <!-- v36: 원본 보컬 블렌딩 -->
+          <!-- 원본 보컬 블렌딩 -->
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">원본 보컬 블렌딩 <i class="tip" data-tip="변환된 보컬에 원본 보컬을 살짝 섞어 자연스러움을 높입니다.\n\n📖 원리:\nRVC 변환 시 사라지는 숨소리, 자음 질감, 마이크 뉘앙스를 원본 보컬에서 가져와 복원합니다.\n\n🔢 설정 가이드:\n• 0% = 비활성 (AI 보컬만 사용)\n• 10~15% = 권장 (숨결감 자연 복원)\n• 20~30% = 강한 블렌딩 (원본 색감 더 많이)\n\n💡 기계음이 심할 때 10~15%로 설정하면 크게 개선됩니다.">ⓘ</i></span>
@@ -5030,7 +5030,7 @@ function applyConvertPreset(preset) {
     harmonySlider.value = p.harmonyFilter;
     document.getElementById('harmony-filter-val').textContent = (p.harmonyFilter / 100).toFixed(2);
   }
-  // v36: vocal blend
+  // vocal blend
   var blendSlider = document.getElementById('vocal-blend-slider');
   if (blendSlider && p.vocalBlend !== undefined) {
     blendSlider.value = p.vocalBlend;
@@ -6507,7 +6507,7 @@ async function startConversion() {
   form.append('vocal_pitch_pre_shift', parseInt(getVal('vocal-pre-shift-slider', '0')));
   // v22: harmony filter
   form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
-  // v36: 원본 보컬 블렌딩
+  // 원본 보컬 블렌딩
   form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
   form.append('audio', convertFile);
 
@@ -6923,7 +6923,7 @@ async function startBatchConversion() {
       form.append('high_note_mode', batchHighNoteCb ? batchHighNoteCb.checked : false);
       // v22: harmony filter
       form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
-      // v36: 원본 보컬 블렌딩
+      // 원본 보컬 블렌딩
       form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
       form.append('audio', batchResults[i].file);
 

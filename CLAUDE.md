@@ -37,19 +37,14 @@
 - ✅ RunPod Serverless Handler 구현 완료
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원, 중복 스킵)
 - ✅ 보안 감사 완료 (44건+ 수정)
-- ✅ **v41 음질 종합 개선 (5에이전트 풀가동)**:
-  - [버그 수정] 44.1kHz 하드코딩 → _process_sr (48kHz SR 불일치 해결)
-  - [버그 수정] post_reverb 백엔드 기본값 0.05→0.0
-  - EQ 총 감쇠 -7.3dB→-2.0dB (65% 감소, 발음 2-4kHz 보존)
-  - agate/adeclick 제거 + 6.5kHz 디에서 추가 (최소 후처리 원칙)
-  - 후처리 리미터 제거 (이중 리미터 펌핑 해소)
-  - loudnorm LRA 11→20 (다이나믹 보존)
-  - 믹스 리미터 0.95→0.89 (-1dBTP, 클리핑 해결)
-  - filter_radius 5→3 (고음 F0 지연 해소)
-  - protect 0.35→0.33 (글로벌 합의)
+- ✅ **v43 음질 최적화 (최신)**:
+  - v41: 44.1kHz 버그 수정, EQ 65% 감소, agate/adeclick 제거, loudnorm LRA=20
+  - v42: 2.8kHz EQ 제거 (발음 F3/F4 보존), 6.5kHz 디에서 축소
+  - v43: 300-600Hz 가래 해결 (-1.5/-1.0dB) + 3kHz +2.0dB presence 복원
+  - 고음곡 프리셋 추가 (pitch -3 권장, protect 0.25, filter 5)
 - ⚠️ **CVE-2025-32434**: PyTorch 2.1.0 RCE — 2.6.0+ 업그레이드 예정
 
-## 4. 변환 파라미터 (v41 — 5에이전트 종합 최적화)
+## 4. 변환 파라미터 (v43 — 최신)
 
 | 파라미터 | 값 | 변경 이력 |
 |----------|-----|-----------|
@@ -62,7 +57,7 @@
 | **filter_radius** | **3** | v41: 5→3 (고음 F0 지연 해소) |
 | **vocal_blend** | **10%** (프리셋) | 원본 보컬 블렌딩 |
 | 보컬 분리 | **BS-Roformer → Demucs** 폴백 | SDR 12.9 SOTA |
-| 후처리 | 2-pass loudnorm -14 LUFS (LRA=20) | 최소 EQ, 디에서 6.5kHz |
+| 후처리 | 300Hz -1.5 + 600Hz -1.0 + 3kHz +2.0 + 디에서 6.5kHz -1.0 + loudnorm -14 LUFS | v43 |
 | 믹스 리미터 | **0.89** (-1dBTP) | 클리핑 방지 |
 | 샘플레이트 | 원본 SR 보존 (_process_sr) | 48kHz→48kHz |
 
@@ -138,10 +133,14 @@ rms=0, BS-Roformer, loudnorm, 보컬 블렌딩, agate/adeclick 제거 등.
 filter_radius 5→3, protect 0.35→0.33, 믹스 리미터 0.89 (-1dBTP).
 > 상세: `.claude-sync/SESSION_CONTEXT.md`
 
+### v42 EQ 극한 최소화 + v43 발음/가래 해결
+v42: 2.8kHz EQ 제거 (발음 F3/F4 -4.4dB 파괴 주범), 디에서 축소.
+v43: 300-600Hz -2.5dB (가래 해결) + 3kHz +2.0dB (presence 복원) + 고음곡 프리셋 (pitch -3).
+
 ### 향후 로드맵
 - PyTorch 2.6.0+ 업그레이드 (CVE 대응)
 - 학습 데이터 보강 (43분→60분+)
-- Seed-VC/YingMusic-SVC 차세대 평가
+- 리드/백킹 보컬 사전 분리 워크플로우 (듀엣/화음곡)
 
 ## 10. 주요 명령어
 

@@ -2398,7 +2398,7 @@ def _post_process_vocal(
         log.warning(f"2-pass loudnorm failed: {_ln_err}, using EQ output")
 
     log.info(
-        f"Vocal post-processed v36 → {output_path.name} "
+        f"Vocal post-processed v43 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
         f"filters={len(filters)}, loudnorm=2pass)"
     )
@@ -2801,9 +2801,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
         mr_volume = 1.0
     # Post-processing for naturalness (applied after RVC conversion)
     try:
-        post_reverb: float = float(job_input.get("post_reverb", 0.05))
+        post_reverb: float = float(job_input.get("post_reverb", 0.0))
     except (ValueError, TypeError):
-        post_reverb = 0.05
+        post_reverb = 0.0
     harmonic_enhance_raw = job_input.get("harmonic_enhance", False)
     harmonic_enhance: bool = harmonic_enhance_raw in (True, "true", "True", "1", 1)
     # 고음/가성 최적화 모드: 후처리 EQ를 가성 친화적으로 조정
