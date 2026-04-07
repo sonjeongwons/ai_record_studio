@@ -2484,9 +2484,9 @@ async def start_conversion(
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.33),        # v41: 0.35→0.33 (글로벌 합의 balanced default)
+    protect: float = Form(0.50),        # v45: 0.33→0.50 (자음/가성 최대 보호)
     rms_mix_rate: float = Form(0.0),    # v36: 원곡 다이나믹스 100% 보존
-    filter_radius: int = Form(3),       # v41: 5→3 (고음 전환 F0 지연 해소)
+    filter_radius: int = Form(2),       # v45: 3→2 (비브라토 보존, 20ms 윈도우)
     hop_length: int = Form(64),
     post_reverb: float = Form(0.0),     # v41: 0.05→0.0 (프리셋과 일치, 기본 리버브 비활성)
     harmonic_enhance: str = Form("false"),

@@ -2753,12 +2753,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
     if f0_method not in _VALID_F0_CONVERT:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # filter_radius 3: v41 — 11프레임 미디언(5)은 고음 전환에서 F0 지연 → 끊김
-    # 7프레임 미디언(3)이 vibrato 보존 + jitter 제거 균형점
+    # filter_radius 2: v45 — 5프레임 미디언(2)이 vibrato 보존 최적 (20ms 윈도우)
+    # v41: 3→v45: 2 (더 빠른 비브라토/피치 변화 추적)
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 3))
+        filter_radius: int = int(job_input.get("filter_radius", 2))
     except (ValueError, TypeError):
-        filter_radius = 3
+        filter_radius = 2
     # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
     # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
     # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과
@@ -2767,12 +2767,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
         rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.0))
     except (ValueError, TypeError):
         rms_mix_rate = 0.0
-    # protect 0.33: v41 — 글로벌 커뮤니티 합의 balanced default
-    # 0.33: 무성자음 보호 최적점 (0.5=비활성, 0.2=과도 → 비인간적)
+    # protect 0.50: v45 — 자음/가성 최대 보호 (더블링 해소 후 보호 최대화 가능)
+    # v43: 0.33 → v45: 0.50 (vocal_blend 0이므로 protect 올려도 더블링 없음)
     try:
-        protect: float = float(job_input.get("protect", 0.33))
+        protect: float = float(job_input.get("protect", 0.50))
     except (ValueError, TypeError):
-        protect = 0.33
+        protect = 0.50
     # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
     try:
         hop_length: int = int(job_input.get("hop_length", 64))
@@ -3278,12 +3278,12 @@ def _rvc_infer(
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
     index_rate: float = 0.30,     # v39: 0.35→0.30
-    protect: float = 0.33,        # v41: 0.35→0.33 (글로벌 합의 balanced default)
+    protect: float = 0.50,        # v45: 0.33→0.50 (자음/가성 최대 보호)
     hop_length: int = 64,
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 3,       # v41: 5→3 (고음 전환 F0 지연 해소)
+    filter_radius: int = 2,       # v45: 3→2 (비브라토 보존)
     rms_mix_rate: float = 0.0,    # v36: 0.10→0.0
     split_audio: bool = True,
 ) -> None:
