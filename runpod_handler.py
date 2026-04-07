@@ -2277,22 +2277,18 @@ def _post_process_vocal(
     high_note_mode: bool = False,
     sample_rate: int = 44100,
 ) -> None:
-    """Post-process converted vocal v41 — 최소 후처리 원칙.
+    """Post-process converted vocal v42 — 극한 최소 후처리.
 
-    ── v41 종합 개편 (5에이전트 분석 + 커뮤니티 합의) ──
-    원칙: "최소 후처리가 최선" (AI Hub: "least audio processing as possible")
+    ── v42 (v43 분석 기반) ──
+    핵심 발견: 2.8kHz EQ가 발음 포먼트(F3/F4) -4.4dB 파괴, 6.5kHz 디에서가 공기감 -3.9dB 손실.
 
-    v41 체인:
-      highpass 70Hz → 300Hz -1.0dB → 2.8kHz -1.0dB/w=0.4 →
-      6.5kHz -2.0dB (디에서) → (고음모드) → (리버브) →
-      2-pass loudnorm -14 LUFS (LRA=20)
+    v42 체인 (총 EQ -2.0dB):
+      highpass 70Hz → 300Hz -1.0dB → 6.5kHz -1.0dB/w=0.3 →
+      (고음모드) → (리버브) → 2-pass loudnorm -14 LUFS (LRA=20)
 
-    v40→v41 핵심 변경:
-      - EQ 총 감쇠 -7.3dB→-2.0dB (발음 2-4kHz 보존)
-      - 550Hz, 3.5kHz, 7.5kHz, highshelf 제거
-      - 6.5kHz 디에서 추가 (치찰음 정적 감쇠)
-      - 후처리 리미터 제거 (이중 리미터 펌핑 해소)
-      - loudnorm LRA 11→20, highpass 50→70Hz
+    v41→v42 핵심 변경:
+      - 2.8kHz/-1.0dB/w=0.4 제거 (발음 보존 — 2-4kHz -4.4dB 손실 해결)
+      - 6.5kHz 디에서: -2.0dB/w=0.8 → -1.0dB/w=0.3 (공기감 보존)
     """
     filters = []
 
@@ -2300,20 +2296,15 @@ def _post_process_vocal(
     # v41: 50→70Hz (보컬 F0 85Hz+ 보존, 파열음 서브 에너지 차단)
     filters.append("highpass=f=70:poles=2")
 
-    # ━━━ 2. 최소 보정 EQ (v41: -7.3dB→-2.0dB, 65% 감소) ━━━
-    # v40→v41: 5개 컷 → 2개 컷 (발음 대역 2-4kHz 보존이 핵심)
-    # 300Hz: HiFi-GAN mudiness 최소 보정 (축소)
+    # ━━━ 2. 최소 EQ (v42: 총 -1.0dB만) ━━━
+    # v41→v42: 2.8kHz/-1.0dB/w=0.4 제거 (발음 포먼트 F3/F4 -4.4dB 파괴 주범)
+    # 300Hz만 유지: HiFi-GAN mudiness 최소 보정
     filters.append("equalizer=f=300:width_type=o:width=0.5:g=-1.0")
-    # 2.8kHz: HiFi-GAN metallic resonance만 좁게 컷 (발음 보존)
-    # v40의 2.5kHz/-2.5dB/w=0.8 → 발음 포먼트 F3/F4 파괴 → 좁고 얕게 변경
-    filters.append("equalizer=f=2800:width_type=o:width=0.4:g=-1.0")
-    # v41: 550Hz, 3.5kHz, 7.5kHz 컷 제거 (발음 대역 보호)
-    # v41: highshelf +0.5dB 제거 (치찰음 증폭 원인)
 
-    # ━━━ 3. 타겟 디에서 (v41 신규) ━━━
-    # 6.5kHz: 치찰음 핵심 대역 (ㅅ/ㅆ/s/sh/ch) 정적 감쇠
-    # 멀티밴드 동적 디에서 대신 좁은 정적 컷 (안정성 우선)
-    filters.append("equalizer=f=6500:width_type=o:width=0.8:g=-2.0")
+    # ━━━ 3. 디에서 (v42: 좁게 축소) ━━━
+    # v41: 6.5kHz/-2.0dB/w=0.8 → 4.7-9kHz 전체 컷 → 공기감 -3.9dB 손실
+    # v42: -1.0dB/w=0.3 → 5.6-7.5kHz 좁은 밴드만 (치찰음만 타겟, 공기감 보존)
+    filters.append("equalizer=f=6500:width_type=o:width=0.3:g=-1.0")
 
     # ━━━ 5. 고음/가성 모드 ━━━
     if high_note_mode:

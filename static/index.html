@@ -3253,7 +3253,7 @@ input[type="range"]::-moz-range-track {
       <p class="section-desc">변환 결과의 음높이(키), AI 목소리 강도 등을 조절합니다. <strong>처음엔 아무것도 건드리지 말고 그대로 변환해보세요!</strong> 결과를 들어본 후 아쉬운 부분이 있을 때만 하나씩 조절하면 됩니다.</p>
       <div class="slider-group mt-16">
         <div class="slider-header">
-          <span class="slider-label">피치 조절 (반음) <i class="tip" data-tip="변환된 목소리의 음높이(키)를 올리거나 내립니다. 피아노 1칸 = 1반음.\n\n🔢 설정 가이드:\n• 0 = 원곡과 같은 높이 (대부분 이것으로 시작)\n• +1~+3 = 약간 높게 / -1~-3 = 약간 낮게\n• +5~+8 = 남성→여성 목소리처럼\n• -5~-8 = 여성→남성 목소리처럼\n\n💡 처음엔 0으로 변환 후, 키가 안 맞으면 ±1~2씩 조절하세요.">ⓘ</i></span>
+          <span class="slider-label">피치 조절 (반음) <i class="tip" data-tip="변환된 목소리의 음높이(키)를 올리거나 내립니다.\n\n🔢 설정 가이드:\n• 0 = 원곡과 같은 높이 (대부분 이것으로 시작)\n• +1~+3 = 약간 높게 / -1~-3 = 약간 낮게\n• -12 = 한 옥타브 내림 (같은 키)\n\n⚠️ 음역 불일치 해결법:\n원곡이 모델보다 훨씬 높은 곡(플레이브 등)은\n-4 ~ -7로 내려서 변환하세요.\n옥타브 에러(삑사리·기계음)가 크게 줄어듭니다.\n\n💡 처음엔 0으로 시도 → 고음에서 삑사리 나면 -4~-7 시도.">ⓘ</i></span>
           <span class="slider-value" id="pitch-val">0</span>
           <span id="pitch-note" style="font-size:11px;color:var(--text3);margin-left:6px">원음</span>
         </div>
@@ -3297,8 +3297,11 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('chorus_v2')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(251,146,60,0.4);color:#fb923c" title="화음/그룹 곡 v2 — 발음 선명도 최우선. index 0.15, filter 5 (기다릴게 최적화)">
               🎤 화음 v2 (발음선명)
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 — index 0.30, protect 0.45 여성 timbre 보호 (comethru 최적화)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 — protect 0.45 여성 timbre 보호 (comethru 최적화)">
               👫 남녀 듀엣곡
+            </button>
+            <button class="btn btn-ghost" onclick="applyConvertPreset('high_range')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(239,68,68,0.4);color:#ef4444" title="고음/음역 불일치 전용 — pitch -5 권장, protect↓, filter↑ (플레이브·BTS 고음곡 최적화)">
+              🔥 고음곡 전용
             </button>
           </div>
           <div class="slider-group">
@@ -4956,6 +4959,17 @@ function applyConvertPreset(preset) {
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
       vocalBlend: 15,
       desc: '듀엣곡 — 여성 보호 0.45, filter 3, 원본 15% (comethru 최적)'
+    },
+    high_range: {
+      // 고음/음역 불일치 전용 — 플레이브, BTS 고음곡 등
+      // 원곡이 모델보다 훨씬 높을 때: pitch_shift -5, filter 5, protect 0.25
+      // 커뮤니티: 옥타브 에러 시 pitch_shift로 입력을 모델 음역에 맞추기
+      f0: 'rmvpe', protect: 25, rms: 0, filter: 5, hop: 2,
+      clean: false, cleanStr: 70, index: 25,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
+      highNote: true, vocalPreShift: 0, harmonyFilter: 0,
+      vocalBlend: 20,
+      desc: '고음곡 전용 — pitch -5 권장, protect↓, filter↑, 원본 20% (플레이브 최적)'
     }
   };
   var p = presets[preset];
