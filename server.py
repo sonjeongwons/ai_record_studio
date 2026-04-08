@@ -3243,55 +3243,123 @@ def _sync_list_prefix(s3, bucket: str, r2_prefix: str) -> list[dict]:
     return items
 
 
+# ── 백그라운드 백업 상태 추적 ──
+_backup_status: dict = {"running": False, "progress": "", "result": None, "error": None, "started_at": None}
+_backup_lock = threading.Lock()
+
+
+def _run_backup_thread():
+    """백그라운드 백업 스레드 — 세션 끊겨도 계속 실행."""
+    global _backup_status
+    try:
+        s3, bucket = _get_r2_client()
+        uploaded = {}
+
+        def _update(msg):
+            with _backup_lock:
+                _backup_status["progress"] = msg
+            logger.info("[Sync] %s", msg)
+
+        # 1) studio.db
+        _update("DB 백업 중...")
+        if DB_PATH.exists():
+            backup_path = DATA_DIR / "studio_backup.db"
+            src_conn = sqlite3.connect(str(DB_PATH))
+            try:
+                dst_conn = sqlite3.connect(str(backup_path))
+                try:
+                    src_conn.backup(dst_conn)
+                finally:
+                    dst_conn.close()
+            finally:
+                src_conn.close()
+            _upload_with_retry(s3, bucket, str(backup_path), f"{_SYNC_PREFIX}studio.db")
+            backup_path.unlink(missing_ok=True)
+            uploaded["database"] = True
+
+        # 2) config.json
+        _update("설정 백업 중...")
+        if CONFIG_PATH.exists():
+            _upload_with_retry(s3, bucket, str(CONFIG_PATH), f"{_SYNC_PREFIX}config.json")
+            uploaded["config"] = True
+
+        # 3~6) 디렉토리별 업로드
+        dirs = [
+            (UPLOAD_DIR, "uploads/", "업로드 파일"),
+            (MODEL_DIR, "models/", "모델"),
+            (OUTPUT_DIR, "output/", "출력 파일"),
+            (PREPROCESSED_DIR, "preprocessed/", "전처리 파일"),
+        ]
+        for local_dir, prefix, label in dirs:
+            _update(f"{label} 백업 중...")
+            n = _sync_upload_dir(s3, bucket, local_dir, f"{_SYNC_PREFIX}{prefix}")
+            uploaded[prefix.rstrip("/")] = n
+
+        total = sum(v for v in uploaded.values() if isinstance(v, int))
+        msg = f"백업 완료: {total}개 파일 업로드 (중복 스킵)"
+        with _backup_lock:
+            _backup_status["result"] = {"uploaded": uploaded, "message": msg}
+            _backup_status["progress"] = msg
+        logger.info("[Sync] %s", msg)
+
+    except Exception as e:
+        logger.error("[Sync] 백업 실패: %s", e)
+        with _backup_lock:
+            _backup_status["error"] = str(e)
+            _backup_status["progress"] = f"백업 실패: {e}"
+    finally:
+        with _backup_lock:
+            _backup_status["running"] = False
+
+
+def _upload_with_retry(s3, bucket: str, filepath: str, key: str, max_retries: int = 3):
+    """단일 파일 R2 업로드 — 타임아웃/네트워크 오류 시 재시도."""
+    for attempt in range(max_retries):
+        try:
+            s3.upload_file(filepath, bucket, key)
+            return
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = min(2 ** attempt * 5, 30)  # 5s, 10s, 30s
+                logger.warning("[Sync] 업로드 재시도 %d/%d (%s): %s",
+                              attempt + 1, max_retries, key, e)
+                time.sleep(wait)
+            else:
+                raise
+
+
 @app.post("/api/sync/backup")
 async def sync_backup():
-    """현재 PC의 DB + 파일을 R2에 백업 (다른 PC에서 복원 가능)."""
-    s3, bucket = _get_r2_client()
-    result = {"uploaded": {}}
+    """백그라운드 비동기 백업 — 즉시 응답, 세션 끊겨도 계속 실행."""
+    global _backup_status
+    with _backup_lock:
+        if _backup_status["running"]:
+            return {"status": "already_running", "progress": _backup_status["progress"]}
+        _backup_status = {
+            "running": True, "progress": "백업 시작...",
+            "result": None, "error": None,
+            "started_at": datetime.now().isoformat()
+        }
 
-    # 1) studio.db 백업
-    if DB_PATH.exists():
-        # WAL 모드 대비: 별도 연결로 안전한 백업 생성
-        backup_path = DATA_DIR / "studio_backup.db"
-        src = sqlite3.connect(str(DB_PATH))
-        try:
-            dst = sqlite3.connect(str(backup_path))
-            try:
-                src.backup(dst)
-            finally:
-                dst.close()
-        finally:
-            src.close()
-        s3.upload_file(str(backup_path), bucket, f"{_SYNC_PREFIX}studio.db")
-        backup_path.unlink(missing_ok=True)
-        result["uploaded"]["database"] = True
-        logger.info("[Sync] DB 백업 완료")
+    # _get_r2_client 검증 (설정 누락 시 즉시 에러)
+    _get_r2_client()
 
-    # 2) uploads 디렉토리
-    n = _sync_upload_dir(s3, bucket, UPLOAD_DIR, f"{_SYNC_PREFIX}uploads/")
-    result["uploaded"]["uploads"] = n
+    t = threading.Thread(target=_run_backup_thread, daemon=True, name="sync-backup")
+    t.start()
+    return {"status": "started", "message": "백업이 백그라운드에서 시작되었습니다. /api/sync/backup/status 에서 진행률을 확인하세요."}
 
-    # 3) models 디렉토리
-    n = _sync_upload_dir(s3, bucket, MODEL_DIR, f"{_SYNC_PREFIX}models/")
-    result["uploaded"]["models"] = n
 
-    # 4) output 디렉토리
-    n = _sync_upload_dir(s3, bucket, OUTPUT_DIR, f"{_SYNC_PREFIX}output/")
-    result["uploaded"]["output"] = n
-
-    # 5) preprocessed 디렉토리
-    n = _sync_upload_dir(s3, bucket, PREPROCESSED_DIR, f"{_SYNC_PREFIX}preprocessed/")
-    result["uploaded"]["preprocessed"] = n
-
-    # 6) config.json 백업 (API 키 등)
-    if CONFIG_PATH.exists():
-        s3.upload_file(str(CONFIG_PATH), bucket, f"{_SYNC_PREFIX}config.json")
-        result["uploaded"]["config"] = True
-
-    total = sum(v for v in result["uploaded"].values() if isinstance(v, int))
-    logger.info("[Sync] 백업 완료: %d개 파일 업로드 (중복 파일은 자동 스킵됨)", total)
-    result["message"] = f"백업 완료: {total}개 파일 업로드 (중복 파일은 자동 스킵)"
-    return result
+@app.get("/api/sync/backup/status")
+async def sync_backup_status():
+    """백그라운드 백업 진행률 조회."""
+    with _backup_lock:
+        return {
+            "running": _backup_status["running"],
+            "progress": _backup_status["progress"],
+            "result": _backup_status["result"],
+            "error": _backup_status["error"],
+            "started_at": _backup_status["started_at"],
+        }
 
 
 @app.post("/api/sync/restore")

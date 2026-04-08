@@ -7541,23 +7541,54 @@ async function checkSyncStatus() {
   }
 }
 
+var _backupPollTimer = null;
 async function startSyncBackup() {
   if (!confirm('현재 PC의 모든 데이터(DB, 모델, 파일)를 클라우드에 백업합니다.\n기존 백업은 덮어씌워집니다. 계속하시겠습니까?')) return;
   setButtonLoading('btn-sync-backup', true);
   document.getElementById('sync-progress').style.display = 'block';
-  document.getElementById('sync-progress-msg').textContent = '클라우드에 백업 중... (파일 크기에 따라 수 분 소요)';
+  document.getElementById('sync-progress-msg').textContent = '백업 시작 중...';
   try {
-    var res = await api('/sync/backup', { method: 'POST', noTimeout: true });
-    setButtonLoading('btn-sync-backup', false);
-    document.getElementById('sync-progress').style.display = 'none';
-    showSettingsMsg('sync-msg', res.message, true);
-    toast(escapeHtml(res.message), 'success');
-    checkSyncStatus();
+    var res = await api('/sync/backup', { method: 'POST' });
+    if (res.status === 'already_running') {
+      toast('백업이 이미 진행 중입니다: ' + res.progress, 'info');
+    }
+    // 백그라운드 진행 → 폴링 시작
+    _pollBackupStatus();
   } catch(e) {
     setButtonLoading('btn-sync-backup', false);
     document.getElementById('sync-progress').style.display = 'none';
-    showSettingsMsg('sync-msg', '백업 실패: ' + e.message, false);
-    toast('백업 실패: ' + escapeHtml(e.message), 'error');
+    showSettingsMsg('sync-msg', '백업 시작 실패: ' + e.message, false);
+    toast('백업 시작 실패: ' + escapeHtml(e.message), 'error');
+  }
+}
+
+async function _pollBackupStatus() {
+  if (_backupPollTimer) { clearTimeout(_backupPollTimer); _backupPollTimer = null; }
+  try {
+    var st = await api('/sync/backup/status');
+    document.getElementById('sync-progress-msg').textContent = st.progress || '진행 중...';
+    if (st.running) {
+      _backupPollTimer = setTimeout(_pollBackupStatus, 2000);
+    } else {
+      // 완료
+      setButtonLoading('btn-sync-backup', false);
+      if (st.error) {
+        document.getElementById('sync-progress-msg').textContent = '백업 실패: ' + st.error;
+        showSettingsMsg('sync-msg', '백업 실패: ' + st.error, false);
+        toast('백업 실패: ' + escapeHtml(st.error), 'error');
+        setTimeout(function() { document.getElementById('sync-progress').style.display = 'none'; }, 5000);
+      } else {
+        var msg = st.result ? st.result.message : '백업 완료';
+        document.getElementById('sync-progress').style.display = 'none';
+        showSettingsMsg('sync-msg', msg, true);
+        toast(escapeHtml(msg), 'success');
+        checkSyncStatus();
+      }
+    }
+  } catch(e) {
+    // 네트워크 끊김 — 서버에서 백업은 계속 진행 중
+    document.getElementById('sync-progress-msg').textContent = '서버에서 백업 진행 중 (네트워크 재연결 대기)';
+    _backupPollTimer = setTimeout(_pollBackupStatus, 5000);
   }
 }
 
