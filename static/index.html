@@ -4942,13 +4942,13 @@ function applyConvertPreset(preset) {
       desc: '최대 자연스러움 — protect 0.50, filter 2, index 낮게 (원곡 발음 보존)'
     },
     studio: {
-      // 스튜디오: 깨끗한 녹음에 최적 + 미세 공간감
+      // 스튜디오: 깨끗한 녹음에 최적 (리버브 OFF — 중첩/사이버틱 방지)
       f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30,
-      postReverb: 3, useReverb: true, harmonicEnhance: false,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
       vocalBlend: 0,
-      desc: '스튜디오 — protect 0.50, filter 2, 미세 공간감 리버브'
+      desc: '스튜디오 — protect 0.50, filter 2, 리버브 OFF'
     },
     chorus: {
       // 화음/코러스: filter 3 피치 안정화 (5는 과도)
@@ -4960,13 +4960,13 @@ function applyConvertPreset(preset) {
       desc: '화음/코러스 — filter 3 피치 안정화, protect 0.50, index 0.20'
     },
     indie: {
-      // 인디/차분한 곡: 미세 공간감
+      // 인디/차분한 곡 (리버브 OFF — 중첩/사이버틱 방지)
       f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30,
-      postReverb: 3, useReverb: true, harmonicEnhance: false,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
       vocalBlend: 0,
-      desc: '인디/차분한 곡 — index 0.30, 미세 공간감'
+      desc: '인디/차분한 곡 — index 0.30, 리버브 OFF'
     },
     chorus_v2: {
       // 화음/그룹 곡 v2 — 발음 선명도 우선
@@ -4978,13 +4978,13 @@ function applyConvertPreset(preset) {
       desc: '화음 v2 (발음선명) — index 0.15, filter 3, protect 0.50'
     },
     duet: {
-      // 남녀 듀엣곡 — 자음 최대 보호
+      // 남녀 듀엣곡 — 자음 최대 보호 (리버브 OFF — 중첩 방지)
       f0: 'rmvpe', protect: 33, rms: 0, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 25,
-      postReverb: 3, useReverb: true, harmonicEnhance: false,
+      postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
       vocalBlend: 0,
-      desc: '듀엣곡 — protect 0.50, filter 2, 미세 공간감 (comethru 최적)'
+      desc: '듀엣곡 — protect 0.50, filter 2, 리버브 OFF (comethru 최적)'
     },
     high_range: {
       // 고음/음역 불일치 전용 — 플레이브, BTS 고음곡 등
