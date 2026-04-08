@@ -303,6 +303,30 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 f"입력 파일 {len(diarized_paths)}개 모두 손상되었거나 비정상적입니다."
             )
 
+        # --- Step 5b: LUFS 정규화 (-23 LUFS, 커뮤니티 학습 데이터 표준) ---
+        # AI Hub 권장: "HiFi-GAN needs perceptual quality → LUFS normalization"
+        # -23 LUFS = 학습 데이터 표준 (-14 LUFS는 변환 출력용)
+        runpod.serverless.progress_update(job, "Normalizing loudness (-23 LUFS)... (5.5/6)")
+        normalized_paths = []
+        for cp in cleaned_paths:
+            norm_out = cp.with_suffix(".norm.wav")
+            try:
+                run_ffmpeg([
+                    "-i", str(cp),
+                    "-af", "loudnorm=I=-23:TP=-1:LRA=11",
+                    "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
+                    str(norm_out),
+                ])
+                if norm_out.exists() and norm_out.stat().st_size > 1000:
+                    normalized_paths.append(norm_out)
+                else:
+                    normalized_paths.append(cp)
+            except Exception as norm_err:
+                log.warning(f"LUFS normalization failed for {cp.name}: {norm_err}")
+                normalized_paths.append(cp)
+        log.info(f"LUFS normalization: {len(normalized_paths)} files at -23 LUFS")
+        cleaned_paths = normalized_paths
+
         # --- Step 6: Segment into 3-12s clips ---
         runpod.serverless.progress_update(job, "Segmenting audio clips... (6/6)")
         segments, skipped_files = _segment_audio(cleaned_paths, segment_dir)
@@ -968,6 +992,26 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
             seg_idx += 1
 
     log.info(f"Total segments created: {len(all_segments)}, skipped: {len(skipped_files)}")
+
+    # v46: 무음 세그먼트 자동 제거 (RMS < -40dBFS)
+    # 분석 결과 7.2% 세그먼트가 무음 → 학습 용량 낭비 + 보코더 혼란
+    filtered = []
+    removed_silent = 0
+    for seg in all_segments:
+        try:
+            _seg_data, _seg_sr = sf.read(str(seg))
+            _seg_rms = float(np.sqrt(np.mean(_seg_data ** 2)))
+            if _seg_rms < 0.01:  # -40 dBFS 이하
+                seg.unlink(missing_ok=True)
+                removed_silent += 1
+                continue
+        except Exception:
+            pass
+        filtered.append(seg)
+    if removed_silent:
+        log.info(f"Removed {removed_silent} near-silent segments (RMS < -40dBFS)")
+    all_segments = filtered
+
     return all_segments, skipped_files
 
 
