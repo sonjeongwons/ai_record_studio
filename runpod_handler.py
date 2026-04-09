@@ -1146,7 +1146,7 @@ def task_train(job_input: dict, job: dict) -> dict:
     # v36: batch 8 기본 (4에서 상향) — 43분+ 데이터에 더 안정적 (커뮤니티 권장)
     # RTX 4090 24GB VRAM에서 batch 8 안정 동작
     try:
-        batch_size: int = int(job_input.get("batch_size", 6))  # v49: 4→6 (44.9분: AI Hub >30분=8, <30분=4)
+        batch_size: int = int(job_input.get("batch_size", 8))  # v49.4: →8 (AI Hub 명확: >30분=8)
     except (ValueError, TypeError):
         batch_size = 4
     _VALID_F0 = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}

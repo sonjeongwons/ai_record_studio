@@ -3048,8 +3048,8 @@ input[type="range"]::-moz-range-track {
         <div>
           <label class="label">배치 사이즈 <i class="tip" data-tip="AI가 한 번에 처리하는 데이터 묶음 크기입니다.\n\n🔢 추천:\n• 자동 = GPU 최적화 (권장!)\n• 8 = '메모리 부족' 오류 발생 시\n• 16 = 30% 빠름 / 24 = 50% 빠름 (고사양 GPU 전용)\n\n⚠️ 잘 모르면 '자동'으로 두세요.\n💰 배치가 클수록 학습 속도가 빨라져 비용이 절감됩니다.">ⓘ</i></label>
           <select id="train-batch" onchange="estimateTrainingCost()">
-            <option value="4" selected>4 (권장 · 30분 이하 데이터)</option>
-            <option value="8">8 (30분+ 데이터에 안정적)</option>
+            <option value="4">4 (30분 이하 데이터)</option>
+            <option value="8" selected>8 (v49 권장 · 30분+ 데이터에 안정적)</option>
             <option value="16">16 (대규모 데이터 · 30% 빠름)</option>
             <option value="0">자동 (GPU가 알아서 최적화)</option>
           </select>
@@ -4764,7 +4764,7 @@ function estimateTrainingCost() {
 
   var totalMins = totalSecs / 60;
   var epochs = parseInt(document.getElementById('train-epochs').value) || 150;
-  var batch  = parseInt(document.getElementById('train-batch').value)  || 4;
+  var batch  = parseInt(document.getElementById('train-batch').value)  || 8;
   var sr     = parseInt(document.getElementById('train-sr').value)     || 40000;
   var f0     = (document.getElementById('train-f0').value || 'rmvpe').toLowerCase();
 
