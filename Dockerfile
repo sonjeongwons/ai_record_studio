@@ -398,6 +398,20 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # ── 2.3 Copy Applio, models, and torch hub from builder ─────────
 COPY --from=builder /app/Applio /app/Applio
+
+# v49.8: Applio pipeline 청크 크기 최적화 (RTX 4090 24GB)
+# 기본값: x_center=38s → 38초마다 하드 연결 (크로스페이드 없음) → 끊김 원인
+# RTX 4090: 24GB VRAM으로 더 큰 청크 처리 가능 → 끊김 감소
+# x_center=60, x_max=65: ~65초 단위 청킹 (4분 곡 = 4개→1개 경계)
+RUN CONFIG_FILE="/app/Applio/rvc/configs/config.py" \
+    && if [ -f "$CONFIG_FILE" ]; then \
+        sed -i 's/self\.x_pad = [0-9]*/self.x_pad = 3/g' "$CONFIG_FILE" \
+        && sed -i 's/self\.x_query = [0-9]*/self.x_query = 10/g' "$CONFIG_FILE" \
+        && sed -i 's/self\.x_center = [0-9]*/self.x_center = 60/g' "$CONFIG_FILE" \
+        && sed -i 's/self\.x_max = [0-9]*/self.x_max = 65/g' "$CONFIG_FILE" \
+        && echo "Applio config patched: x_center=60, x_max=65 for RTX 4090" \
+        || echo "WARNING: Applio config patch failed (non-fatal)" ; \
+    fi
 COPY --from=builder /app/torch_hub /app/torch_hub
 COPY --from=builder /app/models /app/models
 

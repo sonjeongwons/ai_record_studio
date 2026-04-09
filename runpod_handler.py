@@ -2722,7 +2722,7 @@ def _fix_pitch_artifacts(
     max_hz: float = 1200.0,
     min_duration_s: float = 0.20,
     gap_bridge_s: float = 0.15,
-    vp_threshold: float = 0.03,
+    vp_threshold: float = 0.01,  # v49.8: 0.03→0.01 (RVC 보코더 출력의 VP 왜곡 감안, 더 보수적)
 ) -> bool:
     """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v19).
 
