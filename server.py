@@ -2527,23 +2527,24 @@ async def reset_preprocess_selected(file_ids: str = Form("")):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.40),   # v45: 0.30→0.40 (한/영 균형, 한국어 0.55 / 영어 0.30 프리셋)
+    index_rate: float = Form(0.45),   # v49: 0.40→0.45 (한/영 프리셋에서 개별 전달)
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.33),        # v45: 커뮤니티 합의 0.33 (0.50=비활성!)
+    protect: float = Form(0.40),        # v49: 0.33→0.40 (과도한 자음 보호 완화→인덱스 정확도 향상)
     rms_mix_rate: float = Form(0.0),    # v36: 원곡 다이나믹스 100% 보존
-    filter_radius: int = Form(2),       # v45: 3→2 (비브라토 보존, 20ms 윈도우)
-    hop_length: int = Form(64),
-    post_reverb: float = Form(0.0),     # v41: 0.05→0.0 (프리셋과 일치, 기본 리버브 비활성)
+    filter_radius: int = Form(3),       # v49: 2→3 (피치 스무딩 강화→미세 떨림/크래킹 감소)
+    hop_length: int = Form(128),        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
+    post_reverb: float = Form(0.0),     # v41: 리버브 비활성 기본
     harmonic_enhance: str = Form("false"),
     high_note_mode: str = Form("false"),
     harmony_filter: float = Form(0.0),
     separate_vocals: str = Form("true"),
     vocal_pitch_pre_shift: int = Form(0),
-    vocal_blend: float = Form(0.0),    # v36: 원본 보컬 블렌딩 비율 (0.0~0.3, 0=비활성)
+    vocal_blend: float = Form(0.0),    # v45: 0% (더블링 원인 제거)
+    language: str = Form("auto"),      # v49: 한/영 EQ 분리 (ko/en/auto)
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2565,7 +2566,10 @@ async def start_conversion(
     if not (0 <= filter_radius <= 12):
         raise HTTPException(400, f"Filter Radius는 0~12 사이여야 합니다. (입력: {filter_radius})")
     if hop_length not in (32, 64, 128, 256, 512):
-        hop_length = 64  # 잘못된 값은 기본값으로
+        hop_length = 128  # v49: 잘못된 값은 128 기본값으로
+    # v49: language 검증
+    if language not in ("ko", "en", "auto"):
+        language = "auto"
     if f0_method not in ("rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"):
         raise HTTPException(400, f"유효하지 않은 F0 방법입니다: {f0_method}")
     if not (0.0 <= vocal_volume <= 2.0):
@@ -2653,6 +2657,7 @@ async def start_conversion(
             "harmony_filter": max(0.0, min(1.0, harmony_filter)),
             "vocal_pitch_pre_shift": max(-12, min(12, vocal_pitch_pre_shift)),
             "vocal_blend": vocal_blend,
+            "language": language,         # v49: 한/영 EQ 분리
             "bucket_name": r2_bucket,
         }
 

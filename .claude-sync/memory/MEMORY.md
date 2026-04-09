@@ -29,14 +29,16 @@
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지
 - YingMusic-SVC: CC-BY-NC-4.0 비상업 라이선스 → 프로덕션 제외
 
-## Parameters (v45)
+## Parameters (v49)
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
-- Epochs: 200, Batch: 8, Sample rate: 40kHz
-- F0: RMVPE + FCPE, Embedder: ContentVec (768-dim)
-- index_rate: 0.30, rms_mix_rate: 0.0, protect: 0.50, filter_radius: 2
-- Overtraining detector: 50 epoch threshold
+- Epochs: 250, Batch: 4, Sample rate: 40kHz
+- F0: RMVPE + **f0_autotune=True** (strength=0.6), Embedder: ContentVec (768-dim)
+- index_rate: **0.45** (한국어 0.55 / 영어 0.35), rms_mix_rate: 0.0
+- protect: **0.40**, filter_radius: **3** (한국어 4), hop_length: **128**
+- language: **auto/ko/en** (한/영 EQ 분리, NEW)
 - vocal_blend: 0% (비활성 — 더블링 원인이었음)
-- 학습 데이터: mp3record/ 71개 파일 (장홍권 기존 녹음물 + 대화 녹음)
+- split_audio: >180초 (v49: 300→180초)
+- 학습 데이터: 9개 소수정예 (44.9분, 노래 100%, 음역 4.1옥타브)
 
 ## Workflow Rules (하네스 제약)
 - **코드 수정 후 반드시 git commit + git push**
@@ -72,7 +74,8 @@
 - v35 KLM49_HFG 도입 + Demucs 보컬분리 전처리 추가 (근본 원인 해결)
 - v40 agate/adeclick 제거 (최소 후처리 원칙)
 - **v41 5에이전트 종합 음질 개선**
-- **v45 더블링 제거 + 치찰음 개선** (아래 상세)
+- **v45 더블링 제거 + 치찰음 개선**
+- **v49 고음/치찰음/발음 전면 개선** (아래 상세)
 
 ## v45 더블링 제거 (2026-04-07)
 - **문제**: 변환 목소리가 여러명이 부르는 것처럼 중첩 + 치찰음/기계음 전체적
@@ -89,6 +92,22 @@
   - MR EQ: 2kHz -2.0dB, 3.5kHz -1.5dB 추가 (블리드 감쇄)
   - 리미터: level=enabled→disabled (자동 게인 올림 → 클리핑)
   - 프리셋: protect 0.33→0.50, filter 3→2
+
+## v49 고음/치찰음/발음 전면 개선 (2026-04-09)
+- **문제**: v41 모델 변환 시 고음/가성 끊김·삑사리, 치찰음/기계음, 발음 부정확
+- **근본 원인** (커뮤니티 리서치 + Applio 공식문서):
+  - f0_autotune=False → 가성 피치 불안정 (Applio: 노래에 권장)
+  - hop_length=64 → 노이즈 추적→삑사리 (커뮤니티: 128 표준)
+  - 3kHz +1.0dB → 치찰음 증폭 (HiFi-GAN 이미 충분)
+  - 300Hz/600Hz EQ → 한국어 비음 포먼트 파괴
+  - 한/영 동일 파라미터 → 자음 특성 차이 무시
+- **수정사항**:
+  - f0_autotune: False→True (strength 0.6, 비브라토 보존)
+  - hop_length: 64→128, filter_radius: 2→3, protect: 0.33→0.40
+  - 3kHz presence boost 완전 제거
+  - language 파라미터 신규 (ko/en/auto)
+  - 한국어: 300Hz/600Hz EQ 제거 (비음 보호), 영어: 경미한 감쇄만
+  - split_audio: 300→180초, 프리셋 12개 전면 재설계
 
 ## 타겟 곡 3개
 - "01_Breaking Through (4824 Wave).wav" — 영어, 팝/록, 48kHz/24bit WAV

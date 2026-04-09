@@ -2323,20 +2323,24 @@ def _post_process_vocal(
     harmonic_enhance: bool = False,
     high_note_mode: bool = False,
     sample_rate: int = 44100,
+    language: str = "auto",
 ) -> None:
-    """Post-process converted vocal v45 — 치찰음 제거 + 발음 보존 + 더블링 방지.
+    """Post-process converted vocal v49 — 한/영 분리 EQ + 동적 디에서 + 발음 보존.
 
-    ── v45 (v43→v45 전면 개선) ──
+    ── v49 (v45→v49 전면 개선) ──
     핵심 변경:
-      - de-esser 2단: 5kHz(넓은) + 8kHz(좁은) → 치찰음/기계음 제거
-      - presence +2.0→+1.0dB (과도한 고역 부스트가 치찰음 강조)
-      - 300Hz -1.5→-1.0dB (가래 해결하되 저역 너무 안 깎기)
-      - 고음모드: 200Hz -0.5→ 삭제 (이미 기본 EQ로 충분)
+      - 한국어/영어 EQ 분리 (비음 포먼트 보호 vs 치찰음 대역 차이)
+      - 3kHz presence boost 제거 (HiFi-GAN 이미 충분, 치찰음 증폭 주범)
+      - 동적 디에서: adeclick → 고주파 아티팩트만 선택 제거
+      - 300Hz/600Hz EQ: 한국어 비음 보호 위해 제거 (영어만 경미 감쇄)
 
-    v45 체인:
-      highpass 70Hz → 300Hz -1.0dB → 600Hz -0.8dB →
-      3kHz +1.0dB (presence) → 5kHz -1.5dB/w=1.0 (광역 디에서) →
-      8kHz -1.0dB/w=0.5 (협역 디에서) →
+    v49 체인 (한국어):
+      highpass 70Hz → 8kHz -0.8dB/w=0.3 (HiFi-GAN 금속음만) →
+      (리버브) → 2-pass loudnorm -14 LUFS (LRA=20)
+
+    v49 체인 (영어):
+      highpass 70Hz → 300Hz -0.3dB → 600Hz -0.3dB →
+      5kHz -0.8dB/w=0.5 (s/sh 디에서) → 8kHz -0.8dB/w=0.3 →
       (리버브) → 2-pass loudnorm -14 LUFS (LRA=20)
     """
     filters = []
@@ -2344,22 +2348,27 @@ def _post_process_vocal(
     # ━━━ 1. 초저역 제거 (파열음 에너지 제어) ━━━
     filters.append("highpass=f=70:poles=2")
 
-    # ━━━ 2. 중저역 EQ (가래/먹먹함 해결) ━━━
-    # v45: 300Hz F1(한국어 ㄴ/ㅁ 비음) 보호 위해 -1.0→-0.5dB로 축소
-    # 코드 분석: 300Hz/600Hz 삭감이 한국어 비음 포먼트 파괴
-    filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.5")
-    filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.5")
+    # ━━━ 2. 언어별 EQ (v49: 한/영 분리) ━━━
+    if language == "ko":
+        # 한국어: 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호 — 300Hz/600Hz EQ 없음
+        # 3kHz presence boost 제거 — HiFi-GAN 이미 충분, 치찰음 증폭 주범
+        pass  # 한국어는 EQ 최소화 (보코더 원음 보존)
+    elif language == "en":
+        # 영어: 경미한 저역 감쇄만 (발음 명료도 유지)
+        filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
+        filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.3")
+        # 영어 치찰음은 4-6kHz에 집중 (s/sh/ch)
+        filters.append("equalizer=f=5000:width_type=o:width=0.5:g=-0.8")
+    else:
+        # auto/기타: 영어 기본값 사용 (안전한 기본)
+        filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
+        filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.3")
+        filters.append("equalizer=f=5000:width_type=o:width=0.5:g=-0.8")
 
-    # ━━━ 3. Presence 부스트 (발음 명료도 복원) ━━━
-    # v45: +2.0→+1.0dB (과도한 부스트가 치찰음/기계음 강조)
-    filters.append("equalizer=f=3000:width_type=o:width=0.8:g=+1.0")
-
-    # ━━━ 4. 2단 디에서 (v45: 광역+협역) ━━━
-    # 커뮤니티 합의: RVC 치찰음은 5-8kHz 전체에 분포
-    # 광역: 4-6kHz (한국어 ㅅ/ㅆ/ㅈ/ㅊ + 영어 s/sh/ch)
-    filters.append("equalizer=f=5000:width_type=o:width=1.0:g=-1.5")
-    # 협역: 7-9kHz (금속성 기계음, RVC 특유의 고역 아티팩트)
-    filters.append("equalizer=f=8000:width_type=o:width=0.5:g=-1.0")
+    # ━━━ 3. HiFi-GAN 금속음 감쇄 (공통) ━━━
+    # v49: 좁은 대역(0.3)으로 8kHz 금속성 아티팩트만 타겟팅
+    # 넓은 대역 EQ는 공기감/숨소리도 함께 제거 → 좁게 제한
+    filters.append("equalizer=f=8000:width_type=o:width=0.3:g=-0.8")
 
     # ━━━ v41: 후처리 리미터 제거 ━━━
     # v40: alimiter=limit=0.98:attack=5:release=100 → 이중 리미터(+mix limiter) = 펌핑
@@ -2821,14 +2830,18 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # protect 0.33: 커뮤니티 합의 balanced default (0.50=비활성!)
     # RVC 구현: 0.50은 보호 기능 OFF, 0.0은 최대 보호 → 0.25~0.33이 최적
     try:
-        protect: float = float(job_input.get("protect", 0.33))
+        protect: float = float(job_input.get("protect", 0.40))
     except (ValueError, TypeError):
-        protect = 0.33
-    # hop_length 64: finer pitch resolution → captures subtle vibrato/pitch changes
+        protect = 0.40
+    # v49: hop_length 128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     try:
-        hop_length: int = int(job_input.get("hop_length", 64))
+        hop_length: int = int(job_input.get("hop_length", 128))
     except (ValueError, TypeError):
-        hop_length = 64
+        hop_length = 128
+    # v49: 한국어/영어 EQ 분리를 위한 language 파라미터
+    language: str = str(job_input.get("language", "auto")).lower().strip()
+    if language not in ("ko", "en", "auto"):
+        language = "auto"
     clean_audio_raw = job_input.get("clean_audio", False)
     clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
     try:
@@ -3059,9 +3072,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
             )
         if _rvc_duration > 300:
             log.warning(f"긴 오디오 입력 ({_rvc_duration:.0f}초). 변환에 시간이 오래 걸릴 수 있습니다.")
-        # split_audio: 5분 이하는 분할 없이 한 번에 처리 → 청크 경계 아티팩트(가사 끊김) 방지
-        # 5분 이상은 GPU OOM 방지를 위해 분할 처리
-        _should_split = _rvc_duration > 300
+        # v49: 3분 이하는 분할 없이 처리 → 청크 경계 아티팩트(가사 끊김/음 끊김) 방지
+        # 3분 이상은 GPU OOM 방지를 위해 분할 처리 (5분→3분: 긴 곡 청크 경계 안정성)
+        _should_split = _rvc_duration > 180
 
         converted_vocals_path = work / f"converted_vocals.{export_format}"
         _rvc_infer(
@@ -3080,6 +3093,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
             filter_radius=filter_radius,
             rms_mix_rate=rms_mix_rate,
             split_audio=_should_split,
+            f0_autotune=True,            # v49: 노래 변환 피치 안정화
+            f0_autotune_strength=0.6,    # v49: 비브라토 보존
         )
 
         if not converted_vocals_path.exists():
@@ -3139,6 +3154,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                         protect=protect, hop_length=hop_length,
                         clean_audio=clean_audio, clean_strength=clean_strength,
                         export_format=export_format, split_audio=True,
+                        f0_autotune=True, f0_autotune_strength=0.6,
                     )
                     if _retry_path.exists():
                         _retry_dur = get_audio_duration(_retry_path)
@@ -3194,6 +3210,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 harmonic_enhance=harmonic_enhance,
                 high_note_mode=high_note_mode,
                 sample_rate=_process_sr,
+                language=language,
             )
             if processed_vocals_path.exists() and processed_vocals_path.stat().st_size > 1000:
                 converted_vocals_path = processed_vocals_path
@@ -3328,15 +3345,17 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.40,     # v45: 0.30→0.40 (한/영 균형)
-    protect: float = 0.33,        # 커뮤니티 합의 (0.50=비활성)
-    hop_length: int = 64,
+    index_rate: float = 0.45,     # v49: 0.40→0.45 (한/영 프리셋에서 개별 전달)
+    protect: float = 0.40,        # v49: 0.33→0.40 (과도한 자음 보호 완화 → 인덱스 정확도 향상)
+    hop_length: int = 128,        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 2,       # v45: 3→2 (비브라토 보존)
-    rms_mix_rate: float = 0.0,    # v36: 0.10→0.0
+    filter_radius: int = 3,       # v49: 2→3 (피치 스무딩 강화 → 미세 떨림/크래킹 감소)
+    rms_mix_rate: float = 0.0,    # v36: 원곡 다이나믹 100% 보존
     split_audio: bool = True,
+    f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
+    f0_autotune_strength: float = 0.6,  # v49: 1.0→0.6 (비브라토 보존, 너무 강하면 로봇)
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.
@@ -3364,8 +3383,8 @@ def _rvc_infer(
             pth_path=str(pth_path),
             index_path=index_str,
             split_audio=split_audio,
-            f0_autotune=False,
-            f0_autotune_strength=1.0,
+            f0_autotune=f0_autotune,              # v49: True (노래 변환 피치 안정화)
+            f0_autotune_strength=f0_autotune_strength,  # v49: 0.6 (비브라토 보존)
             proposed_pitch=False,
             proposed_pitch_threshold=155.0,
             clean_audio=clean_audio,
@@ -3514,8 +3533,8 @@ def _rvc_infer(
             version,
             protect,
             hop_length,
-            False,  # f0_autotune
-            1.0,  # f0_autotune_strength
+            f0_autotune,  # v49: True (노래 변환 피치 안정화)
+            f0_autotune_strength,  # v49: 0.6 (비브라토 보존)
         )
 
         # Save output — always write as WAV first, then convert to target format if needed
