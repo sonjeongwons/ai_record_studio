@@ -2445,10 +2445,9 @@ def _post_process_vocal(
 
     # ━━━ 2. 언어별 EQ (v49: 한/영 분리) ━━━
     if language == "ko":
-        # 한국어: 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호 — 300Hz/600Hz EQ 없음
-        # v49.7: 8kHz 금속음 감쇄는 공통 적용 (아래 Step 3에서)
-        # 한국어 치찰음(ㅅ/ㅆ)은 5-7kHz에 집중 → 별도 처리 불필요
-        pass  # 300Hz/600Hz EQ 없음 (비음 보호)
+        # 한국어: 300Hz/600Hz EQ 없음 (비음 ㄴ/ㅁ/ㅇ 포먼트 보호)
+        # v49.8: 1.2kHz 비음 컷은 아래 공통 Step 2b에서 적용
+        pass
     elif language == "en":
         # 영어: 경미한 저역 감쇄만 (발음 명료도 유지)
         filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
@@ -2456,10 +2455,15 @@ def _post_process_vocal(
         # 영어 치찰음은 4-6kHz에 집중 (s/sh/ch)
         filters.append("equalizer=f=5000:width_type=o:width=0.5:g=-0.8")
     else:
-        # auto/기타: 영어 기본값 사용 (안전한 기본)
+        # auto/기타: 영어 기본 + 비음 컷 (안전한 기본)
         filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
         filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.3")
         filters.append("equalizer=f=5000:width_type=o:width=0.5:g=-0.8")
+
+    # ━━━ 2b. HiFi-GAN 비음 공명 감쇄 (공통) ━━━
+    # v49.8: 보코더가 800Hz-1.5kHz에서 비음 아티팩트 생성
+    # 좁은 1.2kHz 컷으로 nasal honk 제거, 발성 포먼트(F1/F2) 보호
+    filters.append("equalizer=f=1200:width_type=o:width=0.4:g=-1.0")
 
     # ━━━ 3. HiFi-GAN 금속음 감쇄 (공통) ━━━
     # v49: 좁은 대역(0.3)으로 8kHz 금속성 아티팩트만 타겟팅
@@ -2942,9 +2946,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     _autotune_raw = job_input.get("f0_autotune", True)
     f0_autotune: bool = _autotune_raw in (True, "true", "True", "1", 1)
     try:
-        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.6))
+        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.3))
     except (ValueError, TypeError):
-        f0_autotune_strength = 0.6
+        f0_autotune_strength = 0.3  # v49.8: 0.6→0.3 (이중 스무딩→비음 완화)
     f0_autotune_strength = max(0.0, min(1.0, f0_autotune_strength))
     clean_audio_raw = job_input.get("clean_audio", False)
     clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
@@ -3507,7 +3511,7 @@ def _rvc_infer(
     rms_mix_rate: float = 0.0,    # v36: 원곡 다이나믹 100% 보존
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
-    f0_autotune_strength: float = 0.6,  # v49: 1.0→0.6 (비브라토 보존, 너무 강하면 로봇)
+    f0_autotune_strength: float = 0.3,  # v49.8: 0.6→0.3 (이중 스무딩→비음/감기 완화)
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.
