@@ -599,6 +599,75 @@ def _roformer_separate(audio_path: Path, output_dir: Path) -> dict:
         return {"vocals": None, "accompaniment": None}
 
 
+def _separate_lead_backing(vocal_path: Path, output_dir: Path) -> dict:
+    """v49.5: 리드 보컬 / 백킹 보컬 분리 (화음 처리용).
+
+    BS-Roformer로 분리된 보컬 스템에서 리드와 백킹을 추가 분리.
+    mel_band_roformer_karaoke 모델 사용 (리드 보컬 격리 특화).
+
+    Returns dict:
+      - "lead": 리드 보컬 경로 (RVC 변환 대상)
+      - "backing": 백킹/화음 보컬 경로 (원본 유지 또는 경미 처리)
+      - None 값이면 분리 실패 → 전체 보컬을 RVC 변환 (폴백)
+    """
+    try:
+        from audio_separator.separator import Separator
+    except ImportError:
+        log.warning("audio-separator not available for lead/backing separation")
+        return {"lead": None, "backing": None}
+
+    ensure_dir(output_dir)
+    try:
+        separator = Separator(
+            output_dir=str(output_dir),
+            output_format="wav",
+            model_file_dir="/app/models/audio-separator",
+        )
+        # mel_band_roformer_karaoke: 리드 보컬 격리 특화 모델
+        # 대안: UVR-De-Echo-Normal, MDX23C-InstVoc_HQ
+        _LEAD_MODELS = [
+            "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt",
+            "dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt",
+        ]
+        _loaded = False
+        for model_name in _LEAD_MODELS:
+            try:
+                separator.load_model(model_name)
+                _loaded = True
+                log.info(f"Lead/backing separation model: {model_name}")
+                break
+            except Exception as model_err:
+                log.debug(f"Model {model_name} not available: {model_err}")
+
+        if not _loaded:
+            log.info("No lead/backing separation model available, skipping")
+            return {"lead": None, "backing": None}
+
+        result = separator.separate(str(vocal_path))
+
+        lead_path = None
+        backing_path = None
+        for f in result:
+            fp = Path(f)
+            name_lower = fp.name.lower()
+            # 모델마다 출력 파일명이 다르므로 여러 패턴 체크
+            if any(k in name_lower for k in ["vocal", "primary", "lead"]):
+                lead_path = fp
+            elif any(k in name_lower for k in ["instrument", "secondary", "backing", "other"]):
+                backing_path = fp
+
+        if lead_path and lead_path.exists():
+            log.info(f"Lead/backing separated: lead={lead_path.name}, "
+                     f"backing={backing_path.name if backing_path else 'N/A'}")
+            return {"lead": lead_path, "backing": backing_path}
+        else:
+            log.warning("Lead/backing separation produced no lead output")
+            return {"lead": None, "backing": None}
+    except Exception as e:
+        log.warning(f"Lead/backing separation failed: {e}")
+        return {"lead": None, "backing": None}
+
+
 def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     """
     Run Demucs htdemucs_6s model to separate vocals from accompaniment (v18: 6-stem).
@@ -3071,6 +3140,26 @@ def task_convert(job_input: dict, job: dict) -> dict:
             else:
                 log.info("Pre-RVC harmony filter skipped (no change)")
 
+        # --- Step 2c: 리드/백킹 보컬 분리 (v49.5 — 화음 처리) ---
+        # 문제: Demucs/BS-Roformer는 모든 보컬(리드+화음)을 1개 스템으로 분리
+        # → RVC가 전부 동일 음색으로 변환 → 화음이 부자연스럽고 이상한 소리
+        # 해결: 리드 보컬만 RVC 변환, 백킹/화음은 원본 유지
+        backing_vocals_path = None
+        if separate_vocals and rvc_input.exists():
+            try:
+                runpod.serverless.progress_update(job, "Separating lead/backing vocals... (2.5/4)")
+                lead_back_dir = ensure_dir(work / "lead_backing")
+                lb_result = _separate_lead_backing(rvc_input, lead_back_dir)
+                if lb_result.get("lead") and lb_result["lead"].exists():
+                    backing_vocals_path = lb_result.get("backing")
+                    rvc_input = lb_result["lead"]  # 리드만 RVC 변환
+                    log.info(f"Lead/backing split: lead→RVC, backing→original "
+                             f"(backing={backing_vocals_path.name if backing_vocals_path else 'N/A'})")
+                else:
+                    log.info("Lead/backing separation unavailable, converting full vocal stem")
+            except Exception as lb_err:
+                log.warning(f"Lead/backing separation failed: {lb_err}, continuing with full vocals")
+
         # --- Step 2b-old: Pre-RVC 디에서 제거됨 ---
         # 이전: 7kHz Q=3 -2dB + 후처리 8.5kHz -1dB = 이중 디에싱 → 한국어 자음 포먼트(4-8kHz) 파괴
         # 한국어 마찰음(ㅅ,ㅆ,ㅈ,ㅊ,ㅎ)의 에너지가 4-8kHz에 집중 → 이 대역 커팅은 발음 뭉개짐 유발
@@ -3270,6 +3359,29 @@ def task_convert(job_input: dict, job: dict) -> dict:
                     log.warning("Vocal blending produced empty output, skipping")
             except Exception as blend_err:
                 log.warning(f"Vocal blending failed: {blend_err}, using unblended vocals")
+
+        # --- Step 3d: 백킹 보컬 합성 (v49.5 — 화음 자연스러움) ---
+        # 리드/백킹 분리된 경우: RVC 변환 리드 + 원본 백킹을 합성
+        # 백킹은 원본 유지 → 화음이 자연스럽고 부드러움
+        if backing_vocals_path and backing_vocals_path.exists():
+            lead_plus_backing = work / "lead_plus_backing.wav"
+            try:
+                # 백킹 볼륨: 0.7 (리드보다 약간 낮게 → 자연스러운 믹스)
+                run_ffmpeg([
+                    "-i", str(converted_vocals_path),
+                    "-i", str(backing_vocals_path),
+                    "-filter_complex",
+                    f"[0:a]aformat=channel_layouts=mono[lead];"
+                    f"[1:a]aformat=channel_layouts=mono,volume=0.7[back];"
+                    f"[lead][back]amix=inputs=2:duration=longest:normalize=0",
+                    "-acodec", "pcm_s24le", "-ar", str(_process_sr),
+                    str(lead_plus_backing),
+                ])
+                if lead_plus_backing.exists() and lead_plus_backing.stat().st_size > 1000:
+                    converted_vocals_path = lead_plus_backing
+                    log.info("Lead + backing vocals merged (backing at 0.7 volume)")
+            except Exception as lb_mix_err:
+                log.warning(f"Lead/backing merge failed: {lb_mix_err}, using lead only")
 
         # --- Step 4: Mix converted vocals + original accompaniment ---
         mixed_path = None
