@@ -3360,26 +3360,31 @@ def task_convert(job_input: dict, job: dict) -> dict:
             except Exception as blend_err:
                 log.warning(f"Vocal blending failed: {blend_err}, using unblended vocals")
 
-        # --- Step 3d: 백킹 보컬 합성 (v49.5 — 화음 자연스러움) ---
+        # --- Step 3d: 백킹 보컬 합성 (v49.6 — 화음 자연스러움) ---
         # 리드/백킹 분리된 경우: RVC 변환 리드 + 원본 백킹을 합성
-        # 백킹은 원본 유지 → 화음이 자연스럽고 부드러움
+        # 커뮤니티 권장: 백킹 볼륨 -3~-6dB + 고역 롤오프 → 리드 뒤로 배치
+        # arca.live/postype: "같은 성별이면 백킹 원본 유지, 다른 성별이면 변환 필요"
         if backing_vocals_path and backing_vocals_path.exists():
             lead_plus_backing = work / "lead_plus_backing.wav"
             try:
-                # 백킹 볼륨: 0.7 (리드보다 약간 낮게 → 자연스러운 믹스)
+                # 백킹 처리: volume 0.65 (-3.7dB) + 4kHz 이상 고역 롤오프 (-3dB)
+                # 커뮤니티: "high-shelf EQ cut on backing (-2 to -4dB above 4kHz)"
+                # → 백킹을 리드 뒤 soundstage로 배치 → 자연스러운 화음
                 run_ffmpeg([
                     "-i", str(converted_vocals_path),
                     "-i", str(backing_vocals_path),
                     "-filter_complex",
                     f"[0:a]aformat=channel_layouts=mono[lead];"
-                    f"[1:a]aformat=channel_layouts=mono,volume=0.7[back];"
+                    f"[1:a]aformat=channel_layouts=mono,"
+                    f"volume=0.65,"
+                    f"highshelf=f=4000:width_type=o:width=0.7:g=-3.0[back];"
                     f"[lead][back]amix=inputs=2:duration=longest:normalize=0",
                     "-acodec", "pcm_s24le", "-ar", str(_process_sr),
                     str(lead_plus_backing),
                 ])
                 if lead_plus_backing.exists() and lead_plus_backing.stat().st_size > 1000:
                     converted_vocals_path = lead_plus_backing
-                    log.info("Lead + backing vocals merged (backing at 0.7 volume)")
+                    log.info("Lead + backing merged (backing: -3.7dB, 4kHz shelf -3dB)")
             except Exception as lb_mix_err:
                 log.warning(f"Lead/backing merge failed: {lb_mix_err}, using lead only")
 
