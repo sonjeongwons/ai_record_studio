@@ -623,11 +623,11 @@ def _separate_lead_backing(vocal_path: Path, output_dir: Path) -> dict:
             output_format="wav",
             model_file_dir="/app/models/audio-separator",
         )
-        # mel_band_roformer_karaoke: 리드 보컬 격리 특화 모델
-        # 대안: UVR-De-Echo-Normal, MDX23C-InstVoc_HQ
+        # mel_band_roformer_karaoke: 리드 보컬 격리 SOTA (SDR 10.20)
+        # 커뮤니티 검증: karaoke 모델의 primary=리드, secondary=백킹
+        # dereverb는 다른 용도(리버브 제거)이므로 폴백에서 제외
         _LEAD_MODELS = [
             "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt",
-            "dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt",
         ]
         _loaded = False
         for model_name in _LEAD_MODELS:
