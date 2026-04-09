@@ -1217,7 +1217,7 @@ def task_train(job_input: dict, job: dict) -> dict:
     try:
         batch_size: int = int(job_input.get("batch_size", 8))  # v49.4: →8 (AI Hub 명확: >30분=8)
     except (ValueError, TypeError):
-        batch_size = 4
+        batch_size = 8  # v49.7: 폴백도 8 (AI Hub: >30분=8)
     _VALID_F0 = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
     if f0_method not in _VALID_F0:
@@ -2446,8 +2446,9 @@ def _post_process_vocal(
     # ━━━ 2. 언어별 EQ (v49: 한/영 분리) ━━━
     if language == "ko":
         # 한국어: 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호 — 300Hz/600Hz EQ 없음
-        # 3kHz presence boost 제거 — HiFi-GAN 이미 충분, 치찰음 증폭 주범
-        pass  # 한국어는 EQ 최소화 (보코더 원음 보존)
+        # v49.7: 8kHz 금속음 감쇄는 공통 적용 (아래 Step 3에서)
+        # 한국어 치찰음(ㅅ/ㅆ)은 5-7kHz에 집중 → 별도 처리 불필요
+        pass  # 300Hz/600Hz EQ 없음 (비음 보호)
     elif language == "en":
         # 영어: 경미한 저역 감쇄만 (발음 명료도 유지)
         filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
@@ -2899,7 +2900,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # index_rate 0.40: v45 한/영 균형 (한국어 프리셋 0.55, 영어 프리셋 0.30)
     # 커뮤니티: 한국어는 0.50-0.75 권장 (발음 정확도), 영어는 0.30 유지
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.40))
+        index_rate: float = float(job_input.get("index_rate", 0.45))  # v49: 0.40→0.45
     except (ValueError, TypeError):
         index_rate = 0.40
     # rmvpe: stable, fast, accurate for singing — better default than crepe
@@ -2911,7 +2912,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
     # filter_radius 2: v45 — 5프레임 미디언(2)이 vibrato 보존 최적 (20ms 윈도우)
     # v41: 3→v45: 2 (더 빠른 비브라토/피치 변화 추적)
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 2))
+        filter_radius: int = int(job_input.get("filter_radius", 3))  # v49: 2→3
     except (ValueError, TypeError):
         filter_radius = 2
     # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
@@ -2937,6 +2938,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
     language: str = str(job_input.get("language", "auto")).lower().strip()
     if language not in ("ko", "en", "auto"):
         language = "auto"
+    # v49.7: f0_autotune을 job_input에서 받음 (하드코딩 제거)
+    _autotune_raw = job_input.get("f0_autotune", True)
+    f0_autotune: bool = _autotune_raw in (True, "true", "True", "1", 1)
+    try:
+        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.6))
+    except (ValueError, TypeError):
+        f0_autotune_strength = 0.6
+    f0_autotune_strength = max(0.0, min(1.0, f0_autotune_strength))
     clean_audio_raw = job_input.get("clean_audio", False)
     clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
     try:
@@ -3208,8 +3217,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
             filter_radius=filter_radius,
             rms_mix_rate=rms_mix_rate,
             split_audio=_should_split,
-            f0_autotune=True,            # v49: 노래 변환 피치 안정화
-            f0_autotune_strength=0.6,    # v49: 비브라토 보존
+            f0_autotune=f0_autotune,              # v49.7: job_input에서 받음 (기본 True)
+            f0_autotune_strength=f0_autotune_strength,  # v49.7: job_input에서 받음 (기본 0.6)
         )
 
         if not converted_vocals_path.exists():
@@ -3269,7 +3278,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                         protect=protect, hop_length=hop_length,
                         clean_audio=clean_audio, clean_strength=clean_strength,
                         export_format=export_format, split_audio=True,
-                        f0_autotune=True, f0_autotune_strength=0.6,
+                        f0_autotune=f0_autotune, f0_autotune_strength=f0_autotune_strength,
                     )
                     if _retry_path.exists():
                         _retry_dur = get_audio_duration(_retry_path)
