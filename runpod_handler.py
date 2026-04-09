@@ -327,11 +327,11 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         log.info(f"LUFS normalization: {len(normalized_paths)} files at -23 LUFS")
         cleaned_paths = normalized_paths
 
-        # --- Step 5c: 학습 데이터 사전 디에싱 (v49) ---
-        # 커뮤니티: "robotic sibilances = dataset 짧거나 overfitted"
-        # 학습 전 치찰음을 경미하게 제거하면 모델이 치찰음을 목소리 특성으로 학습 안 함
-        # 5-8kHz 대역 경미 감쇄만 (공기감 보존)
-        runpod.serverless.progress_update(job, "De-essing training data... (5.7/6)")
+        # --- Step 5c: 학습 데이터 사전 디에싱 (v49.3) ---
+        # AI Hub: "de-ess only actual sibilances, NOT blanket on entire dataset"
+        # v49.1: blanket 6kHz -2dB → v49.3: 보수적 8kHz -1.0dB만 (금속성 아티팩트만 타겟)
+        # 6kHz 대역은 자음 에너지 포함 → 건드리지 않음 (발음 보존)
+        runpod.serverless.progress_update(job, "Light de-essing training data... (5.7/6)")
         deessed_paths = []
         for cp in cleaned_paths:
             de_out = cp.with_suffix(".de.wav")
@@ -339,8 +339,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 run_ffmpeg([
                     "-i", str(cp),
                     "-af",
-                    "equalizer=f=6000:width_type=o:width=0.5:g=-2.0,"
-                    "equalizer=f=8500:width_type=o:width=0.3:g=-1.5",
+                    "equalizer=f=8500:width_type=o:width=0.3:g=-1.0",
                     "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
                     str(de_out),
                 ])
@@ -351,7 +350,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
             except Exception as de_err:
                 log.warning(f"De-essing failed for {cp.name}: {de_err}")
                 deessed_paths.append(cp)
-        log.info(f"Training data de-essing: {len(deessed_paths)} files (6kHz -2dB, 8.5kHz -1.5dB)")
+        log.info(f"Training data de-essing v49.3: {len(deessed_paths)} files (8.5kHz -1.0dB only)")
         cleaned_paths = deessed_paths
 
         # --- Step 6: Segment into 3-12s clips ---
