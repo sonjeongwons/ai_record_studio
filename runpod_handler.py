@@ -327,6 +327,33 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         log.info(f"LUFS normalization: {len(normalized_paths)} files at -23 LUFS")
         cleaned_paths = normalized_paths
 
+        # --- Step 5c: 학습 데이터 사전 디에싱 (v49) ---
+        # 커뮤니티: "robotic sibilances = dataset 짧거나 overfitted"
+        # 학습 전 치찰음을 경미하게 제거하면 모델이 치찰음을 목소리 특성으로 학습 안 함
+        # 5-8kHz 대역 경미 감쇄만 (공기감 보존)
+        runpod.serverless.progress_update(job, "De-essing training data... (5.7/6)")
+        deessed_paths = []
+        for cp in cleaned_paths:
+            de_out = cp.with_suffix(".de.wav")
+            try:
+                run_ffmpeg([
+                    "-i", str(cp),
+                    "-af",
+                    "equalizer=f=6000:width_type=o:width=0.5:g=-2.0,"
+                    "equalizer=f=8500:width_type=o:width=0.3:g=-1.5",
+                    "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
+                    str(de_out),
+                ])
+                if de_out.exists() and de_out.stat().st_size > 1000:
+                    deessed_paths.append(de_out)
+                else:
+                    deessed_paths.append(cp)
+            except Exception as de_err:
+                log.warning(f"De-essing failed for {cp.name}: {de_err}")
+                deessed_paths.append(cp)
+        log.info(f"Training data de-essing: {len(deessed_paths)} files (6kHz -2dB, 8.5kHz -1.5dB)")
+        cleaned_paths = deessed_paths
+
         # --- Step 6: Segment into 3-12s clips ---
         runpod.serverless.progress_update(job, "Segmenting audio clips... (6/6)")
         segments, skipped_files = _segment_audio(cleaned_paths, segment_dir)
@@ -1120,7 +1147,7 @@ def task_train(job_input: dict, job: dict) -> dict:
     # v36: batch 8 기본 (4에서 상향) — 43분+ 데이터에 더 안정적 (커뮤니티 권장)
     # RTX 4090 24GB VRAM에서 batch 8 안정 동작
     try:
-        batch_size: int = int(job_input.get("batch_size", 4))
+        batch_size: int = int(job_input.get("batch_size", 6))  # v49: 4→6 (44.9분: AI Hub >30분=8, <30분=4)
     except (ValueError, TypeError):
         batch_size = 4
     _VALID_F0 = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}

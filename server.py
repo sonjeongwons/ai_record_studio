@@ -2046,9 +2046,9 @@ async def upload_chunk(
 @app.post("/api/train")
 async def start_training(
     model_name: str = Form(...),
-    epochs: int = Form(200),           # v36: 150→200 (체크포인트 비교로 최적점 찾기, 과학습 감지기 보호)
+    epochs: int = Form(150),           # v49: 200→150 (45분 데이터에 250 과적합→치찰음, 체크포인트 비교 필수)
     sample_rate: int = Form(40000),    # v32: 커뮤니티 표준 40k
-    batch_size: int = Form(4),         # v45: 8→4 (30분 미만 데이터 → batch 4, 커뮤니티 만장일치)
+    batch_size: int = Form(6),         # v49: 4→6 (44.9분 데이터→중간값, AI Hub: >30분=8, <30분=4)
     f0_method: str = Form("rmvpe"),
     pretrained_model: str = Form("klm49"),  # "klm49" 한국어 / "rin_e3" 다국어(팝송)
     file_ids: str = Form("")  # comma-separated
