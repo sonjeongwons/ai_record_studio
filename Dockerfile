@@ -305,6 +305,17 @@ print('BS-Roformer model downloaded and loaded successfully'); \
     && ls -lh /app/models/audio-separator/*.ckpt \
     && echo "BS-Roformer model cached"
 
+# v49.5: mel_band_roformer_karaoke — 리드/백킹 보컬 분리 (화음 처리용, SDR 10.20)
+# 보컬 스템에서 리드와 백킹을 추가 분리 → 리드만 RVC 변환, 백킹 원본 유지
+RUN python -c "\
+from audio_separator.separator import Separator; \
+s = Separator(model_file_dir='/app/models/audio-separator', output_dir='/tmp'); \
+s.load_model('mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt'); \
+print('Karaoke (lead/backing) model downloaded successfully'); \
+" \
+    && ls -lh /app/models/audio-separator/*karaoke* \
+    && echo "Karaoke model cached"
+
 # -- Verify all models --
 RUN echo "=== MODEL VERIFICATION ===" \
     && echo "-- pretrained_v2 --" \
@@ -315,7 +326,7 @@ RUN echo "=== MODEL VERIFICATION ===" \
     && ls -lh /app/Applio/rvc/models/predictors/rmvpe.pt \
     && echo "-- demucs --" \
     && find /app/torch_hub -type f \( -name "*.th" -o -name "*.pt" -o -name "*.yaml" \) | head -10 \
-    && echo "-- bs-roformer --" \
+    && echo "-- bs-roformer + karaoke --" \
     && ls -lh /app/models/audio-separator/*.ckpt \
     && echo "=== ALL MODELS VERIFIED ==="
 
