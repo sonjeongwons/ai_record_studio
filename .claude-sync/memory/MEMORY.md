@@ -29,16 +29,18 @@
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지
 - YingMusic-SVC: CC-BY-NC-4.0 비상업 라이선스 → 프로덕션 제외
 
-## Parameters (v49)
+## Parameters (v49.2)
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
-- Epochs: 250, Batch: 4, Sample rate: 40kHz
+- Epochs: **150** (v49.1: 250→150 과적합 방지), Batch: **6**, Sample rate: 40kHz
 - F0: RMVPE + **f0_autotune=True** (strength=0.6), Embedder: ContentVec (768-dim)
 - index_rate: **0.45** (한국어 0.55 / 영어 0.35), rms_mix_rate: 0.0
 - protect: **0.40**, filter_radius: **3** (한국어 4), hop_length: **128**
 - language: **auto/ko/en** (한/영 EQ 분리, NEW)
 - vocal_blend: 0% (비활성 — 더블링 원인이었음)
 - split_audio: >180초 (v49: 300→180초)
+- 학습 전처리: 디에싱 6kHz -2dB + 8.5kHz -1.5dB (v49.1)
 - 학습 데이터: 9개 소수정예 (44.9분, 노래 100%, 음역 4.1옥타브)
+- 증강 도구: Seed-VC(GPL-3.0) + Amphion VevoSing(MIT) + WORLD 피치시프트
 
 ## Workflow Rules (하네스 제약)
 - **코드 수정 후 반드시 git commit + git push**
