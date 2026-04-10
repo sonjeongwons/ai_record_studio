@@ -18,29 +18,28 @@
 - `CLAUDE.md` — 하네스 엔지니어링 제약 문서 (린터/테스트 규칙, 컨벤션)
 - `HANDOFF.md` — 전체 아키텍처 결정사항, 비용 분석, 기술 선택 이유
 
-## Current Status (2026-04-08)
-- **v41 학습 데이터 소수정예 최적화 완료**
-- 115개 전수조사 → 9개 소수정예 선정 (44.9분, 노래 100%, 대화 0%)
-- 깨끗 72% + MR 28%, 음역 53Hz~555Hz (4.1옥타브)
-- v40 모델 해부: F0 상관계수 0.35 근본 원인 = 대화 48% + 고음 3.9%
-- 사이버틱/중첩 해결: 전 프리셋 리버브 OFF
-- v46 전처리: 무음 세그먼트 자동 제거 + -23 LUFS 정규화
+## Current Status (2026-04-10)
+- **v49.9 전면 개편 완료** (19개 커밋, 18개+ 에이전트)
+- 9가지 문제 해결: 고음끊김, 치찰음, 발음, 화음, 비음, 끊김, 과적합, 파라미터버그, Dockerfile
 - 테스트 48/48 통과
 - **CVE-2025-32434**: PyTorch 2.1.0 RCE 취약점 인지
-- YingMusic-SVC: CC-BY-NC-4.0 비상업 라이선스 → 프로덕션 제외
+- YingMusic-SVC: CC-BY-NC-4.0 → 학습 데이터 증강용으로만 사용
 
-## Parameters (v49.2)
+## Parameters (v49.9 최종)
 - Pretrained: KLM49_HFG (한국어) / RIN_E3 (다국어/팝송) — UI에서 선택
-- Epochs: **150** (v49.1: 250→150 과적합 방지), Batch: **6**, Sample rate: 40kHz
-- F0: RMVPE + **f0_autotune=True** (strength=0.6), Embedder: ContentVec (768-dim)
+- Epochs: **150**, Batch: **8**, Sample rate: 40kHz
+- F0: RMVPE + **f0_autotune=True** (strength=**0.3**), Embedder: ContentVec (768-dim)
 - index_rate: **0.45** (한국어 0.55 / 영어 0.35), rms_mix_rate: 0.0
 - protect: **0.40**, filter_radius: **3** (한국어 4), hop_length: **128**
-- language: **auto/ko/en** (한/영 EQ 분리, NEW)
-- vocal_blend: 0% (비활성 — 더블링 원인이었음)
-- split_audio: >180초 (v49: 300→180초)
-- 학습 전처리: 디에싱 6kHz -2dB + 8.5kHz -1.5dB (v49.1)
+- language: **auto/ko/en** (한/영 EQ 분리)
+- vocal_blend: 0%, post_reverb: 0.0
+- split_audio: >180초
+- 후처리 EQ: 1.2kHz -1.0dB (비음) + 8kHz -0.8dB (금속음) 공통
+- 학습 전처리 디에싱: 8.5kHz -1.0dB (v49.3 보수화)
+- 리드/백킹 분리: mel_band_roformer_karaoke (SDR 10.20)
+- Applio 청크: x_center=60, x_max=65 (끊김 감소)
 - 학습 데이터: 9개 소수정예 (44.9분, 노래 100%, 음역 4.1옥타브)
-- 증강 도구: Seed-VC(GPL-3.0) + Amphion VevoSing(MIT) + WORLD 피치시프트
+- 증강 도구: Seed-VC + Rubber Band/WORLD 피치시프트
 
 ## Workflow Rules (하네스 제약)
 - **코드 수정 후 반드시 git commit + git push**
