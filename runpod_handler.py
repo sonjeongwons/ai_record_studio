@@ -2901,24 +2901,23 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 0.40: v45 한/영 균형 (한국어 프리셋 0.55, 영어 프리셋 0.30)
-    # 커뮤니티: 한국어는 0.50-0.75 권장 (발음 정확도), 영어는 0.30 유지
+    # index_rate 0.45: v49 한/영 균형 (한국어 프리셋 0.55, 영어 프리셋 0.35)
+    # 커뮤니티: 한국어는 0.50-0.75 권장 (발음 정확도), 영어는 0.35 권장
     try:
         index_rate: float = float(job_input.get("index_rate", 0.45))  # v49: 0.40→0.45
     except (ValueError, TypeError):
-        index_rate = 0.40
+        index_rate = 0.45
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
     if f0_method not in _VALID_F0_CONVERT:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # filter_radius 2: v45 — 5프레임 미디언(2)이 vibrato 보존 최적 (20ms 윈도우)
-    # v41: 3→v45: 2 (더 빠른 비브라토/피치 변화 추적)
+    # filter_radius 3: v49 (v45: 2→v49: 3, 피치 스무딩 강화→크래킹 감소)
     try:
         filter_radius: int = int(job_input.get("filter_radius", 3))  # v49: 2→3
     except (ValueError, TypeError):
-        filter_radius = 2
+        filter_radius = 3
     # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
     # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
     # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과

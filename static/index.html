@@ -3284,7 +3284,7 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('korean')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(239,68,68,0.4);color:#ef4444" title="한국어 노래 최적화 — index 0.55로 한국어 발음(ㄴ/ㅁ/ㅅ/ㅆ) 정확도 향상. K-POP, 발라드, 트로트 권장">
               🇰🇷 한국어 노래
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('english')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="영어/팝 노래 최적화 — index 0.30으로 원곡 영어 발음(th/r/l) 보존. 팝, 인디, R&B 권장">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('english')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="영어/팝 노래 최적화 — index 0.35, language=en 치찰음 EQ. 팝, 인디, R&B 권장">
               🌍 영어/팝송
             </button>
             <button class="btn btn-ghost" onclick="applyConvertPreset('falsetto')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(245,158,11,0.4);color:#fbbf24" title="가성·고음이 많은 노래에 최적화된 설정. 자연스러운 고음을 위해 protect↑, filter↓, hop_length↓ 조절">
@@ -3296,7 +3296,7 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('studio')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(99,102,241,0.4);color:#818cf8" title="깨끗한 스튜디오 녹음에 최적화. 최소한의 후처리로 원본 품질 유지">
               🎧 스튜디오 품질
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(236,72,153,0.4);color:#ec4899" title="화음/코러스가 많은 곡에 최적화. RMVPE + filter 5 피치 안정화. index 0.30 원곡 화음 구조 보존">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('chorus')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(236,72,153,0.4);color:#ec4899" title="화음/코러스가 많은 곡에 최적화. RMVPE + filter 4 피치 안정화. index 0.25 + 리드/백킹 분리">
               🎼 화음/코러스 곡
             </button>
             <button class="btn btn-ghost" onclick="applyConvertPreset('indie')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="차분한 인디팝/R&B에 최적화. RMVPE + 부드러운 피치 안정화 + 공간감 리버브">
@@ -6553,7 +6553,7 @@ async function startConversion() {
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-  form.append('protect', (getVal('protect-slider', '33') / 100).toFixed(2));
+  form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
   form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
   form.append('filter_radius', getVal('filter-slider', '3'));
   var hopSteps = [32, 64, 128, 256];
@@ -6975,11 +6975,11 @@ async function startBatchConversion() {
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
-      form.append('protect', (getVal('protect-slider', '33') / 100).toFixed(2));
+      form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
       form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
-      form.append('filter_radius', getVal('filter-slider', '2'));
+      form.append('filter_radius', getVal('filter-slider', '3'));
       var hopSteps2 = [32, 64, 128, 256];
-      form.append('hop_length', hopSteps2[getVal('hop-slider', '1')] || 64);
+      form.append('hop_length', hopSteps2[getVal('hop-slider', '2')] || 128);
       // Post-processing for naturalness
       var batchReverbCb = document.getElementById('post-reverb-cb');
       var batchUseReverb = batchReverbCb ? batchReverbCb.checked : false;
