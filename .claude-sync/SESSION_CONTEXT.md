@@ -1,60 +1,47 @@
-# Session Context — 2026-04-10 (v49.9 전면 개편 완료 + Dockerfile 수정)
+# Session Context — 2026-04-10 (v50 음정 안정성 강화)
 
 ## 최근 세션 요약
 
-### v49 시리즈 전면 개편 (2026-04-09~10, 19개 커밋)
-18개+ 에이전트 풀가동, 하네스엔지니어링 기법으로 전처리→학습→변환→후처리 전체 파이프라인 대규모 개편.
+### v50 음정 안정성 강화 (2026-04-10, 4개 커밋)
+v42 모델 변환곡 분석 → 음정 약함/불안정 근본 원인 8개 발견 → 코드 수정.
 
-### 해결한 문제 9가지
-1. **고음/가성 끊김·삑사리** → f0_autotune + hop128 + filter3
-2. **치찰음/기계음** → 3kHz boost 제거 + 디에싱 + epochs 150
-3. **발음 부정확** → 한/영 EQ 분리 (language=ko/en/auto)
-4. **화음 부자연스러움** → 리드/백킹 2-pass 분리 + 3트랙 믹싱 (mel_band_roformer_karaoke)
-5. **감기 걸린 목소리(비음)** → 1.2kHz -1.0dB 공통 컷 + autotune 0.3
-6. **목소리 뚝뚝 끊김** → Applio 청크 38→65초 + vp_threshold 0.01
-7. **과적합→치찰음** → epochs 150, batch 8, 보수적 디에싱
-8. **파라미터 불일치 버그** → 3파일(server.py/handler/html) 완전 정합성 검증
-9. **Dockerfile 빌드 에러** → sed→Python re.sub 안전 패치
+### 해결한 문제
+1. **음정 약함/불안정** → f0_autotune_strength 0.3→0.5 (50% 보정)
+2. **고음/가성 끊김** → filter_radius 3→2 (비브라토 보존), 아티팩트 게이트 완화
+3. **고음 얇은 소리** → 1.2kHz EQ -1.0→-0.5dB (포먼트 보호)
+4. **가성 오탐→무음화** → vp_threshold 0.01→0.005, 억제 -16→-10dB
+5. **음색 단단하게** → index_rate 0.45→0.55
+6. **무음 구간 노이즈** → agate 노이즈 게이트 추가
+7. **CLI fallback autotune 누락** → 파라미터 전달 추가
 
-### 핵심 파라미터 (v49.9 최종)
-| 파라미터 | 값 | 비고 |
+### v50 핵심 파라미터
+| 파라미터 | 값 | 변경 |
 |----------|-----|------|
-| index_rate | 0.45 (ko:0.55, en:0.35) | 한/영 프리셋 분리 |
-| protect | 0.40 | 0.33→0.40 |
-| filter_radius | 3 (ko:4) | 2→3 |
-| hop_length | 128 | 64→128 |
-| f0_autotune | True (strength=0.3) | 0.6→0.3 비음 완화 |
-| epochs | 150 | 250→150 과적합 방지 |
-| batch_size | 8 | AI Hub >30분=8 |
-| language | auto/ko/en | 한/영 EQ 분리 (NEW) |
-| vocal_blend | 0.0 | 더블링 방지 |
-| post_reverb | 0.0 | 리버브 비활성 |
-| 보컬 분리 | BS-Roformer → Demucs 폴백 | SDR 12.9 |
-| 리드/백킹 분리 | mel_band_roformer_karaoke | SDR 10.20 (NEW) |
-| 후처리 EQ | 1.2kHz -1.0 + 8kHz -0.8 (공통) | v49.8 |
-| 후처리 EQ (en) | + 300Hz -0.3 + 600Hz -0.3 + 5kHz -0.8 | |
-| 학습 디에싱 | 8.5kHz -1.0dB | 치찰음 학습 방지 |
-| Applio 청크 | x_center=60, x_max=65 | 끊김 감소 |
+| f0_autotune_strength | 0.5 | 0.3→0.5 |
+| index_rate | 0.55 | 0.45→0.55 |
+| filter_radius | 2 | 3→2 |
+| protect | 0.40 | 유지 |
+| hop_length | 128 | 유지 |
+| 1.2kHz EQ | -0.5dB | -1.0→-0.5 |
+| 아티팩트 vp | 0.005 | 0.01→0.005 |
+| 아티팩트 억제 | -10dB | -16→-10 |
+| 노이즈 게이트 | agate | 신규 |
 
-### 증강 도구 (tools/)
-- `tools/seed_vc_augment.py`: Seed-VC 제로샷 고음역 학습 데이터 생성
-- `tools/pitch_augment.py`: Rubber Band/WORLD 포먼트 보존 피치시프트
+### v42 모델 검증 결과
+- 53MB .pth, 367MB .index, KLM49, 100 에폭 (best epoch auto)
+- 7,300 스텝, 243 세그먼트, 42.3분
+- 오염 세그먼트 학습 제외 확인
+- 메타데이터 매핑 버그: 모든 파일 ID가 동일 세그먼트에 매핑 (체크박스 무의미)
+- 124개 bare seg_ 출처 불명 (51%)
 
-### 학습 데이터 (9개 소수정예, 44.9분)
-- S-tier: 장이정 학습용(20.0m), 살다가테스트(3.4m), 히스토리(1.1m)
-- A-tier: 156a072e(4.2m), 6dea4ebc(4.3m), a2eebb1e(4.0m), 살다가한번쯤(3.9m), 5a8a4c9a(3.0m), 90d37ee7(2.5m)
-- 70+ 파일 전수조사 → 16kHz 대화 33개 + _talkf_ 8개 + 외부 커버 24개 제외
+### 오디오 분석 결과 (v42 변환곡)
+- 클리핑 완전 제거 (TP < -0.59dBTP)
+- 스펙트럴 엔트로피 18-43% 손실 (RVC 고유 한계)
+- 노이즈 플로어 -65~-77dB → 노이즈 게이트로 해결
+- LUFS 2-4dB 낮음 (후속 조사 가능)
 
-### 향후 로드맵
-1. Docker 재빌드 후 3곡 재변환 테스트
-2. My Voice v42 재학습: epochs 150, batch 8
-3. Spin V2 embedder A/B 테스트 (발음 개선)
-4. Mel-RoFormer 보컬 분리 업그레이드 (+0.5dB SDR)
-5. Seed-VC 고음 증강 (C5-C6 커버리지)
-6. PyTorch 2.6.0+ CVE 대응
-
-### Dockerfile 수정 이력 (주의!)
-- v49.8: Applio config.py 패치 추가 (청크 크기 확대)
-- 1차 시도: sed → SyntaxError (`65self.device_config()`)
-- 2차 시도: Python if/else → Docker 빌드 에러 (들여쓰기 깨짐)
-- 3차 최종: shell if + Python 세미콜론 단일라인 → 성공
+### 다음 할 일
+1. Docker 재빌드 후 v50 파라미터로 3곡 재변환 테스트
+2. 비교 청취: v42 모델 + v49 파라미터 vs v42 모델 + v50 파라미터
+3. 재학습 고려: epochs 200, batch 8 (커뮤니티: 150은 약간 부족할 수 있음)
+4. 테스트: 48/48 통과
