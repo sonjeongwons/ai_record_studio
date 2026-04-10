@@ -400,23 +400,11 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app/Applio /app/Applio
 
 # v49.8: Applio pipeline 청크 크기 최적화 (RTX 4090 24GB)
-# 기본값: x_center=38s → 38초마다 하드 연결 (크로스페이드 없음) → 끊김 원인
-# RTX 4090: 24GB VRAM으로 더 큰 청크 처리 가능 → 끊김 감소
-# Python 패치: sed 정규식은 같은 줄 코드를 파괴할 수 있어 Python으로 안전하게 교체
-RUN python -c "\
-import re, pathlib; \
-p = pathlib.Path('/app/Applio/rvc/configs/config.py'); \
-t = p.read_text() if p.exists() else ''; \
-if t: \
-    t = re.sub(r'self\.x_pad\s*=\s*\d+', 'self.x_pad = 3', t); \
-    t = re.sub(r'self\.x_query\s*=\s*\d+', 'self.x_query = 10', t); \
-    t = re.sub(r'self\.x_center\s*=\s*\d+', 'self.x_center = 60', t); \
-    t = re.sub(r'self\.x_max\s*=\s*\d+', 'self.x_max = 65', t); \
-    p.write_text(t); \
-    print('Applio config patched: x_pad=3, x_query=10, x_center=60, x_max=65'); \
-else: \
-    print('WARNING: config.py not found, skipping patch'); \
-"
+# 기본값: x_center=38 → 38초마다 하드 연결 → 끊김. 65초로 확대
+RUN CFG="/app/Applio/rvc/configs/config.py" \
+    && if [ -f "$CFG" ]; then \
+        python -c "import re,sys; f=sys.argv[1]; t=open(f).read(); t=re.sub(r'self\.x_pad\s*=\s*\d+','self.x_pad = 3',t); t=re.sub(r'self\.x_query\s*=\s*\d+','self.x_query = 10',t); t=re.sub(r'self\.x_center\s*=\s*\d+','self.x_center = 60',t); t=re.sub(r'self\.x_max\s*=\s*\d+','self.x_max = 65',t); open(f,'w').write(t); print('Applio config patched')" "$CFG" ; \
+    else echo "config.py not found, skipping patch" ; fi
 COPY --from=builder /app/torch_hub /app/torch_hub
 COPY --from=builder /app/models /app/models
 
