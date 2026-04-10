@@ -2440,6 +2440,13 @@ def _post_process_vocal(
     """
     filters = []
 
+    # ━━━ 0. 노이즈 게이트 (RVC 추론 노이즈 제거) ━━━
+    # v50: 무음 구간에 -65~-77dB RVC 노이즈 잔류 → 게이트로 제거
+    # range_size=-50dB: 게이트 닫힐 때 -50dB 감쇄 (완전 무음 아닌 자연스러운 감쇠)
+    # threshold=-45dB: -45dB 이하 신호 억제 (보컬은 보통 -30dB 이상)
+    # attack/release: 부드러운 전환으로 클릭 방지
+    filters.append("agate=threshold=0.006:range=0.003:attack=25:release=100")
+
     # ━━━ 1. 초저역 제거 (파열음 에너지 제어) ━━━
     filters.append("highpass=f=70:poles=2")
 
