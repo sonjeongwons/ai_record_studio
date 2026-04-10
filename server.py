@@ -2527,7 +2527,7 @@ async def reset_preprocess_selected(file_ids: str = Form("")):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.45),   # v49: 0.40→0.45 (한/영 프리셋에서 개별 전달)
+    index_rate: float = Form(0.55),   # v50: 0.45→0.55 (단단한 음색, 커뮤니티: 좋은 모델=0.55-0.65)
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
@@ -2535,7 +2535,7 @@ async def start_conversion(
     clean_strength: float = Form(0.7),
     protect: float = Form(0.40),        # v49: 0.33→0.40 (과도한 자음 보호 완화→인덱스 정확도 향상)
     rms_mix_rate: float = Form(0.0),    # v36: 원곡 다이나믹스 100% 보존
-    filter_radius: int = Form(3),       # v49: 2→3 (피치 스무딩 강화→미세 떨림/크래킹 감소)
+    filter_radius: int = Form(2),       # v50: 3→2 (고음 비브라토 보존)
     hop_length: int = Form(128),        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     post_reverb: float = Form(0.0),     # v41: 리버브 비활성 기본
     harmonic_enhance: str = Form("false"),

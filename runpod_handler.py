@@ -2901,23 +2901,22 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 0.45: v49 한/영 균형 (한국어 프리셋 0.55, 영어 프리셋 0.35)
-    # 커뮤니티: 한국어는 0.50-0.75 권장 (발음 정확도), 영어는 0.35 권장
+    # index_rate 0.55: v50 (커뮤니티: 좋은 모델=0.55-0.65, 더 단단한 음색)
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.45))  # v49: 0.40→0.45
+        index_rate: float = float(job_input.get("index_rate", 0.55))  # v50: 0.45→0.55
     except (ValueError, TypeError):
-        index_rate = 0.45
+        index_rate = 0.55
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
     if f0_method not in _VALID_F0_CONVERT:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # filter_radius 3: v49 (v45: 2→v49: 3, 피치 스무딩 강화→크래킹 감소)
+    # filter_radius 2: v50 (v49: 3→v50: 2, 고음 비브라토 보존 — 3은 61ms 스무딩으로 가성 평탄화)
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 3))  # v49: 2→3
+        filter_radius: int = int(job_input.get("filter_radius", 2))  # v50: 3→2
     except (ValueError, TypeError):
-        filter_radius = 3
+        filter_radius = 2
     # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
     # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
     # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과
@@ -3500,13 +3499,13 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.45,     # v49: 0.40→0.45 (한/영 프리셋에서 개별 전달)
+    index_rate: float = 0.55,     # v50: 0.45→0.55 (단단한 음색)
     protect: float = 0.40,        # v49: 0.33→0.40 (과도한 자음 보호 완화 → 인덱스 정확도 향상)
     hop_length: int = 128,        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 3,       # v49: 2→3 (피치 스무딩 강화 → 미세 떨림/크래킹 감소)
+    filter_radius: int = 2,       # v50: 3→2 (고음 비브라토 보존)
     rms_mix_rate: float = 0.0,    # v36: 원곡 다이나믹 100% 보존
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
