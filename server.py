@@ -2545,6 +2545,8 @@ async def start_conversion(
     vocal_pitch_pre_shift: int = Form(0),
     vocal_blend: float = Form(0.0),    # v45: 0% (더블링 원인 제거)
     language: str = Form("auto"),      # v49: 한/영 EQ 분리 (ko/en/auto)
+    f0_autotune: str = Form("true"),   # v49: 노래 피치 안정화 (true/false)
+    f0_autotune_strength: float = Form(0.3),  # v49.8: 0.6→0.3 (비음 완화)
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2587,6 +2589,8 @@ async def start_conversion(
     harmonic_enhance = _parse_form_bool(harmonic_enhance, False)
     high_note_mode = _parse_form_bool(high_note_mode, False)
     separate_vocals = _parse_form_bool(separate_vocals, True)
+    f0_autotune = _parse_form_bool(f0_autotune, True)  # v49: 노래 변환 기본 활성
+    f0_autotune_strength = max(0.0, min(1.0, f0_autotune_strength))
 
     # 모델 조회
     with get_db() as db:
@@ -2658,6 +2662,8 @@ async def start_conversion(
             "vocal_pitch_pre_shift": max(-12, min(12, vocal_pitch_pre_shift)),
             "vocal_blend": vocal_blend,
             "language": language,         # v49: 한/영 EQ 분리
+            "f0_autotune": f0_autotune,  # v49: 노래 피치 안정화
+            "f0_autotune_strength": f0_autotune_strength,  # v49.8: 0.3
             "bucket_name": r2_bucket,
         }
 

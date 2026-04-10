@@ -3361,7 +3361,7 @@ input[type="range"]::-moz-range-track {
               <span class="slider-value" id="protect-val">0.40</span>
             </div>
             <input type="range" id="protect-slider" min="0" max="50" value="40" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (0.25~0.33 권장, 0.50=비활성, 낮을수록 보호↑)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (v49: 0.35~0.45 권장, 0.50=비활성, 낮을수록 보호↑)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -6574,6 +6574,9 @@ async function startConversion() {
   form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
   // 원본 보컬 블렌딩
   form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
+  // v49: f0_autotune (기본 true, 노래 변환 피치 안정화)
+  form.append('f0_autotune', 'true');
+  form.append('f0_autotune_strength', '0.3');
   form.append('audio', convertFile);
 
   try {

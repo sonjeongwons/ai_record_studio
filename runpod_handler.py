@@ -1209,9 +1209,9 @@ def task_train(job_input: dict, job: dict) -> dict:
     # v36: 200에폭 기본 (150에서 상향) — 체크포인트 비교로 최적점 탐색
     # 과학습 감지기(50 threshold)가 자동 보호. save_every=10으로 매 10에폭 저장
     try:
-        epochs: int = int(job_input.get("epochs", 200))
+        epochs: int = int(job_input.get("epochs", 150))  # v49: 200→150 (과적합 방지)
     except (ValueError, TypeError):
-        epochs = 200
+        epochs = 150
     # v36: batch 8 기본 (4에서 상향) — 43분+ 데이터에 더 안정적 (커뮤니티 권장)
     # RTX 4090 24GB VRAM에서 batch 8 안정 동작
     try:
@@ -2927,8 +2927,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
         rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.0))
     except (ValueError, TypeError):
         rms_mix_rate = 0.0
-    # protect 0.33: 커뮤니티 합의 balanced default (0.50=비활성!)
-    # RVC 구현: 0.50은 보호 기능 OFF, 0.0은 최대 보호 → 0.25~0.33이 최적
+    # protect 0.40: v49 (0.33→0.40, 과도한 자음보호 완화→인덱스 정확도↑)
+    # RVC 구현: 0.50은 보호 기능 OFF, 0.0은 최대 보호
     try:
         protect: float = float(job_input.get("protect", 0.40))
     except (ValueError, TypeError):
@@ -3540,7 +3540,7 @@ def _rvc_infer(
             index_path=index_str,
             split_audio=split_audio,
             f0_autotune=f0_autotune,              # v49: True (노래 변환 피치 안정화)
-            f0_autotune_strength=f0_autotune_strength,  # v49: 0.6 (비브라토 보존)
+            f0_autotune_strength=f0_autotune_strength,  # v49.8: 0.3 (이중 스무딩→비음 완화)
             proposed_pitch=False,
             proposed_pitch_threshold=155.0,
             clean_audio=clean_audio,
@@ -3690,7 +3690,7 @@ def _rvc_infer(
             protect,
             hop_length,
             f0_autotune,  # v49: True (노래 변환 피치 안정화)
-            f0_autotune_strength,  # v49: 0.6 (비브라토 보존)
+            f0_autotune_strength,  # v49.8: 0.3 (이중 스무딩→비음 완화)
         )
 
         # Save output — always write as WAV first, then convert to target format if needed
