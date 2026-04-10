@@ -2462,8 +2462,8 @@ def _post_process_vocal(
 
     # ━━━ 2b. HiFi-GAN 비음 공명 감쇄 (공통) ━━━
     # v49.8: 보코더가 800Hz-1.5kHz에서 비음 아티팩트 생성
-    # 좁은 1.2kHz 컷으로 nasal honk 제거, 발성 포먼트(F1/F2) 보호
-    filters.append("equalizer=f=1200:width_type=o:width=0.4:g=-1.0")
+    # v50: 1.2kHz -1.0→-0.5dB (고음 F1-F2 포먼트 보호, -1.0은 고음에서 얇은 소리)
+    filters.append("equalizer=f=1200:width_type=o:width=0.4:g=-0.5")
 
     # ━━━ 3. HiFi-GAN 금속음 감쇄 (공통) ━━━
     # v49: 좁은 대역(0.3)으로 8kHz 금속성 아티팩트만 타겟팅
@@ -2722,7 +2722,7 @@ def _fix_pitch_artifacts(
     max_hz: float = 1200.0,
     min_duration_s: float = 0.20,
     gap_bridge_s: float = 0.15,
-    vp_threshold: float = 0.01,  # v49.8: 0.03→0.01 (RVC 보코더 출력의 VP 왜곡 감안, 더 보수적)
+    vp_threshold: float = 0.005,  # v50: 0.01→0.005 (가성 오탐 방지 — 0.01은 진짜 가성도 억제)
 ) -> bool:
     """RVC 변환 후 고음역 아티팩트 감지·감쇠 (v19).
 
@@ -2840,11 +2840,11 @@ def _fix_pitch_artifacts(
                     fade = max(1, int(0.1 * sr / hop))
                     for k in range(i, j):
                         if k < i + fade:
-                            gain[k] = max(0.15, 1.0 - (k - i) / fade * 0.85)
+                            gain[k] = max(0.30, 1.0 - (k - i) / fade * 0.70)
                         elif k >= j - fade:
-                            gain[k] = max(0.15, 1.0 - (j - k) / fade * 0.85)
+                            gain[k] = max(0.30, 1.0 - (j - k) / fade * 0.70)
                         else:
-                            gain[k] = 0.15  # v41: 0.05→0.15 (≈ -16 dB, 자연스러운 감쇠)
+                            gain[k] = 0.30  # v50: 0.15→0.30 (≈ -10 dB, 가성 오탐 시 덜 공격적)
                     _med_f0 = float(_np_pa.nanmedian(f0[i:j]))
                     _zone = "Z1" if _med_f0 > max_hz else f"Z2(VP<{vp_threshold})"
                     log.info(
@@ -2945,9 +2945,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     _autotune_raw = job_input.get("f0_autotune", True)
     f0_autotune: bool = _autotune_raw in (True, "true", "True", "1", 1)
     try:
-        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.3))
+        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.5))
     except (ValueError, TypeError):
-        f0_autotune_strength = 0.3  # v49.8: 0.6→0.3 (이중 스무딩→비음 완화)
+        f0_autotune_strength = 0.5  # v50: 0.3→0.5 (음정 단단하게, 0.3은 너무 약함)
     f0_autotune_strength = max(0.0, min(1.0, f0_autotune_strength))
     clean_audio_raw = job_input.get("clean_audio", False)
     clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
@@ -3510,7 +3510,7 @@ def _rvc_infer(
     rms_mix_rate: float = 0.0,    # v36: 원곡 다이나믹 100% 보존
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
-    f0_autotune_strength: float = 0.3,  # v49.8: 0.6→0.3 (이중 스무딩→비음/감기 완화)
+    f0_autotune_strength: float = 0.5,  # v50: 0.3→0.5 (음정 단단하게)
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.
@@ -3733,6 +3733,8 @@ def _rvc_infer(
         "--clean_strength", str(clean_strength),
         "--export_format", export_format.upper(),
         "--embedder_model", "contentvec",
+        "--f0_autotune", str(f0_autotune),
+        "--f0_autotune_strength", str(f0_autotune_strength),
     ]
 
     log.info(f"CLI command: {' '.join(cmd)}")
