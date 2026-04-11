@@ -2441,11 +2441,9 @@ def _post_process_vocal(
     filters = []
 
     # ━━━ 0. 노이즈 게이트 (RVC 추론 노이즈 제거) ━━━
-    # v50: 무음 구간에 -65~-77dB RVC 노이즈 잔류 → 게이트로 제거
-    # range_size=-50dB: 게이트 닫힐 때 -50dB 감쇄 (완전 무음 아닌 자연스러운 감쇠)
-    # threshold=-45dB: -45dB 이하 신호 억제 (보컬은 보통 -30dB 이상)
-    # attack/release: 부드러운 전환으로 클릭 방지
-    filters.append("agate=threshold=0.006:range=0.003:attack=25:release=100")
+    # v51: threshold -45→-55dB (소프트 보컬/속삭임 보호 — -45dB는 너무 공격적)
+    # 소프트 보컬은 -40~-35dBFS → -55dB threshold면 안전하게 통과
+    filters.append("agate=threshold=0.002:range=0.001:attack=25:release=150")
 
     # ━━━ 1. 초저역 제거 (파열음 에너지 제어) ━━━
     filters.append("highpass=f=70:poles=2")
@@ -2643,7 +2641,7 @@ def _mix_audio(
         f"equalizer=f=3500:width_type=o:width=0.8:g=-1.5[m];"  # v45: 2.5k→3.5k, -1.0→-1.5
         # ── 최종 믹스 + 단일 리미터 ──
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.89:attack=25:release=300:level=disabled",  # v45: level=disabled (자동 게인 올림 방지 → 클리핑 제거)
+        f"alimiter=limit=0.89:attack=10:release=100:level=disabled",  # v51: release 300→100 (느린 릴리즈→음량 처짐 방지), attack 25→10
         "-acodec", "pcm_s24le",
         "-ar", str(sample_rate),
         str(output_path),
