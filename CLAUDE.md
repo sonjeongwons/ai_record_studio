@@ -44,23 +44,23 @@
   - 발음 개선: 한국어 비음 포먼트 보호(300/600Hz EQ 제거) + index 0.55
 - ⚠️ **CVE-2025-32434**: PyTorch 2.1.0 RCE — 2.6.0+ 업그레이드 예정
 
-## 4. 변환 파라미터 (v50 — 최신)
+## 4. 변환 파라미터 (v51 — 최신)
 
 | 파라미터 | 값 | 변경 이력 |
 |----------|-----|-----------|
 | Pretrained | **KLM49_HFG** (한국어) / **RIN_E3** (다국어) | |
 | Epochs | **150** (기본값), Batch: **8**, SR: 40kHz | |
 | F0 | RMVPE (+ **f0_autotune=True, strength=0.5**) | v50: 0.3→0.5 (음정 단단하게) |
-| **index_rate** | **0.55** (한국어 0.55 / 영어 0.35) | v50: 0.45→0.55 (단단한 음색) |
-| **rms_mix_rate** | **0.0** | 원곡 다이나믹 100% 보존 |
+| **index_rate** | **0.45** (한국어 0.55 / 영어 0.35) | v51: 0.55→0.45 (발음 명료도 우선) |
+| **rms_mix_rate** | **0.1** | v51: 0.0→0.1 (원곡 음량 패턴 반영, 균일성) |
 | **protect** | **0.40** | v49: 0.33→0.40 |
 | **filter_radius** | **2** | v50: 3→2 (고음 비브라토 보존) |
 | **hop_length** | **128** | v49: 64→128 |
 | **vocal_blend** | **0%** (비활성) | v45: 더블링 원인 제거 |
 | **language** | **auto/ko/en** | v49: 한/영 EQ 분리 (NEW) |
 | 보컬 분리 | **BS-Roformer → Demucs** 폴백 | SDR 12.9 SOTA |
-| 후처리 (한국어) | highpass 70Hz + 8kHz -0.8dB/w=0.3 + loudnorm -14 LUFS | v49: 최소 EQ |
-| 후처리 (영어) | highpass 70Hz + 300Hz -0.3 + 600Hz -0.3 + 5kHz -0.8 + 8kHz -0.8 + loudnorm | v49 |
+| 후처리 (한국어) | agate + highpass 70Hz + 1.2kHz -0.5 + 8kHz -0.8 + loudnorm -14 LUFS (LRA=11) | v51 |
+| 후처리 (영어) | agate + highpass 70Hz + 300Hz -0.3 + 600Hz -0.3 + 5kHz -0.8 + 1.2kHz -0.5 + 8kHz -0.8 + loudnorm | v51 |
 | 믹스 리미터 | **0.89** (-1dBTP, level=disabled) | 클리핑 방지 |
 | MR EQ | 800Hz -1.5 + 2kHz -2.0 + 3.5kHz -1.5 | v45: 보컬 블리드 감쇄 |
 | 리버브 | 4탭/0.55 decay (비활성 기본) | |
