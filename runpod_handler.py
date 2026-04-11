@@ -2948,9 +2948,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     _autotune_raw = job_input.get("f0_autotune", True)
     f0_autotune: bool = _autotune_raw in (True, "true", "True", "1", 1)
     try:
-        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.5))
+        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.6))
     except (ValueError, TypeError):
-        f0_autotune_strength = 0.5  # v50: 0.3→0.5 (음정 단단하게, 0.3은 너무 약함)
+        f0_autotune_strength = 0.6  # v51: 0.5→0.6 (가성 삑사리 추가 보정, 1.2kHz EQ가 비음 보상)
     f0_autotune_strength = max(0.0, min(1.0, f0_autotune_strength))
     clean_audio_raw = job_input.get("clean_audio", False)
     clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
@@ -3382,17 +3382,17 @@ def task_convert(job_input: dict, job: dict) -> dict:
         if backing_vocals_path and backing_vocals_path.exists():
             lead_plus_backing = work / "lead_plus_backing.wav"
             try:
-                # 백킹 처리: volume 0.65 (-3.7dB) + 4kHz 이상 고역 롤오프 (-3dB)
-                # 커뮤니티: "high-shelf EQ cut on backing (-2 to -4dB above 4kHz)"
-                # → 백킹을 리드 뒤 soundstage로 배치 → 자연스러운 화음
+                # v51: 백킹 볼륨 0.65→0.80 (-1.9dB), 롤오프 -3→-1.5dB
+                # v50 피드백: 0.65 + 4kHz -3dB가 화음 발음 너무 뭉개짐
+                # 커뮤니티: 화음 발음 보존 위해 볼륨 높이고 롤오프 최소화
                 run_ffmpeg([
                     "-i", str(converted_vocals_path),
                     "-i", str(backing_vocals_path),
                     "-filter_complex",
                     f"[0:a]aformat=channel_layouts=mono[lead];"
                     f"[1:a]aformat=channel_layouts=mono,"
-                    f"volume=0.65,"
-                    f"highshelf=f=4000:width_type=o:width=0.7:g=-3.0[back];"
+                    f"volume=0.80,"
+                    f"highshelf=f=5000:width_type=o:width=0.7:g=-1.5[back];"
                     f"[lead][back]amix=inputs=2:duration=longest:normalize=0",
                     "-acodec", "pcm_s24le", "-ar", str(_process_sr),
                     str(lead_plus_backing),
@@ -3513,7 +3513,7 @@ def _rvc_infer(
     rms_mix_rate: float = 0.1,    # v51: 0.0→0.1 (원곡 음량 패턴 반영, 음량 균일성)
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
-    f0_autotune_strength: float = 0.5,  # v50: 0.3→0.5 (음정 단단하게)
+    f0_autotune_strength: float = 0.6,  # v51: 0.5→0.6 (가성 삑사리 보정 강화)
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.

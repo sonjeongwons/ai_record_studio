@@ -6576,7 +6576,7 @@ async function startConversion() {
   form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
   // v49: f0_autotune (기본 true, 노래 변환 피치 안정화)
   form.append('f0_autotune', 'true');
-  form.append('f0_autotune_strength', '0.5');
+  form.append('f0_autotune_strength', '0.6');
   form.append('audio', convertFile);
 
   try {

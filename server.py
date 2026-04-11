@@ -2546,7 +2546,7 @@ async def start_conversion(
     vocal_blend: float = Form(0.0),    # v45: 0% (더블링 원인 제거)
     language: str = Form("auto"),      # v49: 한/영 EQ 분리 (ko/en/auto)
     f0_autotune: str = Form("true"),   # v49: 노래 피치 안정화 (true/false)
-    f0_autotune_strength: float = Form(0.5),  # v50: 0.3→0.5 (음정 단단하게)
+    f0_autotune_strength: float = Form(0.6),  # v51: 0.5→0.6 (가성 삑사리 보정 강화)
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
