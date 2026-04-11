@@ -3264,9 +3264,9 @@ input[type="range"]::-moz-range-track {
       <div class="slider-group">
         <div class="slider-header">
           <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.20 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.25~0.45 = 자연스러운 AI 목소리 (기본값 0.45)\n• 0.50~0.65 = 강한 AI 적용 (한국어 발음 정확도↑)\n• 0.70~1.0 = 최대 AI (아티팩트 주의)\n\n💡 한국어 0.55, 영어 0.35 프리셋 권장.">ⓘ</i></span>
-          <span class="slider-value" id="index-val">0.55</span>
+          <span class="slider-value" id="index-val">0.45</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="55" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+        <input type="range" id="index-slider" min="0" max="100" value="45" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
         <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.30~0.50 권장)</div>
       </div>
       <!-- Advanced settings (collapsible) -->
@@ -3366,9 +3366,9 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0 = 원본 다이나믹 100% 보존 (기본값, 강력 권장!)\n• 0.1~0.2 = 약간의 모델 다이나믹 반영\n• 0.3 이상 = 다이나믹 레인지 압축 (기계음 원인!)\n\n⚠️ 이 값이 기계음의 최대 원인입니다.\n💡 0.0으로 두면 원곡의 속삭임/외침 강약이 그대로 보존됩니다.">ⓘ</i></span>
-              <span class="slider-value" id="rms-val">0.00</span>
+              <span class="slider-value" id="rms-val">0.10</span>
             </div>
-            <input type="range" id="rms-slider" min="0" max="100" value="0" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <input type="range" id="rms-slider" min="0" max="100" value="10" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
             <div style="font-size:11px;color:var(--text3);margin-top:2px">⚠️ 0이 가장 자연스러움! 높일수록 다이나믹 압축 → 기계음 증가 (기본 0.00)</div>
           </div>
           <div class="slider-group">
@@ -4908,7 +4908,7 @@ function applyConvertPreset(preset) {
   var presets = {
     default: {
       // v49 기본: autotune ON, hop 128, protect 0.40, filter 3
-      f0: 'rmvpe', protect: 40, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 40, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 45, language: 'auto',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4917,7 +4917,7 @@ function applyConvertPreset(preset) {
     },
     korean: {
       // v49 한국어: index 0.55 + language=ko (비음 포먼트 보호 EQ)
-      f0: 'rmvpe', protect: 40, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 40, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 55, language: 'ko',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4926,7 +4926,7 @@ function applyConvertPreset(preset) {
     },
     english: {
       // v49 영어: index 0.35 + language=en + protect 0.35 (원곡 발음 보존)
-      f0: 'rmvpe', protect: 35, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 35, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 35, language: 'en',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4935,7 +4935,7 @@ function applyConvertPreset(preset) {
     },
     falsetto: {
       // v49 가성/고음: filter=2(비브라토 보존) + 고음모드 + autotune
-      f0: 'rmvpe', protect: 45, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 45, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30, language: 'auto',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: true, harmonyFilter: 0,
@@ -4944,7 +4944,7 @@ function applyConvertPreset(preset) {
     },
     natural: {
       // v49 최대 자연스러움: 원곡 다이나믹 100% 보존
-      f0: 'rmvpe', protect: 45, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 45, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30, language: 'auto',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4953,7 +4953,7 @@ function applyConvertPreset(preset) {
     },
     studio: {
       // v49 스튜디오: 깨끗한 녹음에 최적 (리버브 OFF)
-      f0: 'rmvpe', protect: 40, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 40, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 40, language: 'auto',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4962,7 +4962,7 @@ function applyConvertPreset(preset) {
     },
     chorus: {
       // v49 화음/코러스: filter 4 피치 안정화
-      f0: 'rmvpe', protect: 40, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 40, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 25, language: 'auto',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, harmonyFilter: 0,
@@ -4971,7 +4971,7 @@ function applyConvertPreset(preset) {
     },
     indie: {
       // v49 인디/차분한 곡 (리버브 OFF)
-      f0: 'rmvpe', protect: 40, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 40, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 35, language: 'en',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -4980,7 +4980,7 @@ function applyConvertPreset(preset) {
     },
     chorus_v2: {
       // v49 화음/그룹 곡 v2 — 발음 선명도 우선
-      f0: 'rmvpe', protect: 40, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 40, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 20, language: 'auto',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -4989,7 +4989,7 @@ function applyConvertPreset(preset) {
     },
     duet: {
       // v49 남녀 듀엣곡 — protect 0.45로 여성 timbre 보호
-      f0: 'rmvpe', protect: 45, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 45, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 30, language: 'en',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: false, vocalPreShift: 0, harmonyFilter: 0,
@@ -4998,7 +4998,7 @@ function applyConvertPreset(preset) {
     },
     high_range: {
       // v49 고음/음역 불일치 전용 — pitch -3 권장, autotune이 핵심
-      f0: 'rmvpe', protect: 45, rms: 0, filter: 2, hop: 0,
+      f0: 'rmvpe', protect: 45, rms: 10, filter: 2, hop: 0,
       clean: false, cleanStr: 70, index: 25, language: 'ko',
       postReverb: 0, useReverb: false, harmonicEnhance: false,
       highNote: true, vocalPreShift: 0, harmonyFilter: 0,
@@ -6547,14 +6547,14 @@ async function startConversion() {
   var form = new FormData();
   form.append('model_id', selectedModelId);
   form.append('pitch_shift', getVal('pitch-slider', '0'));
-  form.append('index_rate', (getVal('index-slider', '55') / 100).toFixed(2));
+  form.append('index_rate', (getVal('index-slider', '45') / 100).toFixed(2));
   form.append('f0_method', getVal('convert-f0', 'rmvpe'));
   form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
   form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
   form.append('clean_audio', getChecked('clean-audio-cb'));
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
   form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
-  form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
+  form.append('rms_mix_rate', (getVal('rms-slider', '10') / 100).toFixed(2));
   form.append('filter_radius', getVal('filter-slider', '2'));
   var hopSteps = [32, 64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '2')] || 128);
@@ -6969,14 +6969,14 @@ async function startBatchConversion() {
       var form = new FormData();
       form.append('model_id', selectedModelId);
       form.append('pitch_shift', getVal('pitch-slider', '0'));
-      form.append('index_rate', (getVal('index-slider', '55') / 100).toFixed(2));
+      form.append('index_rate', (getVal('index-slider', '45') / 100).toFixed(2));
       form.append('f0_method', getVal('convert-f0', 'rmvpe'));
       form.append('vocal_volume', (getVal('vocal-vol-slider', '100') / 100).toFixed(1));
       form.append('mr_volume', (getVal('mr-vol-slider', '100') / 100).toFixed(1));
       form.append('clean_audio', getChecked('clean-audio-cb'));
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
       form.append('protect', (getVal('protect-slider', '40') / 100).toFixed(2));
-      form.append('rms_mix_rate', (getVal('rms-slider', '0') / 100).toFixed(2));
+      form.append('rms_mix_rate', (getVal('rms-slider', '10') / 100).toFixed(2));
       form.append('filter_radius', getVal('filter-slider', '2'));
       var hopSteps2 = [32, 64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '2')] || 128);

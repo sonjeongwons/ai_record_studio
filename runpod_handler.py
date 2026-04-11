@@ -2516,7 +2516,7 @@ def _post_process_vocal(
         # Pass 1: 측정
         _measure_cmd = [
             "ffmpeg", "-i", str(_eq_tmp), "-hide_banner",
-            "-af", "loudnorm=I=-14:TP=-1:LRA=20:print_format=json",
+            "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
             "-f", "null", "-"
         ]
         _measure = _sp.run(_measure_cmd, capture_output=True, text=True, timeout=120)
@@ -2528,7 +2528,7 @@ def _post_process_vocal(
             _stats = _json.loads(_stderr[_json_start:_json_end])
             # Pass 2: 측정값으로 선형 노멀라이즈
             _ln_filter = (
-                f"loudnorm=I=-14:TP=-1:LRA=20:linear=true"
+                f"loudnorm=I=-14:TP=-1:LRA=11:linear=true"
                 f":measured_I={_stats['input_i']}"
                 f":measured_LRA={_stats['input_lra']}"
                 f":measured_TP={_stats['input_tp']}"
@@ -2908,11 +2908,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 0.55: v50 (커뮤니티: 좋은 모델=0.55-0.65, 더 단단한 음색)
+    # index_rate 0.45: v51 (v50: 0.55→0.45, 발음 명료도 우선 — 0.55는 발음 뭉개짐)
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.55))  # v50: 0.45→0.55
+        index_rate: float = float(job_input.get("index_rate", 0.45))
     except (ValueError, TypeError):
-        index_rate = 0.55
+        index_rate = 0.45
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
@@ -2924,14 +2924,13 @@ def task_convert(job_input: dict, job: dict) -> dict:
         filter_radius: int = int(job_input.get("filter_radius", 2))  # v50: 3→2
     except (ValueError, TypeError):
         filter_radius = 2
-    # rms_mix_rate 0.0: v36 — 원곡 다이나믹스 100% 보존 (이전 0.25)
-    # 분석 결과: rms_mix_rate가 기계음의 최대 원인 중 하나 (다이나믹 레인지 159dB→66dB 압축)
-    # 0.0: 원곡의 속삭임/외침 강약을 완벽히 보존 → 가장 자연스러운 결과
-    # 커뮤니티 권장: 0.0 (원곡 다이나믹 보존) 또는 0.1 (약간의 모델 다이나믹 반영)
+    # rms_mix_rate 0.1: v51 — 원곡 음량 패턴 10% 반영 (음량 균일성 개선)
+    # v36: 0.0 (100% 모델 다이나믹) → 음량 들쑥날쑥 문제 발생
+    # v51: 0.1로 원곡 엔벨로프 약간 반영 → 원곡과 유사한 음량 패턴
     try:
-        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.0))
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.1))
     except (ValueError, TypeError):
-        rms_mix_rate = 0.0
+        rms_mix_rate = 0.1
     # protect 0.40: v49 (0.33→0.40, 과도한 자음보호 완화→인덱스 정확도↑)
     # RVC 구현: 0.50은 보호 기능 OFF, 0.0은 최대 보호
     try:
@@ -3506,14 +3505,14 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.55,     # v50: 0.45→0.55 (단단한 음색)
+    index_rate: float = 0.45,     # v51: 0.55→0.45 (발음 명료도 우선)
     protect: float = 0.40,        # v49: 0.33→0.40 (과도한 자음 보호 완화 → 인덱스 정확도 향상)
     hop_length: int = 128,        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
     filter_radius: int = 2,       # v50: 3→2 (고음 비브라토 보존)
-    rms_mix_rate: float = 0.0,    # v36: 원곡 다이나믹 100% 보존
+    rms_mix_rate: float = 0.1,    # v51: 0.0→0.1 (원곡 음량 패턴 반영, 음량 균일성)
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
     f0_autotune_strength: float = 0.5,  # v50: 0.3→0.5 (음정 단단하게)
