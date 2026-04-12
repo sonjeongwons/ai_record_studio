@@ -2051,6 +2051,7 @@ async def start_training(
     batch_size: int = Form(8),         # v49.4: 6→8 (AI Hub 명확 권고: >30분=8, 44.9분 데이터)
     f0_method: str = Form("rmvpe"),
     pretrained_model: str = Form("klm49"),  # "klm49" 한국어 / "rin_e3" 다국어(팝송)
+    embedder_model: str = Form("contentvec"),  # v54: contentvec / spin / korean-hubert-base
     file_ids: str = Form("")  # comma-separated
 ):
     if not runpod_client.is_configured():
@@ -2082,6 +2083,9 @@ async def start_training(
         raise HTTPException(400, f"피치 추출 방식은 rmvpe/fcpe/crepe/crepe-tiny 중 하나여야 합니다. (입력: {f0_method})")
     if pretrained_model not in ("klm49", "rin_e3"):
         raise HTTPException(400, f"사전학습 모델은 klm49/rin_e3 중 하나여야 합니다. (입력: {pretrained_model})")
+    # v54: embedder 모델 유효성 검사
+    if embedder_model not in ("contentvec", "spin", "korean-hubert-base"):
+        raise HTTPException(400, f"임베더 모델은 contentvec/spin/korean-hubert-base 중 하나여야 합니다. (입력: {embedder_model})")
 
     # 학습 파일 수집
     with get_db() as db:
@@ -2235,6 +2239,7 @@ async def start_training(
                 "batch_size": batch_size,
                 "f0_method": f0_method,
                 "pretrained_model": pretrained_model,
+                "embedder_model": embedder_model,
                 "bucket_name": r2_bucket,
             }
         else:
@@ -2252,6 +2257,7 @@ async def start_training(
                 "batch_size": batch_size,
                 "f0_method": f0_method,
                 "pretrained_model": pretrained_model,
+                "embedder_model": embedder_model,
                 "bucket_name": r2_bucket,
             }
 
@@ -2547,6 +2553,7 @@ async def start_conversion(
     language: str = Form("auto"),      # v49: 한/영 EQ 분리 (ko/en/auto)
     f0_autotune: str = Form("true"),   # v49: 노래 피치 안정화 (true/false)
     f0_autotune_strength: float = Form(0.4),  # v53: 0.6→0.4 (비브라토 보존, 커뮤니티 최적값)
+    embedder_model: str = Form("contentvec"),  # v54: 학습 시 사용한 embedder와 동일하게
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
@@ -2663,7 +2670,8 @@ async def start_conversion(
             "vocal_blend": vocal_blend,
             "language": language,         # v49: 한/영 EQ 분리
             "f0_autotune": f0_autotune,  # v49: 노래 피치 안정화
-            "f0_autotune_strength": f0_autotune_strength,  # v49.8: 0.3
+            "f0_autotune_strength": f0_autotune_strength,
+            "embedder_model": embedder_model,  # v54: 학습 시 사용한 embedder
             "bucket_name": r2_bucket,
         }
 

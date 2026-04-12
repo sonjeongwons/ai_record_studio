@@ -264,6 +264,25 @@ RUN mkdir -p /app/Applio/rvc/models/embedders/contentvec \
     && ln -sf /app/Applio/rvc/models/embedders/contentvec/pytorch_model.bin \
               /app/Applio/rvc/models/hubert/hubert_base.pt
 
+# -- Spin V2 Embedder (~380 MB) -- v54: 발음 명확도 개선 (ContentVec 대비)
+# Applio 공식 HuggingFace에서 제공, 학습+추론 동일 embedder 필수
+RUN mkdir -p /app/Applio/rvc/models/embedders/spin \
+    && wget -q -O /app/Applio/rvc/models/embedders/spin/pytorch_model.bin \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/spin/pytorch_model.bin" \
+    && wget -q -O /app/Applio/rvc/models/embedders/spin/config.json \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/spin/config.json" \
+    && echo "Spin V2:" \
+    && ls -lh /app/Applio/rvc/models/embedders/spin/
+
+# -- Korean HuBERT Embedder (~380 MB) -- v54: 한국어 특화 임베더
+RUN mkdir -p /app/Applio/rvc/models/embedders/korean-hubert-base \
+    && wget -q -O /app/Applio/rvc/models/embedders/korean-hubert-base/pytorch_model.bin \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/korean-hubert-base/pytorch_model.bin" \
+    && wget -q -O /app/Applio/rvc/models/embedders/korean-hubert-base/config.json \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/korean-hubert-base/config.json" \
+    && echo "Korean HuBERT:" \
+    && ls -lh /app/Applio/rvc/models/embedders/korean-hubert-base/
+
 # -- RMVPE Model (~170 MB) --
 RUN mkdir -p /app/Applio/rvc/models/predictors \
     && wget -q -O /app/Applio/rvc/models/predictors/rmvpe.pt \
@@ -304,6 +323,19 @@ print('BS-Roformer model downloaded and loaded successfully'); \
 " \
     && ls -lh /app/models/audio-separator/*.ckpt \
     && echo "BS-Roformer model cached"
+
+# v54: BS PolarFormer — BS-Roformer 후속 모델 (Polar Coordinate Positional Embeddings)
+# ZFTurbo v1.0.20 릴리즈, BS-Roformer 대비 향상된 보컬 분리
+RUN python -c "\
+from audio_separator.separator import Separator; \
+s = Separator(model_file_dir='/app/models/audio-separator', output_dir='/tmp'); \
+try: \
+    s.load_model('model_bs_roformer_ep_368_sdr_13.0837.ckpt'); \
+    print('BS PolarFormer model downloaded successfully'); \
+except Exception as e: \
+    print(f'BS PolarFormer download skipped (not yet in audio-separator): {e}'); \
+" \
+    && echo "BS PolarFormer cache attempt done"
 
 # v49.5: mel_band_roformer_karaoke — 리드/백킹 보컬 분리 (화음 처리용, SDR 10.20)
 # 보컬 스템에서 리드와 백킹을 추가 분리 → 리드만 RVC 변환, 백킹 원본 유지

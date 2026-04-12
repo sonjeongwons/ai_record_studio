@@ -1224,6 +1224,10 @@ def task_train(job_input: dict, job: dict) -> dict:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
     embedder_model: str = job_input.get("embedder_model", "contentvec")
+    _VALID_EMBEDDERS = {"contentvec", "spin", "korean-hubert-base"}
+    if embedder_model not in _VALID_EMBEDDERS:
+        log.warning(f"Invalid embedder '{embedder_model}', falling back to contentvec")
+        embedder_model = "contentvec"
     # pretrained 모델 선택: "klm49" (한국어) 또는 "rin_e3" (다국어/팝송)
     pretrained_model: str = job_input.get("pretrained_model", "klm49")
     # v35: 25→10 — 200 epoch에서 20개 체크포인트로 최적 epoch 정밀 식별
@@ -3026,6 +3030,10 @@ def task_convert(job_input: dict, job: dict) -> dict:
     language: str = str(job_input.get("language", "auto")).lower().strip()
     if language not in ("ko", "en", "auto"):
         language = "auto"
+    # v54: embedder_model — 학습 시 사용한 embedder와 동일해야 함
+    embedder_model: str = job_input.get("embedder_model", "contentvec")
+    if embedder_model not in {"contentvec", "spin", "korean-hubert-base"}:
+        embedder_model = "contentvec"
     # v49.7: f0_autotune을 job_input에서 받음 (하드코딩 제거)
     _autotune_raw = job_input.get("f0_autotune", True)
     f0_autotune: bool = _autotune_raw in (True, "true", "True", "1", 1)
@@ -3305,8 +3313,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
             filter_radius=filter_radius,
             rms_mix_rate=rms_mix_rate,
             split_audio=_should_split,
-            f0_autotune=f0_autotune,              # v49.7: job_input에서 받음 (기본 True)
-            f0_autotune_strength=f0_autotune_strength,  # v49.7: job_input에서 받음 (기본 0.6)
+            f0_autotune=f0_autotune,
+            f0_autotune_strength=f0_autotune_strength,
+            embedder_model=embedder_model,
         )
 
         if not converted_vocals_path.exists():
@@ -3367,6 +3376,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
                         clean_audio=clean_audio, clean_strength=clean_strength,
                         export_format=export_format, split_audio=True,
                         f0_autotune=f0_autotune, f0_autotune_strength=f0_autotune_strength,
+                        embedder_model=embedder_model,
                     )
                     if _retry_path.exists():
                         _retry_dur = get_audio_duration(_retry_path)
@@ -3576,6 +3586,7 @@ def _rvc_infer(
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
     f0_autotune_strength: float = 0.4,  # v53: 0.6→0.4 (비브라토 보존, 커뮤니티 최적값)
+    embedder_model: str = "contentvec",  # v54: spin, korean-hubert-base 선택 가능
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.
@@ -3610,7 +3621,7 @@ def _rvc_infer(
             clean_audio=clean_audio,
             clean_strength=clean_strength,
             export_format=export_format.upper(),
-            embedder_model="contentvec",
+            embedder_model=embedder_model,
             embedder_model_custom=None,
             rms_mix_rate=rms_mix_rate,
         )
@@ -3646,7 +3657,7 @@ def _rvc_infer(
             clean_audio=clean_audio,
             clean_strength=clean_strength,
             export_format=export_format.upper(),
-            embedder_model="contentvec",
+            embedder_model=embedder_model,
         )
         log.info("Inference completed via VoiceConverter class")
         return
@@ -3705,8 +3716,8 @@ def _rvc_infer(
         # Create pipeline
         pipeline = VC(tgt_sr, device, is_half, False)
 
-        # Load embedding model
-        models, _, _ = load_embedding("contentvec", None)
+        # Load embedding model (v54: embedder_model 파라미터 사용)
+        models, _, _ = load_embedding(embedder_model, None)
         hubert_model = models[0].to(device)
         if is_half:
             hubert_model = hubert_model.half()
