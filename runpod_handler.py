@@ -2420,38 +2420,38 @@ def _post_process_vocal(
     sample_rate: int = 44100,
     language: str = "auto",
 ) -> None:
-    """Post-process converted vocal v49 — 한/영 분리 EQ + 동적 디에서 + 발음 보존.
+    """Post-process converted vocal v53 — 한/영 EQ + 강화 디에서 + LUFS 정규화.
 
-    ── v49 (v45→v49 전면 개선) ──
-    핵심 변경:
-      - 한국어/영어 EQ 분리 (비음 포먼트 보호 vs 치찰음 대역 차이)
-      - 3kHz presence boost 제거 (HiFi-GAN 이미 충분, 치찰음 증폭 주범)
-      - 동적 디에서: adeclick → 고주파 아티팩트만 선택 제거
-      - 300Hz/600Hz EQ: 한국어 비음 보호 위해 제거 (영어만 경미 감쇄)
+    ── v53 (v49→v53 분석 기반 전면 개선) ──
+    핵심 변경 (v52 분석 기반):
+      - HPF 70→80Hz (파열음 에너지 제거 강화)
+      - 5kHz -1.5dB 추가 (4-8kHz 보코더 금속성 피크, 치찰음 2배 증가 근본 원인)
+      - 2단 디에서: 6.5kHz -2.0dB (광역) + 9kHz -1.0dB (협역)
+      - 기존 한/영 EQ 분리 유지
 
-    v49 체인 (한국어):
-      highpass 70Hz → 8kHz -0.8dB/w=0.3 (HiFi-GAN 금속음만) →
-      (리버브) → 2-pass loudnorm -14 LUFS (LRA=20)
+    v53 체인 (한국어):
+      HPF 80Hz → 1.2kHz -0.5dB → 5kHz -1.5dB → 8kHz -0.8dB →
+      6.5kHz -2.0dB (디에서1) → 9kHz -1.0dB (디에서2) →
+      (리버브) → 2-pass loudnorm -14 LUFS
 
-    v49 체인 (영어):
-      highpass 70Hz → 300Hz -0.3dB → 600Hz -0.3dB →
-      5kHz -0.8dB/w=0.5 (s/sh 디에서) → 8kHz -0.8dB/w=0.3 →
-      (리버브) → 2-pass loudnorm -14 LUFS (LRA=20)
+    v53 체인 (영어):
+      HPF 80Hz → 300Hz -0.3dB → 600Hz -0.3dB → 5kHz -0.8dB →
+      1.2kHz -0.5dB → 5kHz -1.5dB → 8kHz -0.8dB →
+      6.5kHz -2.0dB + 9kHz -1.0dB → (리버브) → loudnorm
     """
     filters = []
 
     # ━━━ 0. 노이즈 게이트 (RVC 추론 노이즈 제거) ━━━
-    # v51: threshold -45→-55dB (소프트 보컬/속삭임 보호 — -45dB는 너무 공격적)
-    # 소프트 보컬은 -40~-35dBFS → -55dB threshold면 안전하게 통과
+    # v51: threshold -55dB (소프트 보컬/속삭임 보호)
     filters.append("agate=threshold=0.002:range=0.001:attack=25:release=150")
 
     # ━━━ 1. 초저역 제거 (파열음 에너지 제어) ━━━
-    filters.append("highpass=f=70:poles=2")
+    # v53: 70→80Hz (분석: 파열음 에너지가 80Hz 이하에 집중, 커뮤니티 권장)
+    filters.append("highpass=f=80:poles=2")
 
     # ━━━ 2. 언어별 EQ (v49: 한/영 분리) ━━━
     if language == "ko":
         # 한국어: 300Hz/600Hz EQ 없음 (비음 ㄴ/ㅁ/ㅇ 포먼트 보호)
-        # v49.8: 1.2kHz 비음 컷은 아래 공통 Step 2b에서 적용
         pass
     elif language == "en":
         # 영어: 경미한 저역 감쇄만 (발음 명료도 유지)
@@ -2466,14 +2466,22 @@ def _post_process_vocal(
         filters.append("equalizer=f=5000:width_type=o:width=0.5:g=-0.8")
 
     # ━━━ 2b. HiFi-GAN 비음 공명 감쇄 (공통) ━━━
-    # v49.8: 보코더가 800Hz-1.5kHz에서 비음 아티팩트 생성
-    # v50: 1.2kHz -1.0→-0.5dB (고음 F1-F2 포먼트 보호, -1.0은 고음에서 얇은 소리)
+    # v50: 1.2kHz -0.5dB (고음 F1-F2 포먼트 보호)
     filters.append("equalizer=f=1200:width_type=o:width=0.4:g=-0.5")
 
     # ━━━ 3. HiFi-GAN 금속음 감쇄 (공통) ━━━
-    # v49: 좁은 대역(0.3)으로 8kHz 금속성 아티팩트만 타겟팅
-    # 넓은 대역 EQ는 공기감/숨소리도 함께 제거 → 좁게 제한
+    # v53: 5kHz -1.5dB 추가 (분석: 4-8kHz 유일 증폭 대역, 보코더 금속성 집중)
+    # 5kHz: 넓은 대역으로 HiFi-GAN 금속 피크 타겟 (치찰음 2배 증가 근본 원인)
+    filters.append("equalizer=f=5000:width_type=o:width=0.8:g=-1.5")
+    # 8kHz: 좁은 대역으로 금속성 아티팩트만 타겟팅
     filters.append("equalizer=f=8000:width_type=o:width=0.3:g=-0.8")
+
+    # ━━━ 3b. 강화된 디에서 (공통) ━━━
+    # v53: 분석 결과 치찰음 스파이크 75-100% 증가 → 2단 디에서 필수
+    # Stage 1: 광역 디에서 (4-8kHz) — HiFi-GAN 치찰음 증폭 상쇄
+    filters.append("equalizer=f=6500:width_type=o:width=1.2:g=-2.0")
+    # Stage 2: 협역 디에서 (8-10kHz) — 날카로운 치찰음 피크 제거
+    filters.append("equalizer=f=9000:width_type=o:width=0.5:g=-1.0")
 
     # ━━━ v41: 후처리 리미터 제거 ━━━
     # v40: alimiter=limit=0.98:attack=5:release=100 → 이중 리미터(+mix limiter) = 펌핑
@@ -2555,7 +2563,7 @@ def _post_process_vocal(
         log.warning(f"2-pass loudnorm failed: {_ln_err}, using EQ output")
 
     log.info(
-        f"Vocal post-processed v43 → {output_path.name} "
+        f"Vocal post-processed v53 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
         f"filters={len(filters)}, loudnorm=2pass)"
     )
@@ -2641,7 +2649,7 @@ def _mix_audio(
         f"equalizer=f=3500:width_type=o:width=0.8:g=-1.5[m];"  # v45: 2.5k→3.5k, -1.0→-1.5
         # ── 최종 믹스 + 단일 리미터 ──
         f"[v][m]amix=inputs=2:duration=longest:normalize=0,"
-        f"alimiter=limit=0.89:attack=10:release=100:level=disabled",  # v51: release 300→100 (느린 릴리즈→음량 처짐 방지), attack 25→10
+        f"alimiter=limit=0.89:attack=10:release=100:level=disabled",
         "-acodec", "pcm_s24le",
         "-ar", str(sample_rate),
         str(output_path),
@@ -2652,9 +2660,58 @@ def _mix_audio(
     out_size = output_path.stat().st_size
     if out_size < 10_000:
         raise RuntimeError(f"믹싱 출력 파일 크기 이상 ({out_size}바이트): {output_path}")
+
+    # ━━━ v53: 최종 LUFS 정규화 (원곡 레벨 매칭) ━━━
+    # 분석: 변환곡이 원곡 대비 2-4 LUFS 낮음 → 최종 믹스에서 LUFS 정규화 필수
+    # 2-pass loudnorm: 1차(측정) → 2차(선형 적용)으로 다이나믹 레인지 보존
+    try:
+        import subprocess as _sp_mix
+        import json as _json_mix
+        _mix_tmp = output_path.with_suffix(".lufs.wav")
+        # Pass 1: 측정
+        _measure_cmd = [
+            "ffmpeg", "-i", str(output_path), "-hide_banner",
+            "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
+            "-f", "null", "-"
+        ]
+        _measure = _sp_mix.run(_measure_cmd, capture_output=True, text=True, timeout=120)
+        _stderr = _measure.stderr
+        _json_start = _stderr.rfind("{")
+        _json_end = _stderr.rfind("}") + 1
+        if _json_start >= 0 and _json_end > _json_start:
+            _stats = _json_mix.loads(_stderr[_json_start:_json_end])
+            _current_lufs = float(_stats.get("input_i", -14))
+            # Pass 2: 선형 노멀라이즈
+            _ln_filter = (
+                f"loudnorm=I=-14:TP=-1:LRA=11:linear=true"
+                f":measured_I={_stats['input_i']}"
+                f":measured_LRA={_stats['input_lra']}"
+                f":measured_TP={_stats['input_tp']}"
+                f":measured_thresh={_stats['input_thresh']}"
+            )
+            run_ffmpeg([
+                "-i", str(output_path),
+                "-af", _ln_filter,
+                "-acodec", "pcm_s24le",
+                "-ar", str(sample_rate),
+                str(_mix_tmp),
+            ])
+            if _mix_tmp.exists() and _mix_tmp.stat().st_size > 10_000:
+                _mix_tmp.replace(output_path)
+                log.info(f"Mix LUFS normalized: {_current_lufs:.1f} → -14 LUFS")
+            else:
+                _mix_tmp.unlink(missing_ok=True)
+                log.warning("Mix LUFS normalization output too small, skipped")
+        else:
+            log.warning("Mix LUFS measurement failed, skipping normalization")
+    except Exception as _lufs_err:
+        log.warning(f"Mix LUFS normalization failed: {_lufs_err}")
+        if _mix_tmp.exists():
+            _mix_tmp.unlink(missing_ok=True)
+
     log.info(f"Mixed audio v12: {output_path.name} (vocal_vol={vocal_volume}, "
              f"auto_gain={_auto_gain:.2f}, mr_vol={mr_volume}, "
-             f"size={out_size / 1024 / 1024:.1f}MB)")
+             f"size={output_path.stat().st_size / 1024 / 1024:.1f}MB)")
 
 
 def _pre_filter_vocal_harmony(
@@ -2917,18 +2974,19 @@ def task_convert(job_input: dict, job: dict) -> dict:
     if f0_method not in _VALID_F0_CONVERT:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # filter_radius 2: v50 (v49: 3→v50: 2, 고음 비브라토 보존 — 3은 61ms 스무딩으로 가성 평탄화)
+    # filter_radius 3: v53 (v50: 2→v53: 3, 커뮤니티: 가성 안정화에 median 3 필요)
+    # 분석: filter_radius 2는 가성 구간에서 피치 불안정→삑사리 유발
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 2))  # v50: 3→2
+        filter_radius: int = int(job_input.get("filter_radius", 3))
     except (ValueError, TypeError):
-        filter_radius = 2
-    # rms_mix_rate 0.1: v51 — 원곡 음량 패턴 10% 반영 (음량 균일성 개선)
-    # v36: 0.0 (100% 모델 다이나믹) → 음량 들쑥날쑥 문제 발생
-    # v51: 0.1로 원곡 엔벨로프 약간 반영 → 원곡과 유사한 음량 패턴
+        filter_radius = 3
+    # rms_mix_rate 0.20: v53 — 원곡 음량 패턴 20% 반영 (음량 균일성 강화)
+    # v51: 0.1 → 여전히 음량 들쑥날쑥 (분석: LRA +0.8~+2.1 확대)
+    # v53: 0.20으로 원곡 엔벨로프 반영 강화 (커뮤니티 권장 0.15-0.25)
     try:
-        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.1))
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.20))
     except (ValueError, TypeError):
-        rms_mix_rate = 0.1
+        rms_mix_rate = 0.20
     # protect 0.40: v49 (0.33→0.40, 과도한 자음보호 완화→인덱스 정확도↑)
     # RVC 구현: 0.50은 보호 기능 OFF, 0.0은 최대 보호
     try:
@@ -2948,9 +3006,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     _autotune_raw = job_input.get("f0_autotune", True)
     f0_autotune: bool = _autotune_raw in (True, "true", "True", "1", 1)
     try:
-        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.6))
+        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.4))
     except (ValueError, TypeError):
-        f0_autotune_strength = 0.6  # v51: 0.5→0.6 (가성 삑사리 추가 보정, 1.2kHz EQ가 비음 보상)
+        f0_autotune_strength = 0.4  # v53: 0.6→0.4 (커뮤니티: 0.6은 비브라토 과도 평탄화, 0.4가 최적)
     f0_autotune_strength = max(0.0, min(1.0, f0_autotune_strength))
     clean_audio_raw = job_input.get("clean_audio", False)
     clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
@@ -3509,11 +3567,11 @@ def _rvc_infer(
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 2,       # v50: 3→2 (고음 비브라토 보존)
-    rms_mix_rate: float = 0.1,    # v51: 0.0→0.1 (원곡 음량 패턴 반영, 음량 균일성)
+    filter_radius: int = 3,       # v53: 2→3 (가성 안정화, median 3 필요)
+    rms_mix_rate: float = 0.20,   # v53: 0.1→0.20 (원곡 음량 패턴 20% 반영, 균일성 강화)
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
-    f0_autotune_strength: float = 0.6,  # v51: 0.5→0.6 (가성 삑사리 보정 강화)
+    f0_autotune_strength: float = 0.4,  # v53: 0.6→0.4 (비브라토 보존, 커뮤니티 최적값)
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.

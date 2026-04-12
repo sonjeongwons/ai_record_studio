@@ -2534,8 +2534,8 @@ async def start_conversion(
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
     protect: float = Form(0.40),        # v49: 0.33→0.40 (과도한 자음 보호 완화→인덱스 정확도 향상)
-    rms_mix_rate: float = Form(0.1),    # v51: 0.0→0.1 (원곡 음량 패턴 반영, 균일성)
-    filter_radius: int = Form(2),       # v50: 3→2 (고음 비브라토 보존)
+    rms_mix_rate: float = Form(0.20),   # v53: 0.1→0.20 (원곡 음량 패턴 20% 반영, 균일성 강화)
+    filter_radius: int = Form(3),       # v53: 2→3 (가성 안정화, median 3 필요)
     hop_length: int = Form(128),        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     post_reverb: float = Form(0.0),     # v41: 리버브 비활성 기본
     harmonic_enhance: str = Form("false"),
@@ -2546,7 +2546,7 @@ async def start_conversion(
     vocal_blend: float = Form(0.0),    # v45: 0% (더블링 원인 제거)
     language: str = Form("auto"),      # v49: 한/영 EQ 분리 (ko/en/auto)
     f0_autotune: str = Form("true"),   # v49: 노래 피치 안정화 (true/false)
-    f0_autotune_strength: float = Form(0.6),  # v51: 0.5→0.6 (가성 삑사리 보정 강화)
+    f0_autotune_strength: float = Form(0.4),  # v53: 0.6→0.4 (비브라토 보존, 커뮤니티 최적값)
     audio: UploadFile = File(...)
 ):
     if not runpod_client.is_configured():
