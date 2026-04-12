@@ -324,18 +324,8 @@ print('BS-Roformer model downloaded and loaded successfully'); \
     && ls -lh /app/models/audio-separator/*.ckpt \
     && echo "BS-Roformer model cached"
 
-# v54: BS PolarFormer — BS-Roformer 후속 모델 (Polar Coordinate Positional Embeddings)
-# ZFTurbo v1.0.20 릴리즈, BS-Roformer 대비 향상된 보컬 분리
-RUN python -c "\
-from audio_separator.separator import Separator; \
-s = Separator(model_file_dir='/app/models/audio-separator', output_dir='/tmp'); \
-try: \
-    s.load_model('model_bs_roformer_ep_368_sdr_13.0837.ckpt'); \
-    print('BS PolarFormer model downloaded successfully'); \
-except Exception as e: \
-    print(f'BS PolarFormer download skipped (not yet in audio-separator): {e}'); \
-" \
-    && echo "BS PolarFormer cache attempt done"
+# v54: BS PolarFormer — 향후 도입 예정 (audio-separator에 아직 미등록)
+# 현재 BS-Roformer SDR 12.9755가 SOTA — 충분한 품질
 
 # v49.5: mel_band_roformer_karaoke — 리드/백킹 보컬 분리 (화음 처리용, SDR 10.20)
 # 보컬 스템에서 리드와 백킹을 추가 분리 → 리드만 RVC 변환, 백킹 원본 유지
