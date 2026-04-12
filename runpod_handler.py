@@ -2420,24 +2420,21 @@ def _post_process_vocal(
     sample_rate: int = 44100,
     language: str = "auto",
 ) -> None:
-    """Post-process converted vocal v53 — 한/영 EQ + 강화 디에서 + LUFS 정규화.
+    """Post-process converted vocal v54 — 부밍 억제 + 보수적 디에서 + Air 복원.
 
-    ── v53 (v49→v53 분석 기반 전면 개선) ──
-    핵심 변경 (v52 분석 기반):
-      - HPF 70→80Hz (파열음 에너지 제거 강화)
-      - 5kHz -1.5dB 추가 (4-8kHz 보코더 금속성 피크, 치찰음 2배 증가 근본 원인)
-      - 2단 디에서: 6.5kHz -2.0dB (광역) + 9kHz -1.0dB (협역)
-      - 기존 한/영 EQ 분리 유지
+    ── v54 (v53→v54, v53 4곡 분석 기반) ──
+    핵심 변경:
+      - 800Hz -1.5dB 부밍 억제 (500-2kHz +3.1dB 보코더 에너지 집중)
+      - 5kHz/8kHz/디에서 감쇄량 축소 (v53이 8-16kHz -7~-12dB 과도 손실)
+      - 10kHz +1.5dB 하이셸프 (Air band 복원 — 발음/자연스러움 핵심)
+      - 백킹 보컬 완전 제거 (화음 발음 뭉개짐 해소)
+      - 원곡 LUFS 매칭 정규화 (-14 하드코딩 → 원곡 LUFS 측정 후 매칭)
 
-    v53 체인 (한국어):
-      HPF 80Hz → 1.2kHz -0.5dB → 5kHz -1.5dB → 8kHz -0.8dB →
-      6.5kHz -2.0dB (디에서1) → 9kHz -1.0dB (디에서2) →
-      (리버브) → 2-pass loudnorm -14 LUFS
-
-    v53 체인 (영어):
-      HPF 80Hz → 300Hz -0.3dB → 600Hz -0.3dB → 5kHz -0.8dB →
-      1.2kHz -0.5dB → 5kHz -1.5dB → 8kHz -0.8dB →
-      6.5kHz -2.0dB + 9kHz -1.0dB → (리버브) → loudnorm
+    v54 체인 (공통):
+      HPF 80Hz → 800Hz -1.5dB → 1.2kHz -0.5dB →
+      5kHz -1.0dB → 8kHz -0.5dB →
+      6.5kHz -1.0dB (디에서) → 9kHz -0.5dB →
+      10kHz +1.5dB (Air 복원) → (리버브) → loudnorm
     """
     filters = []
 
@@ -2465,27 +2462,32 @@ def _post_process_vocal(
         filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.3")
         filters.append("equalizer=f=5000:width_type=o:width=0.5:g=-0.8")
 
-    # ━━━ 2b. HiFi-GAN 비음 공명 감쇄 (공통) ━━━
-    # v50: 1.2kHz -0.5dB (고음 F1-F2 포먼트 보호)
+    # ━━━ 2b. HiFi-GAN 보코더 부밍 억제 (공통) ━━━
+    # v54: 800Hz -1.5dB (분석: 500-2kHz +3.1dB 부밍, 보코더 에너지 집중 대역)
+    # comethru 분석: 500-2kHz만 증폭(+3.1dB), 나머지 감쇄 → "박스형" 소리 원인
+    filters.append("equalizer=f=800:width_type=o:width=1.0:g=-1.5")
+    # 1.2kHz -0.5dB (비음 공명)
     filters.append("equalizer=f=1200:width_type=o:width=0.4:g=-0.5")
 
-    # ━━━ 3. HiFi-GAN 금속음 감쇄 (공통) ━━━
-    # v53: 5kHz -1.5dB 추가 (분석: 4-8kHz 유일 증폭 대역, 보코더 금속성 집중)
-    # 5kHz: 넓은 대역으로 HiFi-GAN 금속 피크 타겟 (치찰음 2배 증가 근본 원인)
-    filters.append("equalizer=f=5000:width_type=o:width=0.8:g=-1.5")
-    # 8kHz: 좁은 대역으로 금속성 아티팩트만 타겟팅
-    filters.append("equalizer=f=8000:width_type=o:width=0.3:g=-0.8")
+    # ━━━ 3. HiFi-GAN 금속음/치찰음 감쇄 (공통) ━━━
+    # v54: v53 대비 감쇄량 축소 (v53이 8-16kHz -7~-12dB 과도 손실 유발)
+    # 5kHz -1.0dB (v53: -1.5 → 고역 과삭제 방지)
+    filters.append("equalizer=f=5000:width_type=o:width=0.6:g=-1.0")
+    # 8kHz -0.5dB (v53: -0.8 → 공기감 보존)
+    filters.append("equalizer=f=8000:width_type=o:width=0.3:g=-0.5")
 
-    # ━━━ 3b. 강화된 디에서 (공통) ━━━
-    # v53: 분석 결과 치찰음 스파이크 75-100% 증가 → 2단 디에서 필수
-    # Stage 1: 광역 디에서 (4-8kHz) — HiFi-GAN 치찰음 증폭 상쇄
-    filters.append("equalizer=f=6500:width_type=o:width=1.2:g=-2.0")
-    # Stage 2: 협역 디에서 (8-10kHz) — 날카로운 치찰음 피크 제거
-    filters.append("equalizer=f=9000:width_type=o:width=0.5:g=-1.0")
+    # ━━━ 3b. 디에서 (공통) ━━━
+    # v54: v53 대비 보수적 (v53이 6.5kHz -2.0dB → 고역 과도 손실의 주범)
+    # Stage 1: 좁은 대역으로 치찰음 피크만 타겟 (v53: -2.0→-1.0dB, width 1.2→0.8)
+    filters.append("equalizer=f=6500:width_type=o:width=0.8:g=-1.0")
+    # Stage 2: 9kHz 아티팩트 (유지하되 축소)
+    filters.append("equalizer=f=9000:width_type=o:width=0.5:g=-0.5")
 
-    # ━━━ v41: 후처리 리미터 제거 ━━━
-    # v40: alimiter=limit=0.98:attack=5:release=100 → 이중 리미터(+mix limiter) = 펌핑
-    # loudnorm + mix 리미터만으로 레벨 관리 충분
+    # ━━━ 3c. Air band 복원 (공통) ━━━
+    # v54: 분석 결과 8-16kHz가 -3~-12dB 손실 → 발음 불명확, 기계음의 핵심 원인
+    # 보코더가 생성하지 못하는 고역을 약간 부스트하여 자연스러움 복원
+    # +1.5dB 하이셸프 (10kHz 이상) — 공기감/숨소리/자음 명확도 복원
+    filters.append("highshelf=f=10000:width_type=o:width=0.7:g=1.5")
 
     # ━━━ 6. 리버브 (선택적) ━━━
     # v45: 8탭→4탭, decay 0.88→0.55 (더블링/코러스 효과 제거)
@@ -2563,7 +2565,7 @@ def _post_process_vocal(
         log.warning(f"2-pass loudnorm failed: {_ln_err}, using EQ output")
 
     log.info(
-        f"Vocal post-processed v53 → {output_path.name} "
+        f"Vocal post-processed v54 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
         f"filters={len(filters)}, loudnorm=2pass)"
     )
@@ -2576,6 +2578,7 @@ def _mix_audio(
     vocal_volume: float = 1.0,
     mr_volume: float = 1.0,
     sample_rate: int = 44100,
+    original_audio_path: Optional[Path] = None,
 ) -> None:
     """Mix converted vocals with original accompaniment (MR) v12.
 
@@ -2661,17 +2664,37 @@ def _mix_audio(
     if out_size < 10_000:
         raise RuntimeError(f"믹싱 출력 파일 크기 이상 ({out_size}바이트): {output_path}")
 
-    # ━━━ v53: 최종 LUFS 정규화 (원곡 레벨 매칭) ━━━
-    # 분석: 변환곡이 원곡 대비 2-4 LUFS 낮음 → 최종 믹스에서 LUFS 정규화 필수
-    # 2-pass loudnorm: 1차(측정) → 2차(선형 적용)으로 다이나믹 레인지 보존
+    # ━━━ v54: 원곡 LUFS 매칭 정규화 ━━━
+    # v53 분석: -14 LUFS 하드코딩이 원곡(-6~-12 LUFS) 대비 2-7.6 LUFS 차이 유발
+    # v54: 원곡 LUFS 측정 → 그 값에 맞춰 2-pass 선형 정규화
+    _mix_tmp = output_path.with_suffix(".lufs.wav")
     try:
         import subprocess as _sp_mix
         import json as _json_mix
-        _mix_tmp = output_path.with_suffix(".lufs.wav")
-        # Pass 1: 측정
+
+        # 1) 원곡 LUFS 측정 (타겟 결정)
+        _target_lufs = -14.0  # 폴백: 브로드캐스트 표준
+        if original_audio_path and original_audio_path.exists():
+            _orig_cmd = [
+                "ffmpeg", "-i", str(original_audio_path), "-hide_banner",
+                "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
+                "-f", "null", "-"
+            ]
+            _orig_run = _sp_mix.run(_orig_cmd, capture_output=True, text=True, timeout=120)
+            _orig_stderr = _orig_run.stderr
+            _oj_start = _orig_stderr.rfind("{")
+            _oj_end = _orig_stderr.rfind("}") + 1
+            if _oj_start >= 0 and _oj_end > _oj_start:
+                _orig_stats = _json_mix.loads(_orig_stderr[_oj_start:_oj_end])
+                _measured_orig = float(_orig_stats.get("input_i", -14))
+                # 원곡 LUFS 사용하되, -6 ~ -16 범위로 클램프 (안전)
+                _target_lufs = max(-16.0, min(-6.0, _measured_orig))
+                log.info(f"Original LUFS measured: {_measured_orig:.1f} → target: {_target_lufs:.1f}")
+
+        # 2) 현재 믹스 LUFS 측정
         _measure_cmd = [
             "ffmpeg", "-i", str(output_path), "-hide_banner",
-            "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
+            "-af", f"loudnorm=I={_target_lufs:.1f}:TP=-1:LRA=11:print_format=json",
             "-f", "null", "-"
         ]
         _measure = _sp_mix.run(_measure_cmd, capture_output=True, text=True, timeout=120)
@@ -2680,10 +2703,11 @@ def _mix_audio(
         _json_end = _stderr.rfind("}") + 1
         if _json_start >= 0 and _json_end > _json_start:
             _stats = _json_mix.loads(_stderr[_json_start:_json_end])
-            _current_lufs = float(_stats.get("input_i", -14))
-            # Pass 2: 선형 노멀라이즈
+            _current_lufs = float(_stats.get("input_i", _target_lufs))
+
+            # 3) 2-pass 선형 정규화 (원곡 LUFS 타겟)
             _ln_filter = (
-                f"loudnorm=I=-14:TP=-1:LRA=11:linear=true"
+                f"loudnorm=I={_target_lufs:.1f}:TP=-1:LRA=11:linear=true"
                 f":measured_I={_stats['input_i']}"
                 f":measured_LRA={_stats['input_lra']}"
                 f":measured_TP={_stats['input_tp']}"
@@ -2698,7 +2722,7 @@ def _mix_audio(
             ])
             if _mix_tmp.exists() and _mix_tmp.stat().st_size > 10_000:
                 _mix_tmp.replace(output_path)
-                log.info(f"Mix LUFS normalized: {_current_lufs:.1f} → -14 LUFS")
+                log.info(f"Mix LUFS matched: {_current_lufs:.1f} → {_target_lufs:.1f} LUFS")
             else:
                 _mix_tmp.unlink(missing_ok=True)
                 log.warning("Mix LUFS normalization output too small, skipped")
@@ -3433,33 +3457,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
             except Exception as blend_err:
                 log.warning(f"Vocal blending failed: {blend_err}, using unblended vocals")
 
-        # --- Step 3d: 백킹 보컬 합성 (v49.6 — 화음 자연스러움) ---
-        # 리드/백킹 분리된 경우: RVC 변환 리드 + 원본 백킹을 합성
-        # 커뮤니티 권장: 백킹 볼륨 -3~-6dB + 고역 롤오프 → 리드 뒤로 배치
-        # arca.live/postype: "같은 성별이면 백킹 원본 유지, 다른 성별이면 변환 필요"
+        # --- Step 3d: 백킹 보컬 처리 (v54 — 백킹 완전 제거) ---
+        # v54: 사용자 피드백 — 백킹 보컬이 발음 뭉개짐, 기계음 중첩의 주범
+        # 4곡 모두에서 "화음이 더 방해돼, 아예 제거해줘" 요청
+        # → 리드 보컬만 사용, 백킹은 최종 믹스에서 완전 제거
         if backing_vocals_path and backing_vocals_path.exists():
-            lead_plus_backing = work / "lead_plus_backing.wav"
-            try:
-                # v51: 백킹 볼륨 0.65→0.80 (-1.9dB), 롤오프 -3→-1.5dB
-                # v50 피드백: 0.65 + 4kHz -3dB가 화음 발음 너무 뭉개짐
-                # 커뮤니티: 화음 발음 보존 위해 볼륨 높이고 롤오프 최소화
-                run_ffmpeg([
-                    "-i", str(converted_vocals_path),
-                    "-i", str(backing_vocals_path),
-                    "-filter_complex",
-                    f"[0:a]aformat=channel_layouts=mono[lead];"
-                    f"[1:a]aformat=channel_layouts=mono,"
-                    f"volume=0.80,"
-                    f"highshelf=f=5000:width_type=o:width=0.7:g=-1.5[back];"
-                    f"[lead][back]amix=inputs=2:duration=longest:normalize=0",
-                    "-acodec", "pcm_s24le", "-ar", str(_process_sr),
-                    str(lead_plus_backing),
-                ])
-                if lead_plus_backing.exists() and lead_plus_backing.stat().st_size > 1000:
-                    converted_vocals_path = lead_plus_backing
-                    log.info("Lead + backing merged (backing: -3.7dB, 4kHz shelf -3dB)")
-            except Exception as lb_mix_err:
-                log.warning(f"Lead/backing merge failed: {lb_mix_err}, using lead only")
+            log.info(f"Backing vocals skipped (v54: lead-only mode) — {backing_vocals_path.name}")
 
         # --- Step 4: Mix converted vocals + original accompaniment ---
         mixed_path = None
@@ -3469,7 +3472,8 @@ def task_convert(job_input: dict, job: dict) -> dict:
             try:
                 _mix_audio(converted_vocals_path, accomp_path, mixed_path,
                            vocal_volume=vocal_volume, mr_volume=mr_volume,
-                           sample_rate=_process_sr)
+                           sample_rate=_process_sr,
+                           original_audio_path=input_stereo)
                 if mixed_path.exists():
                     log.info("Mixed output created successfully")
                 else:

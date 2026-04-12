@@ -399,12 +399,30 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # ── 2.3 Copy Applio, models, and torch hub from builder ─────────
 COPY --from=builder /app/Applio /app/Applio
 
-# v49.8: Applio pipeline 청크 크기 최적화 (RTX 4090 24GB)
-# 기본값: x_center=38 → 38초마다 하드 연결 → 끊김. 65초로 확대
+# v54: Applio pipeline 청크 크기 최적화 (RTX 4090 24GB)
+# v49.8: x_center=38→60 (38초마다 끊김 해소)
+# v54: x_center=60→90, x_max=65→100 (RTX 4090 VRAM 충분, 청크 경계 최소화)
 RUN CFG="/app/Applio/rvc/configs/config.py" \
     && if [ -f "$CFG" ]; then \
-        python -c "import re,sys; f=sys.argv[1]; t=open(f).read(); t=re.sub(r'self\.x_pad\s*=\s*\d+','self.x_pad = 3',t); t=re.sub(r'self\.x_query\s*=\s*\d+','self.x_query = 10',t); t=re.sub(r'self\.x_center\s*=\s*\d+','self.x_center = 60',t); t=re.sub(r'self\.x_max\s*=\s*\d+','self.x_max = 65',t); open(f,'w').write(t); print('Applio config patched')" "$CFG" ; \
+        python -c "import re,sys; f=sys.argv[1]; t=open(f).read(); t=re.sub(r'self\.x_pad\s*=\s*\d+','self.x_pad = 3',t); t=re.sub(r'self\.x_query\s*=\s*\d+','self.x_query = 10',t); t=re.sub(r'self\.x_center\s*=\s*\d+','self.x_center = 90',t); t=re.sub(r'self\.x_max\s*=\s*\d+','self.x_max = 100',t); open(f,'w').write(t); print('Applio config patched: x_center=90, x_max=100')" "$CFG" ; \
     else echo "config.py not found, skipping patch" ; fi
+
+# v54: RMVPE 프레임 버퍼 패치 — 32프레임 제한→1.5초 컨텍스트
+# codename-rvc-fork 발견: RMVPE가 32프레임으로 제한 → 가성 피치 불안정 근본 원인
+# 94프레임 = 1.5초(16kHz, hop=256) 컨텍스트로 확대 → 피치 추적 안정화
+RUN RMVPE_PY=$(find /app/Applio -name "rmvpe.py" -path "*/lib/*" 2>/dev/null | head -1) && \
+    if [ -n "$RMVPE_PY" ] && [ -f "$RMVPE_PY" ]; then \
+        python -c " \
+import sys, re; \
+f = sys.argv[1]; t = open(f).read(); \
+# Expand any small hardcoded frame counts (32, 48) to 94 (~1.5s context) \
+t_new = re.sub(r'(n_frames|frame_size|buffer_size)\s*=\s*(32|48)\b', r'\1 = 94', t); \
+if t_new != t: \
+    open(f, 'w').write(t_new); print(f'RMVPE patched: frame buffer expanded to 94 in {f}'); \
+else: \
+    print(f'RMVPE frame buffer not found or already patched in {f}'); \
+" "$RMVPE_PY" ; \
+    else echo "rmvpe.py not found, skipping RMVPE patch" ; fi
 COPY --from=builder /app/torch_hub /app/torch_hub
 COPY --from=builder /app/models /app/models
 
