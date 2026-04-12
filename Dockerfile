@@ -275,13 +275,13 @@ RUN mkdir -p /app/Applio/rvc/models/embedders/spin \
     && ls -lh /app/Applio/rvc/models/embedders/spin/
 
 # -- Korean HuBERT Embedder (~380 MB) -- v54: 한국어 특화 임베더
-RUN mkdir -p /app/Applio/rvc/models/embedders/korean-hubert-base \
-    && wget -q -O /app/Applio/rvc/models/embedders/korean-hubert-base/pytorch_model.bin \
-       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/korean-hubert-base/pytorch_model.bin" \
-    && wget -q -O /app/Applio/rvc/models/embedders/korean-hubert-base/config.json \
-       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/korean-hubert-base/config.json" \
+RUN mkdir -p /app/Applio/rvc/models/embedders/korean_hubert_base \
+    && wget -q -O /app/Applio/rvc/models/embedders/korean_hubert_base/pytorch_model.bin \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/korean_hubert_base/pytorch_model.bin" \
+    && wget -q -O /app/Applio/rvc/models/embedders/korean_hubert_base/config.json \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/embedders/korean_hubert_base/config.json" \
     && echo "Korean HuBERT:" \
-    && ls -lh /app/Applio/rvc/models/embedders/korean-hubert-base/
+    && ls -lh /app/Applio/rvc/models/embedders/korean_hubert_base/
 
 # -- RMVPE Model (~170 MB) --
 RUN mkdir -p /app/Applio/rvc/models/predictors \
@@ -444,16 +444,7 @@ RUN CFG="/app/Applio/rvc/configs/config.py" \
 # 94프레임 = 1.5초(16kHz, hop=256) 컨텍스트로 확대 → 피치 추적 안정화
 RUN RMVPE_PY=$(find /app/Applio -name "rmvpe.py" -path "*/lib/*" 2>/dev/null | head -1) && \
     if [ -n "$RMVPE_PY" ] && [ -f "$RMVPE_PY" ]; then \
-        python -c " \
-import sys, re; \
-f = sys.argv[1]; t = open(f).read(); \
-# Expand any small hardcoded frame counts (32, 48) to 94 (~1.5s context) \
-t_new = re.sub(r'(n_frames|frame_size|buffer_size)\s*=\s*(32|48)\b', r'\1 = 94', t); \
-if t_new != t: \
-    open(f, 'w').write(t_new); print(f'RMVPE patched: frame buffer expanded to 94 in {f}'); \
-else: \
-    print(f'RMVPE frame buffer not found or already patched in {f}'); \
-" "$RMVPE_PY" ; \
+        python -c "import sys,re;f=sys.argv[1];t=open(f).read();t2=re.sub(r'(n_frames|frame_size|buffer_size)\s*=\s*(32|48)\b',r'\1 = 94',t);open(f,'w').write(t2);print('RMVPE patched' if t2!=t else 'RMVPE already ok')" "$RMVPE_PY" ; \
     else echo "rmvpe.py not found, skipping RMVPE patch" ; fi
 COPY --from=builder /app/torch_hub /app/torch_hub
 COPY --from=builder /app/models /app/models

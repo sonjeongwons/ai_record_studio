@@ -1224,7 +1224,7 @@ def task_train(job_input: dict, job: dict) -> dict:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    _VALID_EMBEDDERS = {"contentvec", "spin", "korean-hubert-base"}
+    _VALID_EMBEDDERS = {"contentvec", "spin", "korean_hubert_base"}
     if embedder_model not in _VALID_EMBEDDERS:
         log.warning(f"Invalid embedder '{embedder_model}', falling back to contentvec")
         embedder_model = "contentvec"
@@ -3032,7 +3032,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
         language = "auto"
     # v54: embedder_model — 학습 시 사용한 embedder와 동일해야 함
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    if embedder_model not in {"contentvec", "spin", "korean-hubert-base"}:
+    if embedder_model not in {"contentvec", "spin", "korean_hubert_base"}:
         embedder_model = "contentvec"
     # v49.7: f0_autotune을 job_input에서 받음 (하드코딩 제거)
     _autotune_raw = job_input.get("f0_autotune", True)
@@ -3586,7 +3586,7 @@ def _rvc_infer(
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
     f0_autotune_strength: float = 0.4,  # v53: 0.6→0.4 (비브라토 보존, 커뮤니티 최적값)
-    embedder_model: str = "contentvec",  # v54: spin, korean-hubert-base 선택 가능
+    embedder_model: str = "contentvec",  # v54: spin, korean_hubert_base 선택 가능
 ) -> None:
     """
     Run RVC v2 inference using Applio's pipeline.

@@ -2051,7 +2051,7 @@ async def start_training(
     batch_size: int = Form(8),         # v49.4: 6→8 (AI Hub 명확 권고: >30분=8, 44.9분 데이터)
     f0_method: str = Form("rmvpe"),
     pretrained_model: str = Form("klm49"),  # "klm49" 한국어 / "rin_e3" 다국어(팝송)
-    embedder_model: str = Form("contentvec"),  # v54: contentvec / spin / korean-hubert-base
+    embedder_model: str = Form("contentvec"),  # v54: contentvec / spin / korean_hubert_base
     file_ids: str = Form("")  # comma-separated
 ):
     if not runpod_client.is_configured():
@@ -2084,8 +2084,8 @@ async def start_training(
     if pretrained_model not in ("klm49", "rin_e3"):
         raise HTTPException(400, f"사전학습 모델은 klm49/rin_e3 중 하나여야 합니다. (입력: {pretrained_model})")
     # v54: embedder 모델 유효성 검사
-    if embedder_model not in ("contentvec", "spin", "korean-hubert-base"):
-        raise HTTPException(400, f"임베더 모델은 contentvec/spin/korean-hubert-base 중 하나여야 합니다. (입력: {embedder_model})")
+    if embedder_model not in ("contentvec", "spin", "korean_hubert_base"):
+        raise HTTPException(400, f"임베더 모델은 contentvec/spin/korean_hubert_base 중 하나여야 합니다. (입력: {embedder_model})")
 
     # 학습 파일 수집
     with get_db() as db:
