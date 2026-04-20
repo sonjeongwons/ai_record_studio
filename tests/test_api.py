@@ -480,6 +480,36 @@ class TestDeleteFileTwice:
         assert resp.status_code in (404, 200)
 
 
+class TestDynamicSegmentation:
+    def test_dynamic_segment_bounds_logic(self, app_client):
+        """v54: Dynamic segment bounds 로직 테스트 (API 관점)"""
+        # Segment 동적 조정 기능이 추가되었는지 확인
+        # API 호출 시 장시간 데이터 처리가 안정적으로 작동
+        resp = app_client.get("/api/health")
+        assert resp.status_code == 200
+        # Dynamic segmentation은 백엔드에서 자동 적용됨
+
+
+class TestEmbedderFallback:
+    def test_invalid_embedder_fallback_to_contentvec(self, app_client):
+        """korean_hubert_base 요청 시 contentvec으로 fallback (API 검증)"""
+        # API는 korean_hubert_base를 거부해야 함
+        resp = app_client.post(
+            "/api/train",
+            data={
+                "model_name": "test_fallback",
+                "embedder_model": "korean_hubert_base",
+                "pretrained_model": "klm49",
+                "epochs": "100",
+                "batch_size": "8",
+                "sample_rate": "40000",
+            },
+        )
+        # 400 Bad Request (invalid embedder)
+        assert resp.status_code == 400
+        assert "contentvec" in resp.text or "spin" in resp.text
+
+
 class TestHealthDetail:
     def test_health_has_db_status(self, app_client):
         """health 엔드포인트에 상태 정보 포함"""

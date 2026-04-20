@@ -55,6 +55,20 @@ sys.path.insert(0, str(APPLIO_ROOT))
 SEGMENT_MIN = 3.0
 SEGMENT_MAX = 12.0
 
+def _get_dynamic_segment_bounds(total_duration_sec: float) -> tuple[float, float]:
+    """
+    v54: Dynamically adjust segment bounds based on total training data duration.
+    - Short data (<10min): Keep smaller segments for stability
+    - Medium data (10-50min): Standard bounds
+    - Long data (>50min): Larger segments for efficiency
+    """
+    if total_duration_sec < 600:  # < 10 min
+        return (2.5, 10.0)  # Shorter segments
+    elif total_duration_sec < 3000:  # < 50 min
+        return (3.0, 12.0)  # Standard
+    else:  # >= 50 min
+        return (4.0, 15.0)  # Longer segments
+
 # Audio extensions that are already audio (no video extraction needed)
 AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wma"}
 VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv"}
@@ -306,25 +320,26 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         # --- Step 5b: LUFS 정규화 (-23 LUFS, 커뮤니티 학습 데이터 표준) ---
         # AI Hub 권장: "HiFi-GAN needs perceptual quality → LUFS normalization"
         # -23 LUFS = 학습 데이터 표준 (-14 LUFS는 변환 출력용)
-        runpod.serverless.progress_update(job, "Normalizing loudness (-23 LUFS)... (5.5/6)")
+        runpod.serverless.progress_update(job, "Peak normalizing vocal stems... (5.5/6)")
         normalized_paths = []
         for cp in cleaned_paths:
             norm_out = cp.with_suffix(".norm.wav")
             try:
-                run_ffmpeg([
-                    "-i", str(cp),
-                    "-af", "loudnorm=I=-23:TP=-1:LRA=11",
-                    "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
-                    str(norm_out),
-                ])
+                # Peak normalization: preserves natural dynamics better than loudnorm
+                import soundfile as sf
+                audio, sr = sf.read(str(cp))
+                peak = np.abs(audio).max()
+                if peak > 0:
+                    audio = audio * (0.89 / peak)  # -1 dBFS
+                sf.write(str(norm_out), audio, samplerate=sr, subtype="PCM_16")
                 if norm_out.exists() and norm_out.stat().st_size > 1000:
                     normalized_paths.append(norm_out)
                 else:
                     normalized_paths.append(cp)
             except Exception as norm_err:
-                log.warning(f"LUFS normalization failed for {cp.name}: {norm_err}")
+                log.warning(f"Peak normalization failed for {cp.name}: {norm_err}")
                 normalized_paths.append(cp)
-        log.info(f"LUFS normalization: {len(normalized_paths)} files at -23 LUFS")
+        log.info(f"Peak normalization: {len(normalized_paths)} vocal stems at -1 dBFS")
         cleaned_paths = normalized_paths
 
         # --- Step 5c: 학습 데이터 사전 디에싱 (v49.3) ---
@@ -999,7 +1014,8 @@ def _noise_reduce(audio_paths: list[Path], output_dir: Path) -> list[Path]:
 
 def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path], list[str]]:
     """
-    Split audio files into 3-12 second segments using silence detection.
+    Split audio files into segments using silence detection.
+    v54: Dynamic segment bounds based on total training data duration.
     Uses FFmpeg silencedetect to find natural split points,
     falling back to fixed-length splitting.
     Returns (segments, skipped_files) where skipped_files lists corrupted file names.
@@ -1010,6 +1026,20 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
     all_segments: list[Path] = []
     skipped_files: list[str] = []
     seg_idx = 0
+
+    # v54: Calculate total duration for dynamic segment bounds
+    total_data_duration = 0.0
+    for ap in audio_paths:
+        if ap.exists():
+            try:
+                duration = len(sf.read(str(ap), always_2d=False)[0]) / sf.info(str(ap)).samplerate
+                total_data_duration += duration
+            except:
+                pass
+
+    # Set dynamic bounds based on total data length
+    segment_min, segment_max = _get_dynamic_segment_bounds(total_data_duration)
+    log.info(f"v54 Dynamic segmentation: total_duration={total_data_duration:.1f}s, bounds=[{segment_min:.1f}, {segment_max:.1f}]s")
 
     for ap in audio_paths:
         # 원본 파일명에서 처리 접미사들을 모두 제거하여 소스 stem 추출
@@ -1031,9 +1061,9 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
         total_samples = len(audio_data)
         total_duration = total_samples / sr
 
-        if total_duration <= SEGMENT_MAX:
-            # File is already short enough, keep as-is if >= SEGMENT_MIN
-            if total_duration >= SEGMENT_MIN:
+        if total_duration <= segment_max:
+            # File is already short enough, keep as-is if >= segment_min
+            if total_duration >= segment_min:
                 out = output_dir / f"{source_stem}_seg_{seg_idx:04d}.wav"
                 sf.write(str(out), audio_data, samplerate=sr, subtype="FLOAT")
                 all_segments.append(out)
@@ -1224,9 +1254,9 @@ def task_train(job_input: dict, job: dict) -> dict:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    _VALID_EMBEDDERS = {"contentvec", "spin", "korean_hubert_base"}
+    _VALID_EMBEDDERS = {"contentvec", "spin"}  # korean_hubert_base disabled (Applio v3 incompatibility)
     if embedder_model not in _VALID_EMBEDDERS:
-        log.warning(f"Invalid embedder '{embedder_model}', falling back to contentvec")
+        log.warning(f"Embedder '{embedder_model}' not supported or unavailable, falling back to contentvec")
         embedder_model = "contentvec"
     # pretrained 모델 선택: "klm49" (한국어) 또는 "rin_e3" (다국어/팝송)
     pretrained_model: str = job_input.get("pretrained_model", "klm49")
@@ -1943,11 +1973,20 @@ def _rvc_extract(
     # Check feature extraction (most common silent failure point)
     if not extracted_dir.exists() or not any(extracted_dir.glob("*.npy")):
         npy_count = len(list(extracted_dir.glob("*.npy"))) if extracted_dir.exists() else 0
-        raise RuntimeError(
-            f"Feature extraction failed: extracted/ has {npy_count} .npy files. "
-            f"This usually means the embedder model ({embedder_model}) failed to load. "
-            f"Check that transformers is compatible with the installed PyTorch version."
-        )
+        # Provide actionable error message
+        error_msg = f"Feature extraction failed: extracted/ has {npy_count} .npy files.\n"
+        error_msg += f"Embedder model '{embedder_model}' failed to load.\n\n"
+        error_msg += "💡 해결책:\n"
+        if embedder_model == "korean_hubert_base":
+            error_msg += f"  1. 임베더를 'contentvec' 또는 'spin'으로 변경해보세요 (더 안정적)\n"
+            error_msg += f"  2. transformers 라이브러리 호환성 확인\n"
+            error_msg += f"  3. RunPod 메모리 부족 가능성 (CUDA OOM)\n"
+            error_msg += f"  4. Docker 이미지가 korean_hubert_base를 캐시하고 있는지 확인\n"
+        else:
+            error_msg += f"  1. 임베더를 'contentvec'으로 변경해보세요 (가장 안정적)\n"
+            error_msg += f"  2. PyTorch와 transformers 버전 호환성 확인\n"
+        error_msg += f"\nRunPod 로그에서 'embedder', 'transformer', 'CUDA' 에러 메시지를 확인하세요."
+        raise RuntimeError(error_msg)
     else:
         npy_count = len(list(extracted_dir.glob("*.npy")))
         log.info(f"Feature extraction OK: {npy_count} .npy files in extracted/")
@@ -3031,8 +3070,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     if language not in ("ko", "en", "auto"):
         language = "auto"
     # v54: embedder_model — 학습 시 사용한 embedder와 동일해야 함
+    # korean_hubert_base disabled (Applio v3 incompatibility)
     embedder_model: str = job_input.get("embedder_model", "contentvec")
-    if embedder_model not in {"contentvec", "spin", "korean_hubert_base"}:
+    if embedder_model not in {"contentvec", "spin"}:
         embedder_model = "contentvec"
     # v49.7: f0_autotune을 job_input에서 받음 (하드코딩 제거)
     _autotune_raw = job_input.get("f0_autotune", True)
@@ -3615,7 +3655,7 @@ def _rvc_infer(
             index_path=index_str,
             split_audio=split_audio,
             f0_autotune=f0_autotune,              # v49: True (노래 변환 피치 안정화)
-            f0_autotune_strength=f0_autotune_strength,  # v49.8: 0.3 (이중 스무딩→비음 완화)
+            f0_autotune_strength=f0_autotune_strength,  # v54: 0.4 (비브라토 보존, 커뮤니티 최적값)
             proposed_pitch=False,
             proposed_pitch_threshold=155.0,
             clean_audio=clean_audio,

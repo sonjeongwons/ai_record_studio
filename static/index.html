@@ -3062,11 +3062,10 @@ input[type="range"]::-moz-range-track {
           </select>
         </div>
         <div>
-          <label for="train-embedder" style="font-size:13px;color:var(--text2)">임베더 모델 <i class="tip" data-tip="AI가 목소리 특징을 추출하는 방식입니다.\n\n🔢 선택 가이드:\n• ContentVec = 기본값, 안정적 (대부분의 경우 추천)\n• Spin V2 = 발음 선명도 개선 (ContentVec 대비 발음/자음 분리 향상)\n• Korean HuBERT = 한국어 특화 (한국어 비음/자음 최적화)\n\n⚠️ 중요: 학습할 때 선택한 임베더와 변환할 때 사용하는 임베더가 반드시 같아야 합니다!\n다른 임베더로 학습한 모델은 호환되지 않습니다.\n\n💡 처음엔 ContentVec으로 학습하고, 결과가 불만족이면 Spin V2로 재학습해보세요.">ⓘ</i></label>
+          <label for="train-embedder" style="font-size:13px;color:var(--text2)">임베더 모델 <i class="tip" data-tip="AI가 목소리 특징을 추출하는 방식입니다.\n\n🔢 선택 가이드:\n• ContentVec = 기본값, 안정적 (대부분의 경우 추천)\n• Spin V2 = 발음 선명도 개선 (발음/자음 분리 향상)\n\n⚠️ 중요: 학습할 때 선택한 임베더와 변환할 때 사용하는 임베더가 반드시 같아야 합니다!\n다른 임베더로 학습한 모델은 호환되지 않습니다.\n\n💡 처음엔 ContentVec으로 학습하고, 결과가 불만족이면 Spin V2로 재학습해보세요.">ⓘ</i></label>
           <select id="train-embedder">
             <option value="contentvec" selected>ContentVec — 기본 (안정적, 범용)</option>
             <option value="spin">Spin V2 — 발음 선명도 개선 (A/B 테스트 권장)</option>
-            <option value="korean_hubert_base">Korean HuBERT — 한국어 특화 (실험적)</option>
           </select>
         </div>
       </div>

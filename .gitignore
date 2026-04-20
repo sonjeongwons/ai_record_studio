@@ -59,3 +59,14 @@ logs/
 # ── Bundled binaries (download separately, too large for git) ──
 tools/ffmpeg.exe
 tools/ffprobe.exe
+
+# ── Audio files (too large, not needed in git) ──
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.ogg
+*.aac
+mp3record/
+mixed_*.wav
+converted_*.wav
