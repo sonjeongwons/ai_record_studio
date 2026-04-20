@@ -51,10 +51,6 @@ PRETRAINED_DIR = APPLIO_ROOT / "rvc" / "models" / "pretraineds"
 # Applio를 import path에 추가
 sys.path.insert(0, str(APPLIO_ROOT))
 
-# Segment duration bounds (seconds) — optimal for RVC training
-SEGMENT_MIN = 3.0
-SEGMENT_MAX = 12.0
-
 def _get_dynamic_segment_bounds(total_duration_sec: float) -> tuple[float, float]:
     """
     v54: Dynamically adjust segment bounds based on total training data duration.
@@ -248,23 +244,23 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
         for rp in raw_paths:
             ext = rp.suffix.lower()
             if ext in VIDEO_EXTS:
-                # Extract audio track to WAV 44.1kHz mono
+                # Extract audio track to WAV mono, preserve source SR (Demucs resamples internally)
                 out_wav = audio_dir / (rp.stem + ".wav")
                 run_ffmpeg([
                     "-i", str(rp),
                     "-vn", "-acodec", "pcm_s16le",
-                    "-ar", "44100", "-ac", "1",
+                    "-ac", "1",
                     str(out_wav),
                 ])
                 audio_paths.append(out_wav)
                 log.info(f"Extracted audio from video: {rp.name} -> {out_wav.name}")
             elif ext in AUDIO_EXTS:
-                # Convert to consistent WAV format
+                # Convert to consistent WAV mono, preserve source SR
                 out_wav = audio_dir / (rp.stem + ".wav")
                 run_ffmpeg([
                     "-i", str(rp),
                     "-acodec", "pcm_s16le",
-                    "-ar", "44100", "-ac", "1",
+                    "-ac", "1",
                     str(out_wav),
                 ])
                 audio_paths.append(out_wav)
@@ -329,9 +325,9 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                 import soundfile as sf
                 audio, sr = sf.read(str(cp))
                 peak = np.abs(audio).max()
-                if peak > 0:
+                if peak > 1e-10:
                     audio = audio * (0.89 / peak)  # -1 dBFS
-                sf.write(str(norm_out), audio, samplerate=sr, subtype="PCM_16")
+                sf.write(str(norm_out), audio, samplerate=sr, subtype="PCM_24")  # v55: PCM_16→PCM_24 (정밀도 보존)
                 if norm_out.exists() and norm_out.stat().st_size > 1000:
                     normalized_paths.append(norm_out)
                 else:
@@ -355,7 +351,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                     "-i", str(cp),
                     "-af",
                     "equalizer=f=8500:width_type=o:width=0.3:g=-1.0",
-                    "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
+                    "-acodec", "pcm_s16le", "-ac", "1",
                     str(de_out),
                 ])
                 if de_out.exists() and de_out.stat().st_size > 1000:
@@ -398,7 +394,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                     "-i", str(seg_path),
                     "-acodec", "flac",
                     "-compression_level", "8",   # max FLAC compression (CPU intensive but smaller)
-                    "-ar", "44100", "-ac", "1",
+                    "-ac", "1",
                     str(flac_path),
                 ])
                 encode_path = flac_path
@@ -423,7 +419,6 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                     "-i", str(accomp_path),
                     "-acodec", "flac",
                     "-compression_level", "8",
-                    "-ar", "44100", "-ac", "2",
                     str(flac_path),
                 ])
                 encode_path = flac_path
@@ -445,7 +440,7 @@ def task_preprocess(job_input: dict, job: dict) -> dict:
                     "-i", str(vp),
                     "-acodec", "flac",
                     "-compression_level", "8",
-                    "-ar", "44100", "-ac", "1",
+                    "-ac", "1",
                     str(flac_path),
                 ])
                 encode_path = flac_path
@@ -751,7 +746,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                     # Save vocals as MONO (RVC requires mono input)
                     vocal_wav = output_dir / f"{audio_path.stem}_vocals.wav"
                     vocal_np = _to_mono(separated["vocals"].cpu().numpy())
-                    # FLOAT: Demucs float32 출력을 그대로 보존 (PCM_16 대비 양자화 손실 제거)
+                    # htdemucs_6s 모델 출력은 항상 44.1kHz — 소스 SR과 무관
                     sf.write(str(vocal_wav), vocal_np, samplerate=44100, subtype="FLOAT")
                     vocal_paths.append(vocal_wav)
 
@@ -766,7 +761,7 @@ def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
                         accomp_np = _safe_sum_stems(mr_stems)
                         accomp_wav = output_dir / f"{audio_path.stem}_accompaniment.wav"
                         # Transpose [channels, samples] → [samples, channels] for soundfile
-                        # FLOAT: 반주 트랙도 float32 보존 (믹싱 시 최대 다이나믹레인지)
+                        # FLOAT: 반주 트랙도 float32 보존 (믹싱 시 최대 다이나믹레인지), htdemucs_6s=44.1kHz
                         sf.write(str(accomp_wav), accomp_np.T, samplerate=44100, subtype="FLOAT")
                         accomp_paths.append(accomp_wav)
 
@@ -1032,10 +1027,10 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
     for ap in audio_paths:
         if ap.exists():
             try:
-                duration = len(sf.read(str(ap), always_2d=False)[0]) / sf.info(str(ap)).samplerate
-                total_data_duration += duration
-            except:
-                pass
+                _info = sf.info(str(ap))                # sf.info()만 사용 (sf.read() 대비 메모리 절약)
+                total_data_duration += _info.frames / _info.samplerate
+            except Exception as _e:
+                log.debug(f"Duration read failed for {ap.name}: {_e}")
 
     # Set dynamic bounds based on total data length
     segment_min, segment_max = _get_dynamic_segment_bounds(total_data_duration)
@@ -1080,13 +1075,13 @@ def _segment_audio(audio_paths: list[Path], output_dir: Path) -> tuple[list[Path
         split_points = _detect_silence_splits(str(ap), sr, total_duration)
 
         if not split_points:
-            # Fallback: fixed 10-second segments
+            # Fallback: fixed-length segments using dynamic bounds (v55: 10s 하드코딩 제거)
             split_points = []
             pos = 0.0
             while pos < total_duration:
-                end = min(pos + 10.0, total_duration)
+                end = min(pos + segment_max, total_duration)
                 remaining = end - pos
-                if remaining >= 2.0:
+                if remaining >= segment_min:
                     split_points.append((pos, end))
                 elif remaining > 0 and split_points:
                     # Merge short tail into preceding segment to avoid data loss
@@ -1387,7 +1382,7 @@ def task_train(job_input: dict, job: dict) -> dict:
                 # (WAV/FLAC/AIFF 등 무손실 소스는 그대로 — lowpass 불필요)
                 if f.suffix.lower() in {".mp3", ".m4a", ".aac", ".wma", ".ogg"}:
                     af_chain = (
-                        "highpass=f=60:poles=2,"          # 60Hz 이하 럼블 제거
+                        "highpass=f=80:poles=2,"          # v55: 60→80Hz (파열음 에너지 제어, 보컬 F0 85Hz+ 보존)
                         "lowpass=f=15500:poles=2,"         # MP3 HF 아티팩트 제거 (15.5kHz 이상 차단)
                         f"aresample=resampler=soxr:precision=28:osr={sample_rate}"
                     )
@@ -1684,7 +1679,7 @@ def _rvc_preprocess(
                 run_ffmpeg([
                     "-i", str(sp),
                     "-af", (
-                        "highpass=f=50:poles=2,"
+                        "highpass=f=80:poles=2,"          # v55: 50→80Hz (보컬 파이프라인과 통일)
                         f"aresample=resampler=soxr:precision=28:osr={sample_rate}"
                     ),
                     "-ac", "1",
@@ -1738,7 +1733,7 @@ def _rvc_preprocess(
                 run_ffmpeg([
                     "-i", str(sp),
                     "-af", (
-                        "highpass=f=50:poles=2,"
+                        "highpass=f=80:poles=2,"          # v55: 50→80Hz (파이프라인 통일)
                         "aresample=resampler=soxr:precision=28:osr=16000"
                     ),
                     "-ac", "1",
@@ -2490,6 +2485,7 @@ def _post_process_vocal(
     filters.append("highpass=f=80:poles=2")
 
     # ━━━ 2. 언어별 EQ (v49: 한/영 분리) ━━━
+    # v55: 언어별 5kHz 컷 제거 (공통 EQ와 중복 → -1.8dB 과다 감쇄 원인)
     if language == "ko":
         # 한국어: 300Hz/600Hz EQ 없음 (비음 ㄴ/ㅁ/ㅇ 포먼트 보호)
         pass
@@ -2497,34 +2493,26 @@ def _post_process_vocal(
         # 영어: 경미한 저역 감쇄만 (발음 명료도 유지)
         filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
         filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.3")
-        # 영어 치찰음은 4-6kHz에 집중 (s/sh/ch)
-        filters.append("equalizer=f=5000:width_type=o:width=0.5:g=-0.8")
     else:
-        # auto/기타: 영어 기본 + 비음 컷 (안전한 기본)
+        # auto/기타: 영어 기본값 (안전한 기본)
         filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
         filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.3")
-        filters.append("equalizer=f=5000:width_type=o:width=0.5:g=-0.8")
 
     # ━━━ 2b. HiFi-GAN 보코더 부밍 억제 (공통) ━━━
-    # v54: 800Hz -1.5dB (분석: 500-2kHz +3.1dB 부밍, 보코더 에너지 집중 대역)
-    # comethru 분석: 500-2kHz만 증폭(+3.1dB), 나머지 감쇄 → "박스형" 소리 원인
-    filters.append("equalizer=f=800:width_type=o:width=1.0:g=-1.5")
-    # 1.2kHz -0.5dB (비음 공명)
-    filters.append("equalizer=f=1200:width_type=o:width=0.4:g=-0.5")
+    # v55: -1.5→-1.0dB (부밍 억제하되 발음 명료도 보존)
+    filters.append("equalizer=f=800:width_type=o:width=1.0:g=-1.0")
+    # 1.2kHz 컷 제거 (v55: 발음 F3 포먼트 대역 — 과도한 발음 뭉개짐 원인)
 
     # ━━━ 3. HiFi-GAN 금속음/치찰음 감쇄 (공통) ━━━
-    # v54: v53 대비 감쇄량 축소 (v53이 8-16kHz -7~-12dB 과도 손실 유발)
-    # 5kHz -1.0dB (v53: -1.5 → 고역 과삭제 방지)
-    filters.append("equalizer=f=5000:width_type=o:width=0.6:g=-1.0")
-    # 8kHz -0.5dB (v53: -0.8 → 공기감 보존)
-    filters.append("equalizer=f=8000:width_type=o:width=0.3:g=-0.5")
+    # v55: 5kHz -0.7dB (v54: -1.0dB — 언어별 컷과 합산 시 -1.8dB 과다)
+    filters.append("equalizer=f=5000:width_type=o:width=0.6:g=-0.7")
+    # 8kHz 컷 제거 (v55: 디에서로 충분히 커버, 공기감 손실 방지)
 
     # ━━━ 3b. 디에서 (공통) ━━━
-    # v54: v53 대비 보수적 (v53이 6.5kHz -2.0dB → 고역 과도 손실의 주범)
-    # Stage 1: 좁은 대역으로 치찰음 피크만 타겟 (v53: -2.0→-1.0dB, width 1.2→0.8)
+    # Stage 1: 좁은 대역으로 치찰음 피크만 타겟
     filters.append("equalizer=f=6500:width_type=o:width=0.8:g=-1.0")
-    # Stage 2: 9kHz 아티팩트 (유지하되 축소)
-    filters.append("equalizer=f=9000:width_type=o:width=0.5:g=-0.5")
+    # Stage 2: 9kHz 아티팩트 (v55: -0.5→-0.3dB, 과도한 고역 손실 방지)
+    filters.append("equalizer=f=9000:width_type=o:width=0.5:g=-0.3")
 
     # ━━━ 3c. Air band 복원 (공통) ━━━
     # v54: 분석 결과 8-16kHz가 -3~-12dB 손실 → 발음 불명확, 기계음의 핵심 원인
@@ -2558,59 +2546,50 @@ def _post_process_vocal(
         str(_eq_tmp),
     ])
 
-    # ━━━ 8. 2-pass Loudness 노멀라이즈 (EBU R128, -14 LUFS) ━━━
-    # v36: 단일 패스 loudnorm linear=true는 측정 데이터 없이 비선형 폴백됨
-    # 2-pass: Pass 1에서 측정 → Pass 2에서 선형 적용 → 다이나믹 레인지 완벽 보존
+    # ━━━ 8. 보컬 피크 정규화 (-1 dBFS, v55) ━━━
+    # v55: 2-pass loudnorm → 피크 정규화로 단순화
+    # 믹스 단계의 LUFS 매칭이 최종 레벨을 담당하므로 보컬에서 loudnorm은 이중 적용
+    # 피크 정규화 = 다이나믹 레인지 100% 보존 + 클리핑만 방지 (자연스러운 다이나믹 유지)
     try:
-        import subprocess as _sp
-        import json as _json
-        # Pass 1: 측정
-        _measure_cmd = [
+        import subprocess as _sp_pk
+        import json as _json_pk
+        _pk_cmd = [
             "ffmpeg", "-i", str(_eq_tmp), "-hide_banner",
-            "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
+            "-af", "volumedetect",
             "-f", "null", "-"
         ]
-        _measure = _sp.run(_measure_cmd, capture_output=True, text=True, timeout=120)
-        # loudnorm JSON은 stderr 마지막에 출력됨
-        _stderr = _measure.stderr
-        _json_start = _stderr.rfind("{")
-        _json_end = _stderr.rfind("}") + 1
-        if _json_start >= 0 and _json_end > _json_start:
-            _stats = _json.loads(_stderr[_json_start:_json_end])
-            # Pass 2: 측정값으로 선형 노멀라이즈
-            _ln_filter = (
-                f"loudnorm=I=-14:TP=-1:LRA=11:linear=true"
-                f":measured_I={_stats['input_i']}"
-                f":measured_LRA={_stats['input_lra']}"
-                f":measured_TP={_stats['input_tp']}"
-                f":measured_thresh={_stats['input_thresh']}"
-            )
+        _pk_run = _sp_pk.run(_pk_cmd, capture_output=True, text=True, timeout=120)
+        _pk_stderr = _pk_run.stderr
+        _max_vol_line = [l for l in _pk_stderr.splitlines() if "max_volume" in l]
+        if _max_vol_line:
+            _max_vol_db = float(_max_vol_line[0].split("max_volume:")[1].split("dB")[0].strip())
+            # -1 dBFS 타겟 — max_vol이 이미 <= -1dB이면 건드리지 않음
+            _gain_db = min(0.0, -1.0 - _max_vol_db)
+            _peak_filter = f"volume={_gain_db:.2f}dB" if _gain_db != 0.0 else "anull"
             run_ffmpeg([
                 "-i", str(_eq_tmp),
-                "-af", _ln_filter,
+                "-af", _peak_filter,
                 "-acodec", "pcm_s24le",
                 "-ar", str(sample_rate),
                 str(output_path),
             ])
             _eq_tmp.unlink(missing_ok=True)
-            log.info(f"2-pass loudnorm applied: {_stats['input_i']} → -14 LUFS")
+            log.info(f"Peak normalization: max_vol={_max_vol_db:.1f}dB, gain={_gain_db:.2f}dB → -1dBFS")
         else:
-            # 측정 실패 시 EQ 결과를 그대로 사용
             _eq_tmp.rename(output_path)
-            log.warning("loudnorm measurement failed, using EQ output as-is")
-    except Exception as _ln_err:
-        # loudnorm 전체 실패 시 EQ 결과를 그대로 사용
+            log.warning("volumedetect failed, using EQ output as-is")
+    except Exception as _pk_err:
         if _eq_tmp.exists():
             if not output_path.exists():
                 _eq_tmp.rename(output_path)
             else:
                 _eq_tmp.unlink(missing_ok=True)
-        log.warning(f"2-pass loudnorm failed: {_ln_err}, using EQ output")
+        log.warning(f"Peak normalization failed: {_pk_err}, using EQ output")
 
     log.info(
-        f"Vocal post-processed v54 → {output_path.name} "
+        f"Vocal post-processed v55 → {output_path.name} "
         f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
-        f"filters={len(filters)}, loudnorm=2pass)"
+        f"filters={len(filters)}, peak_norm=-1dBFS)"
     )
 
 
@@ -2720,7 +2699,7 @@ def _mix_audio(
         if original_audio_path and original_audio_path.exists():
             _orig_cmd = [
                 "ffmpeg", "-i", str(original_audio_path), "-hide_banner",
-                "-af", "loudnorm=I=-14:TP=-1:LRA=11:print_format=json",
+                "-af", "loudnorm=I=-14:TP=-1:LRA=20:print_format=json",
                 "-f", "null", "-"
             ]
             _orig_run = _sp_mix.run(_orig_cmd, capture_output=True, text=True, timeout=120)
@@ -2737,7 +2716,7 @@ def _mix_audio(
         # 2) 현재 믹스 LUFS 측정
         _measure_cmd = [
             "ffmpeg", "-i", str(output_path), "-hide_banner",
-            "-af", f"loudnorm=I={_target_lufs:.1f}:TP=-1:LRA=11:print_format=json",
+            "-af", f"loudnorm=I={_target_lufs:.1f}:TP=-1:LRA=20:print_format=json",
             "-f", "null", "-"
         ]
         _measure = _sp_mix.run(_measure_cmd, capture_output=True, text=True, timeout=120)
@@ -2750,7 +2729,7 @@ def _mix_audio(
 
             # 3) 2-pass 선형 정규화 (원곡 LUFS 타겟)
             _ln_filter = (
-                f"loudnorm=I={_target_lufs:.1f}:TP=-1:LRA=11:linear=true"
+                f"loudnorm=I={_target_lufs:.1f}:TP=-1:LRA=20:linear=true"
                 f":measured_I={_stats['input_i']}"
                 f":measured_LRA={_stats['input_lra']}"
                 f":measured_TP={_stats['input_tp']}"
