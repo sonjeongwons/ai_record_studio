@@ -123,6 +123,7 @@
 - 장이정 학습용 데이터 (1) — 20분, 혼합 (보컬 12분 + MR 8분, Demucs 분리 필요)
 
 ## Detailed Memories
+- [feedback_model_selection.md](feedback_model_selection.md) — **분석/설계=Opus, 코딩/구현=Sonnet 무조건 (예외 없음)**
 - [feedback_no_unnecessary_questions.md](feedback_no_unnecessary_questions.md) — 인프라 질문 금지
 - [feedback_harness_engineering.md](feedback_harness_engineering.md) — 하네스 엔지니어링 + Full Agent Team 모드
 - [project_v13_pipeline_fixes.md](project_v13_pipeline_fixes.md) — v29 기계음 원인 + v13 수정
