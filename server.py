@@ -2533,15 +2533,15 @@ async def reset_preprocess_selected(file_ids: str = Form("")):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.45),   # v51: 0.55→0.45 (발음 명료도 우선)
+    index_rate: float = Form(0.50),   # v55: 0.45→0.50 (CLAUDE.md v55 동기화)
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.40),        # v49: 0.33→0.40 (과도한 자음 보호 완화→인덱스 정확도 향상)
-    rms_mix_rate: float = Form(0.20),   # v53: 0.1→0.20 (원곡 음량 패턴 20% 반영, 균일성 강화)
-    filter_radius: int = Form(3),       # v53: 2→3 (가성 안정화, median 3 필요)
+    protect: float = Form(0.50),        # v57: 0.40→0.50 (파열음/치찰음 보호 강화, 분석 결과)
+    rms_mix_rate: float = Form(0.15),   # v55: 0.20→0.15 (CLAUDE.md v55 동기화)
+    filter_radius: int = Form(2),       # v55: 3→2 (CLAUDE.md v55 동기화)
     hop_length: int = Form(128),        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     post_reverb: float = Form(0.0),     # v41: 리버브 비활성 기본
     harmonic_enhance: str = Form("false"),
@@ -2552,7 +2552,7 @@ async def start_conversion(
     vocal_blend: float = Form(0.0),    # v45: 0% (더블링 원인 제거)
     language: str = Form("auto"),      # v49: 한/영 EQ 분리 (ko/en/auto)
     f0_autotune: str = Form("true"),   # v49: 노래 피치 안정화 (true/false)
-    f0_autotune_strength: float = Form(0.4),  # v53: 0.6→0.4 (비브라토 보존, 커뮤니티 최적값)
+    f0_autotune_strength: float = Form(0.2),  # v57: 0.4→0.2 (피치 상방편향 +2~3반음 교정)
     embedder_model: str = Form("contentvec"),  # v54: 학습 시 사용한 embedder와 동일하게
     audio: UploadFile = File(...)
 ):

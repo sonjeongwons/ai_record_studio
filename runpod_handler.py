@@ -2517,8 +2517,8 @@ def _post_process_vocal(
     # ━━━ 3c. Air band 복원 (공통) ━━━
     # v54: 분석 결과 8-16kHz가 -3~-12dB 손실 → 발음 불명확, 기계음의 핵심 원인
     # 보코더가 생성하지 못하는 고역을 약간 부스트하여 자연스러움 복원
-    # +1.5dB 하이셸프 (10kHz 이상) — 공기감/숨소리/자음 명확도 복원
-    filters.append("highshelf=f=10000:width_type=o:width=0.7:g=1.5")
+    # +0.8dB 하이셸프 (10kHz 이상) — 공기감 복원 (v57: 1.5→0.8, Monster/Breaking 5kHz+ 1.4x 과다 해소)
+    filters.append("highshelf=f=10000:width_type=o:width=0.7:g=0.8")
 
     # ━━━ 6. 리버브 (선택적) ━━━
     # v45: 8탭→4탭, decay 0.88→0.55 (더블링/코러스 효과 제거)
