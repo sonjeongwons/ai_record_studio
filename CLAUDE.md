@@ -31,7 +31,7 @@
 | CI/CD | GitHub Actions (Docker 빌드 + pytest) |
 | 정적분석 | ruff (린터) + bandit (보안) |
 
-## 3. 현재 상태 (2026-04-23)
+## 3. 현재 상태 (2026-04-24)
 
 - ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **50/50 통과**
 - ✅ RunPod Serverless Handler 구현 완료
@@ -50,7 +50,8 @@
   - f0_autotune_strength: 0.4→0.2 (피치 상방편향 +2~3반음 교정)
   - protect: 0.40→0.50 (파열음 70회/치찰음 3.4% 개선)
   - highshelf 10kHz: +1.5→+0.8dB (Monster/Breaking 고역 1.4x 과다 해소)
-  - server.py 기본값 5개 CLAUDE.md v55와 동기화 완료
+  - server.py + index.html 기본값/프리셋 전면 동기화 완료 (2026-04-24)
+  - GHA Docker 캐시 손상 수정 (scope v2→v3, invalid JSON 에러 해결)
 - ⚠️ **CVE-2025-32434**: PyTorch 2.1.0 RCE — 2.6.0+ 업그레이드 예정
 
 ## 4. 변환 파라미터 (v55 — 최신)
