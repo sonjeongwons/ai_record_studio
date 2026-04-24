@@ -2996,16 +2996,16 @@ input[type="range"]::-moz-range-track {
       <div style="margin-bottom:16px;padding:12px 14px;border-radius:8px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.2)">
         <div style="font-size:12px;font-weight:600;color:#10b981;margin-bottom:8px">✅ 자연스러운 목소리를 위한 권장 설정</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:var(--text2)">
-          <div>• <b>데이터 10분 이하</b>: 에폭 100~150, 40kHz</div>
-          <div>• <b>데이터 10~25분</b>: 에폭 100~150</div>
-          <div>• <b>데이터 25~60분</b>: 에폭 150 (기본값, 과적합 주의)</div>
-          <div>• <b>스튜디오 녹음 60분+</b>: 에폭 150~200</div>
+          <div>• <b>데이터 10분 이하</b>: 에폭 70~75, 40kHz</div>
+          <div>• <b>데이터 10~25분</b>: 에폭 75~100</div>
+          <div>• <b>데이터 25~60분</b>: 에폭 75~150 (기본 75, 과적합 주의)</div>
+          <div>• <b>스튜디오 녹음 60분+</b>: 에폭 100~150</div>
         </div>
         <div style="margin-top:8px;font-size:11px;color:var(--text3)">
           🎯 <b>노래 데이터 최소 30분+</b>: 대화 데이터는 20% 이하로. 노래만 30분 이상이 자연스러운 결과의 핵심.<br>
           🎤 <b>음역 다양성</b>: 고음/저음/가성/흉성 등 다양한 음역이 포함되어야 합니다. 모델은 학습하지 않은 음역을 재현할 수 없습니다.<br>
           🫁 <b>숨소리 보존</b>: 숨소리를 제거하지 마세요! 숨소리 없는 데이터는 기계음의 원인입니다.<br>
-          📊 <b>체크포인트 비교 필수</b>: 매 10에폭마다 모델이 저장됩니다. 50~300 범위에서 여러 체크포인트를 반드시 비교 청취하세요.<br>
+          📊 <b>체크포인트 비교 필수</b>: 매 10에폭마다 모델이 저장됩니다. 50~150 범위에서 여러 체크포인트를 반드시 비교 청취하세요.<br>
           ⚠️ <b>대화 데이터 주의</b>: 대화(인터뷰/팟캐스트)는 보충용으로만. 50% 이상이면 노래 품질이 심각하게 저하됩니다.<br>
           🔧 <b>전처리 자동화</b>: 무음 세그먼트 자동 제거 + -23 LUFS 정규화가 자동 적용됩니다.
         </div>
@@ -3042,7 +3042,7 @@ input[type="range"]::-moz-range-track {
           <label class="label">배치 사이즈 <i class="tip" data-tip="AI가 한 번에 처리하는 데이터 묶음 크기입니다.\n\n🔢 추천:\n• 자동 = GPU 최적화 (권장!)\n• 8 = '메모리 부족' 오류 발생 시\n• 16 = 30% 빠름 / 24 = 50% 빠름 (고사양 GPU 전용)\n\n⚠️ 잘 모르면 '자동'으로 두세요.\n💰 배치가 클수록 학습 속도가 빨라져 비용이 절감됩니다.">ⓘ</i></label>
           <select id="train-batch" onchange="estimateTrainingCost()">
             <option value="4">4 (30분 이하 데이터)</option>
-            <option value="8" selected>8 (v49 권장 · 30분+ 데이터에 안정적)</option>
+            <option value="8" selected>8 (v57 기본 · 30분+ 데이터에 안정적)</option>
             <option value="16">16 (대규모 데이터 · 30% 빠름)</option>
             <option value="0">자동 (GPU가 알아서 최적화)</option>
           </select>
@@ -3263,7 +3263,7 @@ input[type="range"]::-moz-range-track {
       </div>
       <div class="slider-group">
         <div class="slider-header">
-          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.20 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.25~0.45 = 자연스러운 AI 목소리 (기본값 0.45)\n• 0.50~0.65 = 강한 AI 적용 (한국어 발음 정확도↑)\n• 0.70~1.0 = 최대 AI (아티팩트 주의)\n\n💡 한국어 0.55, 영어 0.35 프리셋 권장.">ⓘ</i></span>
+          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.20 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.25~0.45 = 자연스러운 AI 목소리\n• 0.50~0.65 = 강한 AI 적용 (기본값 0.50, 한국어 발음 정확도↑)\n• 0.70~1.0 = 최대 AI (아티팩트 주의)\n\n💡 기본 0.50 권장. 화음/듀엣곡은 0.20~0.35로 낮추세요.">ⓘ</i></span>
           <span class="slider-value" id="index-val">0.50</span>
         </div>
         <input type="range" id="index-slider" min="0" max="100" value="50" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
@@ -3287,7 +3287,7 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('english')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="영어/팝 노래 최적화 — index 0.35, language=en 치찰음 EQ. 팝, 인디, R&B 권장">
               🌍 영어/팝송
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('falsetto')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(245,158,11,0.4);color:#fbbf24" title="가성·고음이 많은 노래에 최적화된 설정. 자연스러운 고음을 위해 protect↑, filter↓, hop_length↓ 조절">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('falsetto')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(245,158,11,0.4);color:#fbbf24" title="가성·고음이 많은 노래에 최적화된 설정. 고음모드 ON, protect 0.50, filter 2, hop 128">
               🎤 가성/고음 최적화
             </button>
             <button class="btn btn-ghost" onclick="applyConvertPreset('natural')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(16,185,129,0.4);color:#10b981" title="자연스럽고 원본에 가까운 변환. 원본 질감을 최대한 보존">
@@ -3305,10 +3305,10 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('chorus_v2')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(251,146,60,0.4);color:#fb923c" title="화음/그룹 곡 v2 — 발음 선명도 최우선. index 0.15, filter 5 (기다릴게 최적화)">
               🎤 화음 v2 (발음선명)
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 — protect 0.45 여성 timbre 보호 (comethru 최적화)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 — protect 0.50, lang en, filter 3 (comethru 최적화)">
               👫 남녀 듀엣곡
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('high_range')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(239,68,68,0.4);color:#ef4444" title="고음/음역 불일치 전용 — pitch -3 권장 (-5는 과도), protect↓, filter↑ (플레이브·BTS 고음곡)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('high_range')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(239,68,68,0.4);color:#ef4444" title="고음/음역 불일치 전용 — pitch -3, 고음모드 ON, protect 0.50, filter 2 (플레이브·BTS 고음곡)">
               🔥 고음곡 전용
             </button>
           </div>
@@ -3357,23 +3357,23 @@ input[type="range"]::-moz-range-track {
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.35 = 기본값 (자음 보호 + 자연스러운 전환)\n• 0.35~0.50 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.30 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.35~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.35에서 조금씩 낮추기">ⓘ</i></span>
+              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.50 = 기본값 v57 (자음·가성 최대 보호)\n• 0.35~0.49 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.30 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.40~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.35에서 조금씩 낮추기">ⓘ</i></span>
               <span class="slider-value" id="protect-val">0.50</span>
             </div>
             <input type="range" id="protect-slider" min="0" max="50" value="50" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (v49: 0.35~0.45 권장, 0.50=비활성, 낮을수록 보호↑)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (v57 기본 0.50, 낮을수록 AI 개성↑, 높을수록 원본 자음/가성 보호↑)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0 = 원본 다이나믹 100% 보존 (기본값, 강력 권장!)\n• 0.1~0.2 = 약간의 모델 다이나믹 반영\n• 0.3 이상 = 다이나믹 레인지 압축 (기계음 원인!)\n\n⚠️ 이 값이 기계음의 최대 원인입니다.\n💡 0.0으로 두면 원곡의 속삭임/외침 강약이 그대로 보존됩니다.">ⓘ</i></span>
+              <span class="slider-label">볼륨 균일화 <i class="tip" data-tip="변환된 목소리의 소리 크기를 원본에 얼마나 비슷하게 맞출지 정합니다.\n\n🔢 설정 가이드:\n• 0.0 = 원본 다이나믹 100% 보존\n• 0.15 = v57 기본값 (균형적인 다이나믹 반영)\n• 0.1~0.2 = 약간의 모델 다이나믹 반영\n• 0.3 이상 = 다이나믹 레인지 압축 (기계음 원인!)\n\n⚠️ 이 값이 기계음의 주요 원인입니다.\n💡 낮을수록 원곡의 속삭임/외침 강약이 보존됩니다.">ⓘ</i></span>
               <span class="slider-value" id="rms-val">0.15</span>
             </div>
             <input type="range" id="rms-slider" min="0" max="100" value="15" class="has-fill" aria-label="볼륨 균일화 (RMS)" oninput="document.getElementById('rms-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">⚠️ 0이 가장 자연스러움! 높일수록 다이나믹 압축 → 기계음 증가 (기본 0.00)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">v57 기본 0.15. 0에 가까울수록 원곡 다이나믹 보존, 높일수록 다이나믹 압축 → 기계음 증가</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음, 빠른 멜로디 (비브라토 보존)\n• 3~4 = 일반 노래\n• 5 = 기본값 (피치 안정화, 삑사리↓)\n• 6~7 = 발라드 등 느린 곡\n\n💡 삑사리가 나면 높이고, 너무 밋밋하면 낮추세요.">ⓘ</i></span>
+              <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음, 빠른 멜로디 (비브라토 보존)\n• 2 = v57 기본값 (비브라토 보존 + 적정 안정화)\n• 3~4 = 일반 노래 (피치 안정화↑)\n• 5~7 = 발라드 등 느린 곡\n\n💡 삑사리가 나면 높이고, 너무 밋밋하면 낮추세요.">ⓘ</i></span>
               <span class="slider-value" id="filter-val">2</span>
             </div>
             <input type="range" id="filter-slider" min="0" max="12" value="2" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
@@ -3381,7 +3381,7 @@ input[type="range"]::-moz-range-track {
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">피치 해상도 <i class="tip" data-tip="AI가 음정을 얼마나 세밀하게 감지할지 정합니다. 숫자가 작을수록 정밀합니다.\n\n🔢 설정 가이드:\n• 32 = 최대 정밀 → 가성/팔세토/고음 전환이 매우 많은 노래\n• 64 = 정밀 → 비브라토·고음 전환 감지 (기본, 추천)\n• 128 = 대부분의 노래에 적합\n• 256 = 음질이 안 좋은 원본에서 안정적\n\n⚠️ 잡음이 있는 음원에서 32/64 설정 시 오히려 불안정해질 수 있습니다.\n💡 잘 모르면 64(기본값)로 두세요.">ⓘ</i></span>
+              <span class="slider-label">피치 해상도 <i class="tip" data-tip="AI가 음정을 얼마나 세밀하게 감지할지 정합니다. 숫자가 작을수록 정밀합니다.\n\n🔢 설정 가이드:\n• 32 = 최대 정밀 → 가성/팔세토/고음 전환이 매우 많은 노래\n• 64 = 정밀 → 비브라토·고음 전환 감지\n• 128 = v57 기본값 — 대부분의 노래에 안정적 (커뮤니티 표준)\n• 256 = 음질이 안 좋은 원본에서 안정적\n\n⚠️ 잡음이 있는 음원에서 32/64 설정 시 오히려 불안정해질 수 있습니다.\n💡 잘 모르면 128(기본값)로 두세요.">ⓘ</i></span>
               <span class="slider-value" id="hop-val">128</span>
             </div>
             <input type="range" id="hop-slider" min="0" max="3" value="2" class="has-fill" aria-label="피치 해상도 (hop length)" oninput="var hops=[32,64,128,256];document.getElementById('hop-val').textContent=hops[this.value]; updateSliderFill(this)">
@@ -3831,7 +3831,7 @@ input[type="range"]::-moz-range-track {
       </p>
       <table class="billing-table">
         <thead>
-          <tr><th colspan="6" style="text-align:left;color:var(--text2);font-weight:400;font-size:11px;padding-bottom:4px">⚠️ RTX 4090 기준 추정 (v39: KLM49/RIN_E3 pretrained, 기본 200에폭, batch 8)</th></tr>
+          <tr><th colspan="6" style="text-align:left;color:var(--text2);font-weight:400;font-size:11px;padding-bottom:4px">⚠️ RTX 4090 기준 추정 (v57: KLM49/RIN_E3 pretrained, 기본 75에폭, batch 8)</th></tr>
         </thead>
         <tbody>
           <tr><th scope="col">데이터</th><th scope="col">에폭</th><th scope="col">F0</th><th scope="col">배치</th><th scope="col">예상 시간</th><th scope="col">RTX 4090 비용</th></tr>
@@ -3845,7 +3845,7 @@ input[type="range"]::-moz-range-track {
       </table>
       <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6">
         💡 <b>옵션별 영향:</b><br>
-        · <b>에폭:</b> 150이 권장 기본값. 250+ 과적합→치찰음 위험. 체크포인트(50/100/150) 비교 청취 후 최적 선택.<br>
+        · <b>에폭:</b> v57 권장 기본값 75 (70~75). 150+ 과적합→치찰음 위험. 체크포인트(50/75/100) 비교 청취 후 최적 선택.<br>
         · <b>피치 추출 (Crepe vs RMVPE):</b> Crepe는 특징 추출 시간이 RMVPE의 2~3배이며, 품질 차이는 미미합니다. <b>RMVPE 권장.</b><br>
         · <b>배치 크기:</b> 기본 8 (43분+ 데이터 권장). 16으로 올리면 더 빨라집니다.<br>
         · <b>과학습 감지:</b> 50에폭 무개선 시 자동 조기 중단되므로 에폭을 높게 설정해도 불필요한 비용이 발생하지 않습니다.<br>
@@ -4903,7 +4903,7 @@ function estimateConversionCost() {
   _showCostWarn('convert-cost-warn', warnLevel, warnMsg);
 }
 
-// ─── 변환 프리셋 v49 ───
+// ─── 변환 프리셋 v57 ───
 function applyConvertPreset(preset) {
   var presets = {
     default: {
@@ -4996,7 +4996,7 @@ function applyConvertPreset(preset) {
     hopSlider.value = p.hop;
     var hopVals = [32, 64, 128, 256];
     var hopVal = document.getElementById('hop-val');
-    if (hopVal) hopVal.textContent = hopVals[p.hop] || 64;
+    if (hopVal) hopVal.textContent = hopVals[p.hop] || 128;
   }
   var cleanCb = document.getElementById('clean-audio-cb');
   if (cleanCb) {
@@ -6968,6 +6968,11 @@ async function startBatchConversion() {
       form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
       // 원본 보컬 블렌딩
       form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
+      // v49: language (한/영 EQ 분리)
+      form.append('language', getVal('convert-language', 'auto'));
+      // v57: f0_autotune (기본 true, 노래 변환 피치 안정화)
+      form.append('f0_autotune', 'true');
+      form.append('f0_autotune_strength', '0.2');
       form.append('audio', batchResults[i].file);
 
       var res = await api('/convert', { method: 'POST', body: form, noTimeout: true });
