@@ -4,6 +4,9 @@
 > 어떤 PC, 어떤 대화창에서든 `git pull`만 하면 모든 맥락이 복원됩니다.
 > 상세 메모리는 `.claude-sync/memory/` 디렉토리에 별도 보관되어 있으며,
 > 필요 시 해당 파일들을 직접 Read하여 참조하세요.
+>
+> 🎨 **UI/프론트엔드 코드 작성 시**: `UI_DESIGN_STANDARD.md`를 반드시 먼저 Read하고,
+> 자가 비판 루프(Generator → Evaluator → 창의적 도약)를 거친 뒤 코드를 제출할 것.
 
 ---
 
