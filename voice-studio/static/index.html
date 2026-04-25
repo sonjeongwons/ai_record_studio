@@ -7328,9 +7328,18 @@ function renderConvHistoryPage() {
 
     // onclick 속성에서 JSON.stringify의 "가 HTML attribute의 "와 충돌하므로
     // 작은따옴표로 감싸고 내부 작은따옴표를 이스케이프
+    var vocalFile = c.output_file;
+    var mixFile = (c.output_name && c.output_name !== c.output_file) ? c.output_name : null;
+    // 보컬 전용 다운로드 버튼 (목소리만)
+    var vocalDlBtn = (isCompleted && vocalFile)
+      ? '<button class="btn-conv-action" data-dl-url="/api/download/' + encodeURIComponent(vocalFile) + '" data-dl-name="' + escapeHtml(vocalFile) + '" onclick="downloadFile(this.dataset.dlUrl, this.dataset.dlName)" title="보컬 다운로드 (목소리만)">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>' +
+        '</button>'
+      : '';
+    // 믹스(보컬+반주) 다운로드 버튼
     var dlUrl = '/api/download/' + encodeURIComponent(playFile);
     var downloadBtn = isCompleted
-      ? '<button class="btn-conv-action" data-dl-url="' + escapeHtml(dlUrl) + '" data-dl-name="' + escapeHtml(playFile || '') + '" onclick="downloadFile(this.dataset.dlUrl, this.dataset.dlName)" title="다운로드">' +
+      ? '<button class="btn-conv-action" data-dl-url="' + escapeHtml(dlUrl) + '" data-dl-name="' + escapeHtml(playFile || '') + '" onclick="downloadFile(this.dataset.dlUrl, this.dataset.dlName)" title="' + (mixFile ? '믹스 다운로드 (보컬+반주)' : '다운로드') + '">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>' +
         '</button>'
       : '';
@@ -7349,6 +7358,7 @@ function renderConvHistoryPage() {
           '</div>' +
         '</div>' +
         statusBadgeHtml +
+        vocalDlBtn +
         downloadBtn +
         '<button class="btn-conv-action btn-conv-delete" onclick="deleteConversion(' + c.id + ')" title="삭제">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
