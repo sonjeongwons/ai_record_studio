@@ -138,18 +138,9 @@ body.busy, body.busy * { cursor: wait !important; }
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-5px); }
-}
 @keyframes slideInRight {
   from { opacity: 0; transform: translateX(12px); }
   to { opacity: 1; transform: translateX(0); }
-}
-@keyframes pulseRing {
-  0% { box-shadow: 0 0 0 0 rgba(139,92,246,0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(139,92,246,0); }
-  100% { box-shadow: 0 0 0 0 rgba(139,92,246,0); }
 }
 @keyframes badgePulse {
   0%, 100% { opacity: 1; }
@@ -206,7 +197,6 @@ h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.2
 }
 .btn-primary:not(:disabled):hover {
   background: var(--violet-dark);
-  box-shadow: 0 4px 14px rgba(139,92,246,0.35);
 }
 .btn-primary:disabled { background: #2a2a3a; color: var(--text3); box-shadow: none; }
 .btn-secondary {
@@ -244,7 +234,6 @@ h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.2
 }
 .btn-gradient:not(:disabled):hover {
   background: var(--violet-dark);
-  box-shadow: 0 4px 14px rgba(139,92,246,0.35);
 }
 .btn-gradient:disabled { background: #2a2a3a; color: var(--text3); box-shadow: none; }
 
@@ -394,10 +383,6 @@ select {
 }
 
 /* ─── Progress ─── */
-@keyframes ringGlow {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(139,92,246,0.5)); }
-  50% { filter: drop-shadow(0 0 10px rgba(139,92,246,0.8)); }
-}
 .progress-container {
   display: flex;
   flex-direction: column;
@@ -541,16 +526,13 @@ input[type="range"]::-webkit-slider-thumb {
   background: var(--violet);
   cursor: pointer;
   border: 2px solid var(--bg);
-  box-shadow: 0 0 8px rgba(139,92,246,0.4);
-  transition: width var(--transition-fast), height var(--transition-fast), box-shadow var(--transition-fast);
+  transition: width var(--transition-fast), height var(--transition-fast);
 }
 input[type="range"]:hover::-webkit-slider-thumb {
   width: 18px; height: 18px;
-  box-shadow: 0 0 14px rgba(139,92,246,0.65);
 }
 input[type="range"]:active::-webkit-slider-thumb {
   width: 20px; height: 20px;
-  box-shadow: 0 0 18px rgba(139,92,246,0.7);
 }
 /* Slider fill: set via JS updateSliderFill() */
 input[type="range"].has-fill {
@@ -1721,7 +1703,6 @@ input[type="range"].has-fill {
     align-items: center;
     justify-content: center;
     z-index: 30000;
-    backdrop-filter: blur(6px);
     animation: fadeIn 0.15s ease;
 }
 .confirm-dialog {
@@ -1950,7 +1931,7 @@ input[type="range"].has-fill {
 /* ─── Slider Focus State ─── */
 input[type="range"]:focus { outline: none; }
 input[type="range"]:focus::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px rgba(139,92,246,0.22), 0 0 14px rgba(139,92,246,0.55);
+  box-shadow: 0 0 0 3px rgba(139,92,246,0.3);
 }
 
 /* ─── Skip Link Improved Hover ─── */
@@ -1992,30 +1973,16 @@ input[type="range"]:focus::-webkit-slider-thumb {
 .batch-progress-fill,
 .download-progress-fill {
   position: relative;
-  overflow: hidden;
-}
-.batch-progress-fill::after,
-.download-progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0; left: -100%;
-  width: 60%; height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
-  animation: progressShimmer 1.6s ease-in-out infinite;
 }
 
 /* ─── Input Validation States ─── */
 input.input-error   { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.15) !important; }
 input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0 3px rgba(16,185,129,0.12) !important; }
 
-/* ─── Conversion Item Shadow ─── */
-.conversion-item:hover { box-shadow: 0 4px 14px rgba(139,92,246,0.1); }
-
 /* ─── Empty State Glow ─── */
 .empty-state-enhanced .empty-icon:hover {
   background: rgba(139,92,246,0.06);
   border-color: rgba(139,92,246,0.18);
-  box-shadow: 0 0 24px rgba(139,92,246,0.12);
   animation-play-state: paused;
 }
 .empty-state-enhanced .empty-icon:hover svg { opacity: 0.65; }
@@ -2048,7 +2015,7 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
   height: 2px;
   width: 100%;
   transform-origin: left;
-  border-radius: 0 0 0 12px;
+  border-radius: 0 0 0 8px;
   opacity: 0.5;
 }
 .toast-success .toast-progress-bar { background: var(--emerald); }
@@ -2087,14 +2054,10 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 .input-with-copy { display: flex; gap: 6px; align-items: center; }
 .input-with-copy input { flex: 1; }
 
-/* ─── Active Job Banner Gradient Animation ─── */
+/* ─── Processing Item Shimmer ─── */
 @keyframes bannerShimmer {
   0%, 100% { background-position: 0% 50%; }
   50%       { background-position: 100% 50%; }
-}
-#active-job-banner {
-  background-size: 200% 200% !important;
-  animation: bannerShimmer 4s ease infinite;
 }
 
 /* ─── Improve Scrollbar Track ─── */
@@ -3031,7 +2994,7 @@ input[type="range"]::-moz-range-track {
           </div>
         </div>
         <div class="cost-panel-note">
-          RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>실측 보정 추정값</b>.<br>          <b>현재 기본값:</b> 250에폭, batch 4 (KLM49 pretrained, v45 최적화). 22분 클린 데이터 권장<br>          <b>실측 참고:</b> 30분 데이터 + Crepe + 500에폭 = 약 6시간 · $15 (2026.03 실측)<br>          <b>절약 팁:</b> RMVPE가 Crepe보다 2~3배 빠르며 품질 차이는 미미합니다. 과학습 감지(25에폭)가 내장되어 있으므로 250에폭부터 시작하세요.
+          RTX 4090 ($0.00074/sec ≈ $2.66/hr) 기준 <b>실측 보정 추정값</b>.<br>          <b>현재 기본값:</b> 150에폭, batch 8 (KLM49_HFG pretrained). 44.9분 데이터 기준<br>          <b>실측 참고:</b> 30분 데이터 + Crepe + 500에폭 = 약 6시간 · $15 (2026.03 실측)<br>          <b>절약 팁:</b> RMVPE가 Crepe보다 2~3배 빠르며 품질 차이는 미미합니다. 과학습 감지(25에폭)가 내장되어 있으므로 150에폭부터 시작하세요.
         </div>
         <!-- 동적 긴 학습 경고 -->
         <div id="train-cost-warn" style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);font-size:12px;color:#fbbf24;line-height:1.55"></div>
@@ -4926,7 +4889,6 @@ function applyConvertPreset(preset) {
   var p = presets[preset];
   if (!p) return;
 
-  // v45: 모든 요소에 null guard 추가 (DOM 비동기 로딩/구조 변경 시 crash 방지)
   var f0El = document.getElementById('convert-f0');
   if (f0El) f0El.value = p.f0;
   var protectSlider = document.getElementById('protect-slider');
@@ -5001,7 +4963,7 @@ function applyConvertPreset(preset) {
     preShiftSlider.value = p.vocalPreShift;
     document.getElementById('vocal-pre-shift-val').textContent = p.vocalPreShift;
   }
-  // v22: harmony filter
+  // harmony filter (레거시)
   var harmonySlider = document.getElementById('harmony-filter-slider');
   if (harmonySlider && p.harmonyFilter !== undefined) {
     harmonySlider.value = p.harmonyFilter;
@@ -5013,10 +4975,9 @@ function applyConvertPreset(preset) {
     blendSlider.value = p.vocalBlend;
     document.getElementById('vocal-blend-val').textContent = p.vocalBlend + '%';
   }
-  // v49: language (한/영 EQ 분리) — v57: lang 키 사용
+  // language (한/영 EQ 분리)
   var langEl = document.getElementById('convert-language');
   if (langEl && (p.lang || p.language)) langEl.value = p.lang || p.language;
-  // v57: pitch 프리셋 적용
   var pitchSlider = document.getElementById('pitch-slider');
   if (pitchSlider && p.pitch !== undefined) {
     pitchSlider.value = p.pitch;
@@ -6489,7 +6450,7 @@ async function startConversion() {
   form.append('filter_radius', getVal('filter-slider', '2'));
   var hopSteps = [32, 64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '2')] || 128);
-  // v49: language (한/영 EQ 분리)
+  // language (한/영 EQ 분리)
   form.append('language', getVal('convert-language', 'auto'));
   // Post-processing for naturalness
   var reverbCb = document.getElementById('post-reverb-cb');
@@ -6501,7 +6462,7 @@ async function startConversion() {
   var highNoteCb = document.getElementById('high-note-cb');
   form.append('high_note_mode', highNoteCb ? highNoteCb.checked : false);
   form.append('vocal_pitch_pre_shift', parseInt(getVal('vocal-pre-shift-slider', '0')));
-  // v22: harmony filter (레거시)
+  // harmony filter (레거시)
   form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
   // v60: 화음 구간 원본 유지 + 여성 보컬 바이패스
   var harmonyBypassCb = document.getElementById('harmony-bypass-cb');
@@ -6510,7 +6471,7 @@ async function startConversion() {
   form.append('female_bypass', femaleBypassCb ? femaleBypassCb.checked : false);
   // 원본 보컬 블렌딩
   form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
-  // v49: f0_autotune (기본 true, 노래 변환 피치 안정화)
+  // f0_autotune (기본 true, 노래 변환 피치 안정화)
   form.append('f0_autotune', 'true');
   form.append('f0_autotune_strength', '0.2');
   form.append('audio', convertFile);
@@ -6925,7 +6886,7 @@ async function startBatchConversion() {
       form.append('harmonic_enhance', batchHarmonicCb ? batchHarmonicCb.checked : false);
       var batchHighNoteCb = document.getElementById('high-note-cb');
       form.append('high_note_mode', batchHighNoteCb ? batchHighNoteCb.checked : false);
-      // v22: harmony filter (레거시)
+      // harmony filter (레거시)
       form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
       // v60: 화음 구간 원본 유지 + 여성 보컬 바이패스
       var batchHarmonyBypassCb = document.getElementById('harmony-bypass-cb');
@@ -6934,9 +6895,9 @@ async function startBatchConversion() {
       form.append('female_bypass', batchFemaleBypassCb ? batchFemaleBypassCb.checked : false);
       // 원본 보컬 블렌딩
       form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
-      // v49: language (한/영 EQ 분리)
+      // language (한/영 EQ 분리)
       form.append('language', getVal('convert-language', 'auto'));
-      // v57: f0_autotune (기본 true, 노래 변환 피치 안정화)
+      // f0_autotune (기본 true, 노래 변환 피치 안정화)
       form.append('f0_autotune', 'true');
       form.append('f0_autotune_strength', '0.2');
       form.append('audio', batchResults[i].file);
