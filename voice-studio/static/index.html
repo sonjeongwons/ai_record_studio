@@ -4,37 +4,36 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Voice Studio</title>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- 시스템 폰트 스택 사용 — Google Fonts CDN 의존성 제거 -->
 <style>
 :root {
   --bg: #0a0a14;
-  --bg2: #0f0f1e;
-  --bg3: #161628;
-  --border: rgba(255,255,255,0.06);
-  --border-hover: rgba(139,92,246,0.3);
-  --text: #e2e2f0;
+  --bg2: #0e0e1a;
+  --bg3: #141422;
+  --border: rgba(255,255,255,0.07);
+  --border-hover: rgba(139,92,246,0.35);
+  --text: #ddddf0;
   --text2: #8888a8;
   --text3: #7a7a90;
   --violet: #8b5cf6;
   --violet-dark: #7c3aed;
-  --violet-g: rgba(139,92,246,0.15);
-  --violet-g2: rgba(139,92,246,0.08);
+  --violet-g: rgba(139,92,246,0.12);
+  --violet-g2: rgba(139,92,246,0.06);
   --cyan: #06b6d4;
   --emerald: #10b981;
   --amber: #f59e0b;
   --red: #ef4444;
   --rose: #f43f5e;
   --text1: #d0d0e0;
-  --radius: 16px;
-  --shadow-violet: 0 4px 20px rgba(139,92,246,0.25);
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
-  --transition-fast: 0.15s cubic-bezier(0.4,0,0.2,1);
-  --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
-  --transition-slow: 0.35s cubic-bezier(0.4,0,0.2,1);
+  --radius: 8px;
+  --shadow-sm: 0 2px 8px rgba(0,0,0,0.35);
+  --transition-fast: 0.12s cubic-bezier(0.4,0,0.2,1);
+  --transition: 0.18s cubic-bezier(0.4,0,0.2,1);
+  --transition-slow: 0.28s cubic-bezier(0.4,0,0.2,1);
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
-  font-family: 'Outfit', -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   height: 100vh;
@@ -49,47 +48,44 @@ body.busy, body.busy * { cursor: wait !important; }
 
 /* ─── Sidebar ─── */
 .sidebar {
-  width: 68px;
-  background: rgba(0,0,0,0.35);
+  width: 64px;
+  background: rgba(0,0,0,0.28);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 0;
-  gap: 4px;
+  padding: 18px 0;
+  gap: 2px;
   flex-shrink: 0;
 }
 .sidebar .logo {
-  width: 38px; height: 38px;
-  background: linear-gradient(135deg, var(--violet), var(--cyan));
-  border-radius: 12px;
+  width: 36px; height: 36px;
+  background: var(--violet);
+  border-radius: 7px;
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 24px;
-  box-shadow: 0 4px 20px rgba(139,92,246,0.35);
-  transition: transform var(--transition), box-shadow var(--transition);
+  transition: opacity var(--transition);
   cursor: pointer;
 }
 .sidebar .logo:hover {
-  transform: scale(1.08) rotate(-3deg);
-  box-shadow: 0 6px 28px rgba(139,92,246,0.55);
+  opacity: 0.85;
 }
 .sidebar .logo svg { width: 20px; height: 20px; fill: white; }
 .nav-btn {
   width: 44px; height: 44px;
   border: none; background: transparent;
-  border-radius: 12px;
+  border-radius: var(--radius);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   color: var(--text3);
-  transition: background var(--transition), color var(--transition), transform var(--transition);
+  transition: background var(--transition), color var(--transition);
   position: relative;
 }
 .nav-btn:hover {
-  background: rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.06);
   color: var(--text);
-  transform: scale(1.07);
 }
-.nav-btn:active { transform: scale(0.95); }
+.nav-btn:active { opacity: 0.7; }
 .nav-btn.active {
   background: var(--violet-g);
   color: var(--violet);
@@ -99,43 +95,41 @@ body.busy, body.busy * { cursor: wait !important; }
   position: absolute;
   left: 0; top: 50%;
   transform: translateY(-50%);
-  width: 3px; height: 20px;
-  background: linear-gradient(to bottom, var(--violet), var(--cyan));
-  border-radius: 0 3px 3px 0;
-  box-shadow: 2px 0 8px rgba(139,92,246,0.5);
+  width: 2px; height: 18px;
+  background: var(--violet);
+  border-radius: 0 2px 2px 0;
 }
 .nav-btn svg { width: 20px; height: 20px; }
 .nav-btn .tooltip {
   position: absolute;
-  left: 58px; top: 50%;
-  transform: translateY(-50%) translateX(-4px);
+  left: 54px; top: 50%;
+  transform: translateY(-50%);
   background: var(--bg3);
-  border: 1px solid rgba(139,92,246,0.2);
-  padding: 5px 10px;
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: var(--radius);
   font-size: 12px;
   color: var(--text);
   white-space: nowrap;
   z-index: 300;
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  transition: opacity var(--transition-fast);
   box-shadow: var(--shadow-sm);
 }
 .nav-btn:hover .tooltip {
   opacity: 1;
-  transform: translateY(-50%) translateX(0);
 }
 
 /* ─── Main Content ─── */
 .main {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 40px;
+  padding: 28px 36px;
   scroll-behavior: smooth;
 }
 .main-inner {
-  max-width: 960px;
+  max-width: 900px;
   margin: 0 auto;
 }
 /* .page styles defined in Tab Fade Transitions section below */
@@ -163,28 +157,25 @@ body.busy, body.busy * { cursor: wait !important; }
 }
 
 /* ─── Common Components ─── */
-h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-.subtitle { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.3px; }
+h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; letter-spacing: -0.2px; }
+.subtitle { font-size: 13px; color: var(--text3); margin-bottom: 20px; }
 .card {
-  background: linear-gradient(135deg, rgba(30,30,50,0.8), rgba(20,20,40,0.6));
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(139,92,246,0.1);
+  background: var(--bg2);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 20px;
   margin-bottom: 16px;
-  transition: border-color var(--transition-slow), box-shadow var(--transition-slow), transform var(--transition-slow);
+  transition: border-color var(--transition-slow);
 }
 .card:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 6px 24px rgba(139,92,246,0.12);
-  transform: translateY(-1px);
 }
 
 .btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius);
   font-family: inherit;
   font-size: 13px;
   font-weight: 500;
@@ -215,8 +206,7 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 }
 .btn-primary:not(:disabled):hover {
   background: var(--violet-dark);
-  box-shadow: 0 6px 20px rgba(139,92,246,0.45);
-  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(139,92,246,0.35);
 }
 .btn-primary:disabled { background: #2a2a3a; color: var(--text3); box-shadow: none; }
 .btn-secondary {
@@ -226,8 +216,7 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 }
 .btn-secondary:not(:disabled):hover {
   background: rgba(255,255,255,0.09);
-  border-color: rgba(255,255,255,0.12);
-  transform: translateY(-1px);
+  border-color: rgba(255,255,255,0.14);
 }
 .btn-secondary:disabled { background: rgba(255,255,255,0.03); color: var(--text3); border-color: transparent; }
 .btn-outline {
@@ -238,7 +227,6 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 .btn-outline:not(:disabled):hover {
   background: rgba(139,92,246,0.08);
   border-color: var(--violet);
-  transform: translateY(-1px);
 }
 .btn-danger {
   background: rgba(239,68,68,0.1);
@@ -248,24 +236,22 @@ h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
 .btn-danger:not(:disabled):hover {
   background: rgba(239,68,68,0.2);
   border-color: rgba(239,68,68,0.35);
-  transform: translateY(-1px);
 }
 .btn-full { width: 100%; justify-content: center; padding: 14px; font-size: 14px; }
 .btn-gradient {
-  background: linear-gradient(135deg, var(--violet), #6366f1);
+  background: var(--violet);
   color: white;
 }
 .btn-gradient:not(:disabled):hover {
-  box-shadow: 0 6px 24px rgba(139,92,246,0.45);
-  transform: translateY(-1px);
-  filter: brightness(1.08);
+  background: var(--violet-dark);
+  box-shadow: 0 4px 14px rgba(139,92,246,0.35);
 }
 .btn-gradient:disabled { background: #2a2a3a; color: var(--text3); box-shadow: none; }
 
 input[type="text"], input[type="number"], input[type="password"], select, textarea {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.04);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 9px 14px;
   font-family: inherit;
   font-size: 13px;
@@ -313,14 +299,15 @@ select {
 
 /* Badge */
 .badge {
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 20px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 4px;
   white-space: nowrap;
+  letter-spacing: 0.2px;
 }
 .badge-green { background: rgba(16,185,129,0.1); color: var(--emerald); border: 1px solid rgba(16,185,129,0.2); }
 .badge-amber {
@@ -333,36 +320,33 @@ select {
 
 /* ─── Drop Zone ─── */
 .dropzone {
-  border: 2px dashed rgba(255,255,255,0.1);
+  border: 1px dashed rgba(255,255,255,0.14);
   border-radius: var(--radius);
-  padding: 40px;
+  padding: 36px 40px;
   text-align: center;
   cursor: pointer;
-  transition: border-color var(--transition-slow), background var(--transition-slow), box-shadow var(--transition-slow);
-  background: rgba(255,255,255,0.01);
+  transition: border-color var(--transition), background var(--transition);
+  background: transparent;
 }
 .dropzone:hover, .dropzone.drag-over, .dropzone.dragover {
   border-color: var(--violet);
-  background: rgba(139,92,246,0.06);
-  box-shadow: inset 0 0 32px rgba(139,92,246,0.06);
+  background: rgba(139,92,246,0.04);
 }
 .dropzone.drag-over, .dropzone.dragover {
   border-style: solid;
-  box-shadow: inset 0 0 40px rgba(139,92,246,0.1), 0 0 0 3px rgba(139,92,246,0.15);
 }
 .dropzone-icon {
-  width: 52px; height: 52px;
-  border-radius: 15px;
-  background: rgba(255,255,255,0.05);
+  width: 44px; height: 44px;
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.04);
   display: flex; align-items: center; justify-content: center;
   margin: 0 auto 14px;
-  color: var(--text2);
-  transition: background var(--transition), color var(--transition), transform var(--transition);
+  color: var(--text3);
+  transition: background var(--transition), color var(--transition);
 }
 .dropzone:hover .dropzone-icon, .dropzone.drag-over .dropzone-icon {
   background: var(--violet-g);
   color: var(--violet);
-  transform: scale(1.12) translateY(-2px);
 }
 .dropzone-text { font-size: 14px; color: var(--text); font-weight: 500; }
 .dropzone-sub { font-size: 12px; color: var(--text3); margin-top: 5px; }
@@ -372,27 +356,26 @@ select {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius);
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
-  margin-bottom: 6px;
-  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  margin-bottom: 5px;
+  transition: background var(--transition), border-color var(--transition);
 }
 .file-item:hover {
-  background: rgba(139,92,246,0.08) !important;
-  border-color: rgba(139,92,246,0.15);
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(139,92,246,0.2);
 }
 .file-icon {
-  width: 36px; height: 36px;
-  border-radius: 10px;
+  width: 32px; height: 32px;
+  border-radius: 6px;
   background: var(--violet-g);
   display: flex; align-items: center; justify-content: center;
   color: var(--violet);
   flex-shrink: 0;
-  transition: background var(--transition), transform var(--transition);
 }
-.file-item:hover .file-icon { background: rgba(139,92,246,0.22); transform: scale(1.05); }
+.file-item:hover .file-icon { background: rgba(139,92,246,0.2); }
 .file-info { flex: 1; min-width: 0; }
 .file-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-meta { font-size: 11px; color: var(--text3); }
@@ -438,33 +421,30 @@ select {
   transform: translate(-50%,-50%);
   text-align: center;
 }
-.progress-pct { font-size: 28px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.progress-pct { font-size: 28px; font-weight: 700; font-family: ui-monospace, 'SF Mono', Consolas, monospace; }
 .progress-label { font-size: 13px; color: var(--text2); margin-top: 12px; }
-.progress-detail { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+.progress-detail { font-size: 12px; color: var(--text3); font-family: ui-monospace, 'SF Mono', Consolas, monospace; margin-top: 4px; }
 
 /* ─── Model Card ─── */
 .model-card {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 16px;
-  border-radius: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: border-color var(--transition), background var(--transition), transform var(--transition), box-shadow var(--transition);
-  margin-bottom: 8px;
+  transition: border-color var(--transition), background var(--transition);
+  margin-bottom: 6px;
 }
 .model-card:hover {
   border-color: var(--border-hover);
   background: rgba(139,92,246,0.04);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(139,92,246,0.1);
 }
 .model-card.selected {
   border-color: var(--violet);
-  background: var(--violet-g);
-  box-shadow: 0 0 0 2px rgba(139,92,246,0.25);
+  background: rgba(139,92,246,0.07);
 }
 .btn-model-delete {
   background: none; border: none; cursor: pointer; padding: 6px;
@@ -479,15 +459,14 @@ select {
 }
 .conversion-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border-radius: 10px;
+  padding: 9px 12px; border-radius: var(--radius);
   background: rgba(255,255,255,0.02); border: 1px solid var(--border);
-  margin-bottom: 6px;
-  transition: border-color var(--transition), background var(--transition), transform var(--transition);
+  margin-bottom: 5px;
+  transition: border-color var(--transition), background var(--transition);
 }
 .conversion-item:hover {
-  border-color: var(--border-hover);
-  background: rgba(139,92,246,0.04);
-  transform: translateY(-1px);
+  border-color: rgba(139,92,246,0.2);
+  background: rgba(255,255,255,0.03);
 }
 .btn-conv-action {
   background: none; border: none; cursor: pointer; padding: 6px;
@@ -523,8 +502,8 @@ select {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .model-icon {
-  width: 42px; height: 42px;
-  border-radius: 12px;
+  width: 38px; height: 38px;
+  border-radius: 6px;
   background: var(--violet-g);
   display: flex; align-items: center; justify-content: center;
   color: var(--violet);
@@ -537,12 +516,11 @@ select {
 .slider-value {
   font-size: 12px;
   color: var(--violet);
-  font-family: 'JetBrains Mono', monospace;
-  background: rgba(139,92,246,0.1);
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+  background: rgba(139,92,246,0.08);
   padding: 2px 7px;
-  border-radius: 6px;
-  border: 1px solid rgba(139,92,246,0.2);
-  transition: background var(--transition), color var(--transition);
+  border-radius: 4px;
+  border: 1px solid rgba(139,92,246,0.18);
   min-width: 36px;
   text-align: center;
 }
@@ -581,27 +559,26 @@ input[type="range"].has-fill {
 
 /* ─── Alert Box ─── */
 .alert {
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
   font-size: 12px;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 .alert-info { background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.15); color: #b4a0f0; }
 .alert-warn { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15); color: #f0c060; }
 .alert-success { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.15); color: #60f0b0; }
 
 /* ─── Stats ─── */
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
 .stat-card {
-  padding: 16px;
+  padding: 14px 16px;
   border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(30,30,50,0.8), rgba(20,20,40,0.6));
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(139,92,246,0.1);
-  transition: border-color var(--transition-slow), box-shadow var(--transition-slow), transform var(--transition-slow);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  transition: border-color var(--transition-slow);
   position: relative;
   overflow: hidden;
 }
@@ -609,50 +586,42 @@ input[type="range"].has-fill {
   content: '';
   position: absolute;
   top: 0; left: 0;
-  width: 4px; height: 100%;
+  width: 3px; height: 100%;
   background: currentColor;
-  opacity: 0.45;
-  border-radius: 0 3px 3px 0;
-  transition: opacity var(--transition), width var(--transition);
+  opacity: 0.5;
 }
 .stat-card:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 6px 24px rgba(139,92,246,0.12);
-  transform: translateY(-2px);
 }
-.stat-card:hover::before { opacity: 0.7; }
 .stat-value {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
 }
-.stat-label { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.stat-label { font-size: 11px; color: var(--text3); margin-top: 3px; }
 
 /* ─── Job History ─── */
 .job-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
-  margin-bottom: 6px;
-  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  margin-bottom: 5px;
+  transition: background var(--transition), border-color var(--transition);
 }
 .job-item:hover {
-  background: rgba(139,92,246,0.08) !important;
-  border-color: rgba(139,92,246,0.15);
-  transform: translateX(2px);
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(139,92,246,0.2);
 }
 .job-icon {
-  width: 36px; height: 36px;
-  border-radius: 10px;
+  width: 32px; height: 32px;
+  border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  transition: transform var(--transition);
 }
-.job-item:hover .job-icon { transform: scale(1.1); }
 .job-icon.train { background: rgba(139,92,246,0.1); color: var(--violet); }
 .job-icon.convert { background: rgba(6,182,212,0.1); color: var(--cyan); }
 .job-icon.preprocess { background: rgba(245,158,11,0.1); color: var(--amber); }
@@ -710,22 +679,21 @@ input[type="range"].has-fill {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 11px 14px;
+  border-radius: var(--radius);
   background: var(--bg3);
   border: 1px solid var(--border);
   font-size: 13px;
   color: var(--text);
-  min-width: 280px;
-  max-width: 400px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-  animation: toastIn 0.3s ease forwards;
-  backdrop-filter: blur(12px);
+  min-width: 260px;
+  max-width: 380px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+  animation: toastIn 0.22s ease forwards;
 }
 .toast.removing { animation: toastOut 0.25s ease forwards; }
 .toast-icon {
-  width: 28px; height: 28px;
-  border-radius: 8px;
+  width: 24px; height: 24px;
+  border-radius: 5px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
@@ -763,11 +731,10 @@ input[type="range"].has-fill {
 .download-item {
   background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 16px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-  backdrop-filter: blur(12px);
-  animation: dlSlideUp 0.3s ease forwards;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+  animation: dlSlideUp 0.22s ease forwards;
 }
 .download-item.dl-done {
   border-color: rgba(16,185,129,0.25);
@@ -925,19 +892,18 @@ input[type="range"].has-fill {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.03);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.025);
   border: 1px solid var(--border);
   margin-top: 8px;
-  transition: border-color var(--transition), background var(--transition);
+  transition: border-color var(--transition);
 }
 .audio-player:hover {
   border-color: rgba(139,92,246,0.2);
-  background: rgba(255,255,255,0.04);
 }
 .audio-play-btn {
-  width: 30px; height: 30px;
+  width: 28px; height: 28px;
   border-radius: 50%;
   background: var(--violet-g);
   border: none;
@@ -945,14 +911,12 @@ input[type="range"].has-fill {
   cursor: pointer;
   color: var(--violet);
   flex-shrink: 0;
-  transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
+  transition: background var(--transition);
 }
 .audio-play-btn:hover {
-  background: rgba(139,92,246,0.28);
-  transform: scale(1.1);
-  box-shadow: 0 0 12px rgba(139,92,246,0.4);
+  background: rgba(139,92,246,0.24);
 }
-.audio-play-btn:active { transform: scale(0.92); }
+.audio-play-btn:active { opacity: 0.75; }
 .audio-play-btn svg { width: 12px; height: 12px; fill: currentColor; }
 .audio-progress-wrap {
   flex: 1;
@@ -991,7 +955,7 @@ input[type="range"].has-fill {
 .audio-time {
   font-size: 10px;
   color: var(--text3);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
   flex-shrink: 0;
   min-width: 32px;
   text-align: right;
@@ -999,17 +963,15 @@ input[type="range"].has-fill {
 
 /* ─── Preprocess Step ─── */
 .preprocess-card {
-  border: 1px solid rgba(139,92,246,0.15);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg2);
-  padding: 20px;
-  margin-bottom: 16px;
-  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+  padding: 18px 20px;
+  margin-bottom: 12px;
+  transition: border-color var(--transition);
 }
 .preprocess-card:hover {
-  border-color: rgba(139,92,246,0.3);
-  box-shadow: 0 4px 16px rgba(139,92,246,0.1);
-  transform: translateY(-1px);
+  border-color: rgba(139,92,246,0.25);
 }
 .preprocess-header {
   display: flex;
@@ -1018,16 +980,14 @@ input[type="range"].has-fill {
   margin-bottom: 16px;
 }
 .preprocess-icon {
-  width: 40px; height: 40px;
-  border-radius: 12px;
+  width: 36px; height: 36px;
+  border-radius: 6px;
   background: var(--violet-g);
   display: flex; align-items: center; justify-content: center;
   color: var(--violet);
-  transition: background var(--transition), transform var(--transition);
 }
 .preprocess-card:hover .preprocess-icon {
   background: rgba(139,92,246,0.18);
-  transform: scale(1.07);
 }
 .preprocess-results {
   display: grid;
@@ -1037,24 +997,21 @@ input[type="range"].has-fill {
 }
 .preprocess-stat {
   padding: 12px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.03);
+  border-radius: var(--radius);
+  background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
   text-align: center;
-  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  transition: border-color var(--transition);
   cursor: default;
 }
 .preprocess-stat:hover {
-  background: rgba(139,92,246,0.06);
   border-color: rgba(139,92,246,0.2);
-  transform: translateY(-2px);
 }
 .preprocess-stat-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
   color: var(--violet);
-  transition: color var(--transition);
 }
 .preprocess-stat:hover .preprocess-stat-value { color: #a78bfa; }
 .preprocess-stat-label {
@@ -1121,11 +1078,11 @@ input[type="range"].has-fill {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 9px 12px;
+  border-radius: var(--radius);
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   transition: border-color var(--transition), background var(--transition);
 }
 .batch-item.processing {
@@ -1141,11 +1098,10 @@ input[type="range"].has-fill {
   background: rgba(239,68,68,0.02);
 }
 .batch-item-icon {
-  width: 32px; height: 32px;
-  border-radius: 8px;
+  width: 28px; height: 28px;
+  border-radius: 5px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  transition: background var(--transition);
 }
 .batch-item-icon.pending { background: rgba(255,255,255,0.05); color: var(--text3); }
 .batch-item-icon.processing { background: var(--violet-g); color: var(--violet); }
@@ -1182,7 +1138,7 @@ input[type="range"].has-fill {
 }
 .batch-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--violet), var(--cyan));
+  background: var(--violet);
   border-radius: 2px;
   transition: width 0.5s ease;
   width: 0%;
@@ -1292,9 +1248,8 @@ input[type="range"].has-fill {
   transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition) !important;
 }
 #active-job-banner:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(139,92,246,0.15) !important;
   border-color: rgba(139,92,246,0.35) !important;
+  background: rgba(139,92,246,0.1) !important;
 }
 
 /* ─── Nav Badge (진행 중 작업 표시) ─── */
@@ -1356,13 +1311,9 @@ input[type="range"].has-fill {
 .audio-play-btn:active { transform: scale(0.9); }
 .result-play-btn:active { transform: scale(0.9); }
 
-/* ─── 모델 카드 삭제 버튼 호버 ─── */
-.btn-model-delete { transition: background var(--transition), color var(--transition), transform var(--transition); }
-.btn-model-delete:hover { transform: scale(1.1); }
-
-/* ─── 파일 아이템 삭제 버튼 ─── */
-.file-delete { transition: background var(--transition), color var(--transition), transform var(--transition); }
-.file-delete:hover { transform: scale(1.1); }
+/* ─── 삭제 버튼 호버 ─── */
+.btn-model-delete { transition: background var(--transition), color var(--transition); }
+.file-delete { transition: background var(--transition), color var(--transition); }
 
 /* ─── 전처리 완료 상태 체크마크 애니메이션 ─── */
 @keyframes checkDraw {
@@ -1386,9 +1337,8 @@ input[type="range"].has-fill {
   transition: transform 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.4s;
 }
 
-/* Model icon hover */
-.model-card:hover .model-icon { transform: scale(1.08); }
-.model-icon { transition: transform var(--transition); }
+/* Model icon */
+.model-icon { transition: background var(--transition); }
 
 /* Focus-visible for keyboard accessibility */
 .btn:focus-visible, .nav-btn:focus-visible, input:focus-visible, select:focus-visible,
@@ -1423,19 +1373,19 @@ input[type="range"].has-fill {
 .skeleton-line.medium { width: 70%; }
 .skeleton-line.long { width: 100%; }
 .skeleton-card {
-  padding: 14px 16px;
-  border-radius: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 .skeleton-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
   flex-shrink: 0;
 }
 .skeleton-text { flex: 1; }
@@ -1486,7 +1436,7 @@ input[type="range"].has-fill {
   justify-content: center;
   cursor: pointer;
   z-index: 9990;
-  box-shadow: 0 4px 18px rgba(139,92,246,0.45);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.4);
   opacity: 0;
   transform: translateY(20px) scale(0.8);
   transition: opacity 0.3s, transform 0.3s cubic-bezier(0.34,1.56,0.64,1), background var(--transition);
@@ -1499,8 +1449,6 @@ input[type="range"].has-fill {
 }
 .scroll-top-btn:hover {
   background: var(--violet-dark);
-  transform: translateY(-2px) scale(1.08);
-  box-shadow: 0 6px 22px rgba(139,92,246,0.55);
 }
 .scroll-top-btn:active { transform: scale(0.93); }
 .scroll-top-btn svg { width: 18px; height: 18px; }
@@ -1564,16 +1512,15 @@ input[type="range"].has-fill {
   color: var(--text3);
 }
 .empty-state-enhanced .empty-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius);
   background: rgba(255,255,255,0.03);
   border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 18px;
-  animation: float 3.5s ease-in-out infinite;
+  margin: 0 auto 16px;
 }
 .empty-state-enhanced .empty-icon svg {
   width: 32px;
@@ -1599,31 +1546,30 @@ input[type="range"].has-fill {
 .sub-tab-bar {
   display: flex;
   gap: 2px;
-  background: var(--bg2);
+  background: rgba(255,255,255,0.03);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 3px;
   margin-bottom: 20px;
   width: fit-content;
 }
 .sub-tab {
-  padding: 8px 22px;
+  padding: 7px 20px;
   border: none;
-  border-radius: 10px;
+  border-radius: calc(var(--radius) - 2px);
   background: transparent;
   color: var(--text3);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--transition), color var(--transition), box-shadow var(--transition), transform var(--transition-fast);
+  transition: background var(--transition), color var(--transition);
   font-family: inherit;
 }
 .sub-tab:hover { color: var(--text2); background: rgba(255,255,255,0.04); }
-.sub-tab:active { transform: scale(0.97); }
+.sub-tab:active { opacity: 0.8; }
 .sub-tab.active {
   background: var(--violet);
   color: white;
-  box-shadow: 0 2px 10px rgba(139,92,246,0.4);
 }
 
 /* ─── Pagination ─── */
@@ -1652,15 +1598,14 @@ input[type="range"].has-fill {
   border-color: var(--violet);
   color: var(--text);
   background: rgba(139,92,246,0.08);
-  transform: translateY(-1px);
 }
-.page-btn:not(:disabled):active { transform: scale(0.95); }
+.page-btn:not(:disabled):active { opacity: 0.7; }
 .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .page-btn.active {
   background: var(--violet);
   color: white;
   border-color: var(--violet);
-  box-shadow: 0 2px 8px rgba(139,92,246,0.35);
+  font-weight: 600;
 }
 .page-info { font-size: 11px; color: var(--text3); padding: 0 4px; }
 
@@ -1672,7 +1617,7 @@ input[type="range"].has-fill {
   padding: 1px 5px;
   border-radius: 4px;
   border: 1px solid var(--border);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
   margin-left: 4px;
   display: inline-block;
   vertical-align: middle;
@@ -1695,9 +1640,9 @@ input[type="range"].has-fill {
 
 /* ─── Cost Estimate Panel ─── */
 .cost-panel {
-  background: rgba(139,92,246,0.05);
-  border: 1px solid rgba(139,92,246,0.18);
-  border-radius: 12px;
+  background: rgba(139,92,246,0.04);
+  border: 1px solid rgba(139,92,246,0.15);
+  border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 14px;
 }
@@ -1722,7 +1667,7 @@ input[type="range"].has-fill {
 }
 .cost-panel-row:last-child { border-bottom: none; }
 .cost-panel-val {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
   font-size: 12px;
   color: var(--text);
   font-weight: 500;
@@ -1745,7 +1690,7 @@ input[type="range"].has-fill {
 .billing-table td em { color:var(--violet); font-style:normal; font-weight:600; }
 /* ─── Jobs Filter ─── */
 .jobs-filter-bar { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
-.filter-btn { padding:4px 14px; border-radius:20px; font-size:12px; background:var(--bg3); border:1px solid var(--border); color:var(--text2); cursor:pointer; transition:background 0.15s, color 0.15s, border-color 0.15s; }
+.filter-btn { padding:4px 12px; border-radius:4px; font-size:12px; background:var(--bg3); border:1px solid var(--border); color:var(--text2); cursor:pointer; transition:background 0.15s, color 0.15s, border-color 0.15s; }
 .filter-btn:hover { border-color:var(--violet); color:var(--violet); }
 .filter-btn.active { background:var(--violet); border-color:var(--violet); color:#fff; }
 /* 네트워크 에러 배너 */
@@ -1781,14 +1726,14 @@ input[type="range"].has-fill {
 }
 .confirm-dialog {
     background: var(--bg2);
-    border: 1px solid rgba(139,92,246,0.2);
-    border-radius: 20px;
-    padding: 32px 28px 24px;
-    max-width: 420px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 24px 20px;
+    max-width: 400px;
     width: 92%;
     text-align: center;
-    animation: dialogIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+    animation: dialogIn 0.2s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.55);
 }
 .confirm-dialog h3 {
     margin: 0 0 10px;
@@ -1811,17 +1756,15 @@ input[type="range"].has-fill {
     color: white;
     border: none;
     padding: 10px 24px;
-    border-radius: 10px;
+    border-radius: var(--radius);
     cursor: pointer;
     font-family: inherit;
     font-size: 13px;
     font-weight: 500;
-    transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
+    transition: background var(--transition);
 }
 .btn-danger-solid:hover {
     background: #dc2626;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(239,68,68,0.4);
 }
 .btn-danger-solid:active { transform: scale(0.96); }
 
@@ -2000,9 +1943,9 @@ input[type="range"].has-fill {
 .connection-dot.online { animation: onlinePing 2.8s ease-in-out infinite; }
 
 /* ─── Filter Button Improvements ─── */
-.filter-btn:hover { border-color:var(--violet); color:var(--violet); transform: translateY(-1px); box-shadow: 0 2px 8px rgba(139,92,246,0.2); }
-.filter-btn:active { transform: scale(0.94); }
-.filter-btn.active { background:var(--violet); border-color:var(--violet); color:#fff; box-shadow: 0 2px 10px rgba(139,92,246,0.38); }
+.filter-btn:hover { border-color:var(--violet); color:var(--violet); }
+.filter-btn:active { opacity: 0.8; }
+.filter-btn.active { background:var(--violet); border-color:var(--violet); color:#fff; }
 
 /* ─── Slider Focus State ─── */
 input[type="range"]:focus { outline: none; }
@@ -2016,9 +1959,7 @@ input[type="range"]:focus::-webkit-slider-thumb {
 /* ─── Model Card Selected Scale ─── */
 .model-card.selected {
   border-color: var(--violet);
-  background: var(--violet-g);
-  box-shadow: 0 0 0 2px rgba(139,92,246,0.25);
-  transform: translateY(-1px);
+  background: rgba(139,92,246,0.07);
 }
 
 /* ─── Model Files Expand Animation ─── */
@@ -2039,10 +1980,8 @@ input[type="range"]:focus::-webkit-slider-thumb {
 
 /* ─── Batch Item Hover ─── */
 .batch-item:hover {
-  border-color: rgba(139,92,246,0.25);
-  background: rgba(139,92,246,0.04);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(139,92,246,0.1);
+  border-color: rgba(139,92,246,0.2);
+  background: rgba(255,255,255,0.03);
 }
 
 /* ─── Progress Bar Shimmer ─── */
@@ -2081,9 +2020,8 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 }
 .empty-state-enhanced .empty-icon:hover svg { opacity: 0.65; }
 
-/* ─── Pagination Active Scale ─── */
-.page-btn.active { transform: scale(1.04); }
-.page-btn.active:hover { transform: scale(1.06) translateY(-1px); }
+/* ─── Pagination Active ─── */
+.page-btn.active { font-weight: 600; }
 
 /* ─── Tooltip Appear Animation (전역 툴팁용) ─── */
 @keyframes tipFadeIn {
@@ -2122,11 +2060,10 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 .sub-tab.active {
   background: var(--violet);
   color: white;
-  box-shadow: 0 2px 12px rgba(139,92,246,0.45);
 }
 
 /* ─── Logo Active State ─── */
-.sidebar .logo:active { transform: scale(0.95); }
+.sidebar .logo:active { opacity: 0.65; }
 
 /* ─── Preprocess Card Success Border ─── */
 .preprocess-card.preprocess-success {
@@ -2190,7 +2127,6 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 #toggle-mix.active, #toggle-vocal.active {
   background: var(--violet);
   color: white;
-  box-shadow: 0 2px 8px rgba(139,92,246,0.4);
 }
 
 /* ─── Preprocess Stats Bar Fade In ─── */
@@ -2292,8 +2228,8 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 .section-desc { transition: border-left-color var(--transition); }
 .section-desc:hover { border-left-color: rgba(139,92,246,0.65); }
 
-/* ─── Badge Hover (animated 제외) ─── */
-.badge { transition: transform var(--transition-fast), box-shadow var(--transition-fast); }
+/* ─── Badge ─── */
+.badge { transition: none; }
 .badge:not(.badge-amber):hover { transform: scale(1.06); box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
 
 /* ─── Connection Status Focus-Visible ─── */
@@ -2392,16 +2328,15 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 .file-item { transition: background var(--transition), border-color var(--transition), transform var(--transition), box-shadow var(--transition); }
 .file-item:hover { box-shadow: 0 3px 12px rgba(139,92,246,0.08); }
 
-/* ─── Active tab nav button 글로우 ─── */
-.nav-btn.active { box-shadow: inset 0 0 0 1px rgba(139,92,246,0.2), 0 2px 8px rgba(139,92,246,0.08); }
+/* ─── Active tab nav button ─── */
+.nav-btn.active { box-shadow: none; }
 
 /* ─── 전처리 완료 downloads 버튼 ─── */
 #btn-download-mr, #btn-download-vocal {
   transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
 }
 #btn-download-mr:hover, #btn-download-vocal:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 3px 12px rgba(0,0,0,0.2);
+  opacity: 0.9;
 }
 
 /* ─── Conversion history empty state button ─── */
@@ -2432,14 +2367,13 @@ input.input-success { border-color: var(--emerald) !important; box-shadow: 0 0 0
 }
 .live-cost-bar .live-sep { color: rgba(255,255,255,0.15); }
 .live-cost-bar .live-val {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
   font-size: 12px;
   font-weight: 600;
   color: var(--violet);
 }
 .live-cost-bar .live-note { font-size: 10px; color: var(--text3); }
 
-/* ─── Pause Button with Icon ─── */
 /* ─── Firefox 스크롤바 ─── */
 * { scrollbar-width: thin; scrollbar-color: rgba(139,92,246,0.35) transparent; }
 
@@ -2517,7 +2451,7 @@ input.input-error   { border-color: var(--red) !important; animation: inputError
 }
 
 /* ════════════════════════════════════════════════════
-   COMPREHENSIVE UI/UX POLISH — ROUND 2
+   접근성 / 세부 인터랙션 정의
    ════════════════════════════════════════════════════ */
 
 /* ─── 텍스트 선택 스타일 ─── */
@@ -2679,8 +2613,6 @@ input[type="range"]::-moz-range-track {
 .btn-ghost:hover {
   background: rgba(139,92,246,0.08);
   border-color: rgba(139,92,246,0.3);
-  transform: translateY(-1px);
-  box-shadow: 0 3px 10px rgba(139,92,246,0.15);
 }
 .btn-ghost:active { transform: scale(0.96); }
 
@@ -2771,14 +2703,14 @@ input[type="range"]::-moz-range-track {
   </div>
 
   <!-- Active job banner -->
-  <div id="active-job-banner" style="display:none;margin-bottom:16px;padding:14px 18px;border-radius:var(--radius);background:linear-gradient(135deg,rgba(139,92,246,0.12),rgba(6,182,212,0.08));border:1px solid rgba(139,92,246,0.2);cursor:pointer" onclick="goToActiveJob()">
+  <div id="active-job-banner" style="display:none;margin-bottom:16px;padding:14px 18px;border-radius:var(--radius);background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.2);cursor:pointer" onclick="goToActiveJob()">
     <div style="display:flex;align-items:center;gap:12px">
       <div class="spinner" style="border-top-color:var(--violet)"></div>
       <div style="flex:1">
         <div style="font-size:14px;font-weight:500" id="active-job-title">작업 진행 중...</div>
         <div style="font-size:12px;color:var(--text2);margin-top:2px" id="active-job-detail"></div>
       </div>
-      <div style="font-size:20px;font-weight:700;color:var(--violet);font-family:'JetBrains Mono',monospace" id="active-job-pct"></div>
+      <div style="font-size:20px;font-weight:700;color:var(--violet);font-family:ui-monospace,'SF Mono',Consolas,monospace" id="active-job-pct"></div>
     </div>
   </div>
 
@@ -3599,7 +3531,7 @@ input[type="range"]::-moz-range-track {
   <div id="convert-done" style="display:none">
     <div class="card" style="border-color:rgba(16,185,129,0.3)">
       <div class="flex gap-16">
-        <div style="width:48px;height:48px;border-radius:14px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <div style="width:44px;height:44px;border-radius:8px;background:rgba(16,185,129,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <div>
@@ -3660,7 +3592,7 @@ input[type="range"]::-moz-range-track {
       <div class="batch-overall mt-16">
         <div class="flex-between">
           <span style="font-size:12px;color:var(--text2)">전체 진행률</span>
-          <span style="font-size:12px;color:var(--violet);font-family:'JetBrains Mono',monospace" id="batch-overall-pct">0%</span>
+          <span style="font-size:12px;color:var(--violet);font-family:ui-monospace,'SF Mono',Consolas,monospace" id="batch-overall-pct">0%</span>
         </div>
         <div class="batch-progress-bar">
           <div class="batch-progress-fill" id="batch-overall-fill"></div>
@@ -3673,7 +3605,7 @@ input[type="range"]::-moz-range-track {
   <div id="batch-done" style="display:none">
     <div class="card" style="border-color:rgba(16,185,129,0.3)">
       <div class="flex gap-16">
-        <div style="width:48px;height:48px;border-radius:14px;background:rgba(16,185,129,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <div style="width:44px;height:44px;border-radius:8px;background:rgba(16,185,129,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <div>
@@ -3724,11 +3656,11 @@ input[type="range"]::-moz-range-track {
     </div>
     <div style="margin-top:16px">
       <label class="label">RunPod API Key <i class="tip" data-tip="RunPod 사이트의 '비밀번호'와 같은 인증 키입니다.\n\n📋 발급 방법:\n① runpod.io에 로그인\n② 왼쪽 메뉴 → Settings → API Keys\n③ 'Create API Key' 클릭\n④ 생성된 키를 복사하여 여기에 붙여넣기\n\n💡 키는 'rpa_'로 시작하는 긴 문자열입니다.\n⚠️ 이 키는 비밀번호와 같으므로 다른 사람에게 알려주지 마세요.">ⓘ</i></label>
-      <div class="input-with-copy"><input type="text" id="cfg-api-key" placeholder="rpa_xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" aria-label="RunPod API Key" style="font-family:'JetBrains Mono',monospace;font-size:12px"><button class="copy-btn" onclick="copyToClipboard('cfg-api-key')" title="복사" aria-label="API Key 복사"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+      <div class="input-with-copy"><input type="text" id="cfg-api-key" placeholder="rpa_xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" aria-label="RunPod API Key" style="font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px"><button class="copy-btn" onclick="copyToClipboard('cfg-api-key')" title="복사" aria-label="API Key 복사"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
     </div>
     <div style="margin-top:12px">
       <label class="label">Serverless Endpoint ID <i class="tip" data-tip="RunPod에서 만든 AI 서버의 '주소'입니다.\n\n📋 확인 방법:\n① runpod.io에 로그인\n② 왼쪽 메뉴 → Serverless\n③ 배포한 엔드포인트 이름을 클릭\n④ 표시되는 ID를 복사하여 여기에 붙여넣기\n\n💡 아직 엔드포인트를 만들지 않았다면, RunPod에서 먼저 AI 서버를 배포해야 합니다. 설정 방법은 관리자에게 문의하세요.">ⓘ</i></label>
-      <div class="input-with-copy"><input type="text" id="cfg-endpoint-id" placeholder="xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" aria-label="Serverless Endpoint ID" style="font-family:'JetBrains Mono',monospace;font-size:12px"><button class="copy-btn" onclick="copyToClipboard('cfg-endpoint-id')" title="복사" aria-label="Endpoint ID 복사"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+      <div class="input-with-copy"><input type="text" id="cfg-endpoint-id" placeholder="xxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" aria-label="Serverless Endpoint ID" style="font-family:ui-monospace,'SF Mono',Consolas,monospace;font-size:12px"><button class="copy-btn" onclick="copyToClipboard('cfg-endpoint-id')" title="복사" aria-label="Endpoint ID 복사"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
     </div>
     <div class="flex gap-8 mt-16">
       <button class="btn btn-primary" id="btn-save-settings" data-loading-label="저장 중..." onclick="saveSettings()">설정 저장</button>
@@ -3791,7 +3723,7 @@ input[type="range"]::-moz-range-track {
     <div class="flex gap-8 mt-16" style="flex-wrap:wrap">
       <button class="btn btn-secondary" id="btn-sync-status" onclick="checkSyncStatus()">동기화 상태 확인</button>
       <button class="btn btn-primary" id="btn-sync-backup" data-loading-label="백업 중..." onclick="startSyncBackup()">클라우드에 백업</button>
-      <button class="btn btn-primary" id="btn-sync-restore" data-loading-label="복원 중..." onclick="startSyncRestore()" style="background:linear-gradient(135deg,#10b981,#059669)">클라우드에서 복원</button>
+      <button class="btn btn-primary" id="btn-sync-restore" data-loading-label="복원 중..." onclick="startSyncRestore()" style="background:#059669">클라우드에서 복원</button>
     </div>
     <div id="sync-msg" style="font-size:12px;margin-top:8px"></div>
   </div>
