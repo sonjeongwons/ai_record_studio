@@ -3452,14 +3452,38 @@ input[type="range"]::-moz-range-track {
             <div style="font-size:11px;color:var(--text3);margin-top:2px">숨결감·자연스러움 복원 — 원본 보컬 10~15% 블렌딩 권장 (0%=비활성)</div>
           </div>
 
-          <!-- v22: 화음 필터 -->
+          <!-- v60: 화음 구간 자동 바이패스 -->
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">화음 필터 <i class="tip" data-tip="원곡에 화음/코러스/듀엣이 있을 때 변환 전 배경 화음을 억제합니다.\n\n📖 원리:\nAI(RVC)는 한 목소리만 변환 가능합니다.\n여러 목소리가 동시에 들어오면 '괴성'이나 음정 뒤죽박죽이 발생합니다.\n이 필터는 변환 전에 메인 멜로디만 남기고 배경 화음을 줄입니다.\n\n🔢 설정 가이드:\n• 0.0 = 필터 없음 (솔로 노래에 적합)\n• 0.3 = 약한 필터 (약간의 화음만 있는 곡)\n• 0.5 = 중간 필터 (화음/코러스 있는 곡 — 권장)\n• 0.8 = 강한 필터 (듀엣/합창 곡)\n\n⚠️ 높은 값은 음색이 약간 변할 수 있습니다.\n💡 화음 구간에서 괴성이 나오면 0.5~0.8을 시도하세요.">ⓘ</i></span>
+              <span class="slider-label">화음 구간 원본 유지 <i class="tip" data-tip="★ v60 신기능: 화음/코러스 구간을 AI 변환 없이 원본 그대로 사용합니다.\n\n📖 왜 필요한가요?\nRVC는 단일 음정(모노포닉)만 처리 가능합니다.\n화음(동시에 여러 음정)이 있으면 AI가 혼동해 '괴성/스크리밍'이 발생합니다.\n\n📌 작동 방식:\n1. 변환 후 보컬 트랙에서 화음 구간을 자동 감지\n2. 해당 구간만 원본 보컬로 교체 (80ms 크로스페이드)\n3. 나머지 구간은 AI 변환 적용\n\n🎯 권장 사용 케이스:\n• 화음/코러스/하모니가 있는 모든 곡\n• 변환 후 특정 구간에서 '괴성' 또는 '기계음'이 들릴 때\n• 리드 보컬 위에 화음이 얹혀있는 K-POP\n\n💡 가장 효과적인 화음 문제 해결 방법입니다!">ⓘ</i></span>
+              <span style="display:flex;align-items:center;gap:6px">
+                <label class="toggle-switch"><input type="checkbox" id="harmony-bypass-cb" aria-label="화음 구간 원본 유지 활성화" onchange="document.getElementById('harmony-bypass-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
+                <span class="slider-value" id="harmony-bypass-val">OFF</span>
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">★ 화음/코러스 구간 AI변환 건너뜀 → 괴성·기계음 완전 제거 (화음있는 곡 필수)</div>
+          </div>
+
+          <!-- v60: 여성 보컬 구간 바이패스 -->
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">여성 보컬 구간 원본 유지 <i class="tip" data-tip="★ v60 신기능: F0 분석으로 여성 보컬 구간을 자동 감지해 AI 변환을 건너뜁니다.\n\n📖 왜 필요한가요?\n남성 목소리 모델을 여성 보컬에 적용하면 심한 기계음/가래 소리가 발생합니다.\n이 옵션은 여성 보컬 구간을 원본 그대로 유지합니다.\n\n📌 감지 기준:\n• F0(기본주파수) 200Hz 이상인 구간을 여성 보컬로 판단\n• 1초 이상 지속되는 구간만 적용 (단발 고음 제외)\n\n🎯 권장 사용 케이스:\n• 남/녀 혼성 듀엣 곡 (예: comethru ft. Bea Miller)\n• 여성 솔로 + 남성 하모니 곡\n• 여성 보컬 파트에서 기계음이 나올 때\n\n⚠️ 남성 고음 구간도 일부 감지될 수 있습니다.">ⓘ</i></span>
+              <span style="display:flex;align-items:center;gap:6px">
+                <label class="toggle-switch"><input type="checkbox" id="female-bypass-cb" aria-label="여성 보컬 구간 원본 유지 활성화" onchange="document.getElementById('female-bypass-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
+                <span class="slider-value" id="female-bypass-val">OFF</span>
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">남/여 혼성 곡에서 여성 보컬 구간 AI변환 제외 → 가래·기계음 제거</div>
+          </div>
+
+          <!-- v22: 화음 필터 (레거시, 비권장) -->
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">화음 필터 (레거시) <i class="tip" data-tip="⚠️ v23에서 비권장: HPSS 방식이 자음/발음을 파괴하는 것이 확인되었습니다.\n★ 대신 위의 '화음 구간 원본 유지' 옵션을 사용하세요.\n\n📖 레거시 원리:\n변환 전에 HPSS(Harmonic-Percussive Separation)로 화음 성분을 억제.\n문제: 한국어 자음(ㅅ,ㅆ,ㅈ,ㅊ)이 percussive로 분류되어 발음이 뭉개짐.\n\n💡 화음 문제 해결: 위의 '화음 구간 원본 유지' ON 권장.">ⓘ</i></span>
               <span class="slider-value" id="harmony-filter-val">0.0</span>
             </div>
-            <input type="range" id="harmony-filter-slider" min="0" max="100" value="0" class="has-fill" aria-label="화음 필터 강도" oninput="document.getElementById('harmony-filter-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">화음/코러스 곡에서 배경화음 억제 → 괴성/피치카오스 감소 (0.5 권장)</div>
+            <input type="range" id="harmony-filter-slider" min="0" max="100" value="0" class="has-fill" aria-label="화음 필터 강도 (레거시)" oninput="document.getElementById('harmony-filter-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">⚠️ 비권장 — '화음 구간 원본 유지' 옵션 사용 권장 (HPSS 방식은 발음 파괴 위험)</div>
           </div>
         </div>
       </div>
@@ -6545,8 +6569,13 @@ async function startConversion() {
   var highNoteCb = document.getElementById('high-note-cb');
   form.append('high_note_mode', highNoteCb ? highNoteCb.checked : false);
   form.append('vocal_pitch_pre_shift', parseInt(getVal('vocal-pre-shift-slider', '0')));
-  // v22: harmony filter
+  // v22: harmony filter (레거시)
   form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
+  // v60: 화음 구간 원본 유지 + 여성 보컬 바이패스
+  var harmonyBypassCb = document.getElementById('harmony-bypass-cb');
+  form.append('harmony_bypass', harmonyBypassCb ? harmonyBypassCb.checked : false);
+  var femaleBypassCb = document.getElementById('female-bypass-cb');
+  form.append('female_bypass', femaleBypassCb ? femaleBypassCb.checked : false);
   // 원본 보컬 블렌딩
   form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
   // v49: f0_autotune (기본 true, 노래 변환 피치 안정화)
@@ -6964,8 +6993,13 @@ async function startBatchConversion() {
       form.append('harmonic_enhance', batchHarmonicCb ? batchHarmonicCb.checked : false);
       var batchHighNoteCb = document.getElementById('high-note-cb');
       form.append('high_note_mode', batchHighNoteCb ? batchHighNoteCb.checked : false);
-      // v22: harmony filter
+      // v22: harmony filter (레거시)
       form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
+      // v60: 화음 구간 원본 유지 + 여성 보컬 바이패스
+      var batchHarmonyBypassCb = document.getElementById('harmony-bypass-cb');
+      form.append('harmony_bypass', batchHarmonyBypassCb ? batchHarmonyBypassCb.checked : false);
+      var batchFemaleBypassCb = document.getElementById('female-bypass-cb');
+      form.append('female_bypass', batchFemaleBypassCb ? batchFemaleBypassCb.checked : false);
       // 원본 보컬 블렌딩
       form.append('vocal_blend', (getVal('vocal-blend-slider', '0') / 100).toFixed(2));
       // v49: language (한/영 EQ 분리)
