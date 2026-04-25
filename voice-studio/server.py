@@ -2547,6 +2547,8 @@ async def start_conversion(
     harmonic_enhance: str = Form("false"),
     high_note_mode: str = Form("false"),
     harmony_filter: float = Form(0.0),
+    harmony_bypass: str = Form("false"),   # v60: 화음 구간 자동 바이패스 (원본 유지)
+    female_bypass: str = Form("false"),    # v60: 여성 보컬 구간 자동 바이패스 (남성 모델 미적용)
     separate_vocals: str = Form("true"),
     vocal_pitch_pre_shift: int = Form(0),
     vocal_blend: float = Form(0.0),    # v45: 0% (더블링 원인 제거)
@@ -2666,6 +2668,8 @@ async def start_conversion(
             "harmonic_enhance": harmonic_enhance,
             "high_note_mode": high_note_mode,
             "harmony_filter": max(0.0, min(1.0, harmony_filter)),
+            "harmony_bypass": _parse_form_bool(harmony_bypass, False),   # v60: 화음 구간 바이패스
+            "female_bypass": _parse_form_bool(female_bypass, False),     # v60: 여성 보컬 구간 바이패스
             "vocal_pitch_pre_shift": max(-12, min(12, vocal_pitch_pre_shift)),
             "vocal_blend": vocal_blend,
             "language": language,         # v49: 한/영 EQ 분리

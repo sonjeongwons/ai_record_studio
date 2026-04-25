@@ -678,6 +678,210 @@ def _separate_lead_backing(vocal_path: Path, output_dir: Path) -> dict:
         return {"lead": None, "backing": None}
 
 
+def _detect_polyphonic_regions(vocal_path: Path, sr: int = 44100,
+                                frame_dur: float = 0.1,
+                                flatness_thresh: float = 0.12,
+                                min_duration: float = 0.3) -> list:
+    """v60: 보컬 트랙에서 폴리포닉(화음/화성) 구간 자동 감지.
+
+    spectral flatness 기반: voiced 구간에서 flatness > thresh이면
+    여러 피치가 혼재(화음)하는 구간으로 마킹 → RVC 변환 바이패스 대상.
+    RVC는 monophonic SVC 모델이므로 polyphonic 입력에서 괴성 발생.
+
+    Returns: [(start_sec, end_sec), ...] 폴리포닉 구간 목록
+    """
+    try:
+        import librosa
+        import numpy as np
+
+        y, _sr = librosa.load(str(vocal_path), sr=sr, mono=True)
+        hop = int(sr * frame_dur)
+
+        flatness = librosa.feature.spectral_flatness(y=y, hop_length=hop)[0]
+        rms = librosa.feature.rms(y=y, hop_length=hop)[0]
+        rms_thresh = float(np.percentile(rms[rms > 0], 30)) if np.any(rms > 0) else 1e-4
+        voiced = rms > rms_thresh
+        polyphonic = voiced & (flatness > flatness_thresh)
+
+        regions: list = []
+        in_region = False
+        start_frame = 0
+        for i, is_poly in enumerate(polyphonic):
+            if is_poly and not in_region:
+                in_region = True
+                start_frame = i
+            elif not is_poly and in_region:
+                in_region = False
+                s = start_frame * hop / sr
+                e = i * hop / sr
+                if e - s >= min_duration:
+                    regions.append([s, e])
+        if in_region:
+            s = start_frame * hop / sr
+            e = len(polyphonic) * hop / sr
+            if e - s >= min_duration:
+                regions.append([s, e])
+
+        # 인접 구간 병합 (0.5초 이내 간격)
+        merged: list = []
+        for seg in regions:
+            if merged and seg[0] - merged[-1][1] < 0.5:
+                merged[-1][1] = seg[1]
+            else:
+                merged.append(list(seg))
+
+        result = [(s, e) for s, e in merged]
+        log.info(f"Polyphonic regions: {len(result)} segments detected (thresh={flatness_thresh:.2f})")
+        return result
+    except Exception as _ex:
+        log.warning(f"Polyphonic detection failed (non-critical): {_ex}")
+        return []
+
+
+def _detect_gender_bypass_segments(vocal_path: Path, sr: int = 44100,
+                                    frame_dur: float = 0.5,
+                                    female_f0_thresh: float = 200.0,
+                                    min_duration: float = 1.0) -> list:
+    """v60: F0 기반 성별 추정으로 여성 보컬 구간 자동 감지.
+
+    프레임별 중앙 F0가 female_f0_thresh(200Hz) 이상이면 여성 보컬.
+    남성 모델을 여성 보컬에 적용하면 괴성/가래 발생 → 해당 구간 바이패스.
+    (comethru 같은 남/여 혼성 곡에서 여성 파트 원본 유지)
+
+    Returns: [(start_sec, end_sec), ...] 여성 보컬 구간 목록
+    """
+    try:
+        import librosa
+        import numpy as np
+
+        y, _sr = librosa.load(str(vocal_path), sr=sr, mono=True)
+        hop = 512
+        frames_per_block = max(1, int(sr * frame_dur) // hop)
+
+        f0, _voiced_flag, _voiced_prob = librosa.pyin(
+            y, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'),
+            sr=sr, hop_length=hop, fill_na=None,
+        )
+
+        regions: list = []
+        in_region = False
+        start_sec = 0.0
+        n_blocks = len(f0) // frames_per_block
+
+        for b in range(n_blocks):
+            block = f0[b * frames_per_block:(b + 1) * frames_per_block]
+            valid = block[~np.isnan(block)] if block is not None else np.array([])
+            is_female = len(valid) > 0 and float(np.median(valid)) >= female_f0_thresh
+            t = b * frame_dur
+            if is_female and not in_region:
+                in_region = True
+                start_sec = t
+            elif not is_female and in_region:
+                in_region = False
+                if t - start_sec >= min_duration:
+                    regions.append([start_sec, t])
+        if in_region:
+            t = n_blocks * frame_dur
+            if t - start_sec >= min_duration:
+                regions.append([start_sec, t])
+
+        # 인접 병합 (1초 이내)
+        merged: list = []
+        for seg in regions:
+            if merged and seg[0] - merged[-1][1] < 1.0:
+                merged[-1][1] = seg[1]
+            else:
+                merged.append(list(seg))
+
+        result = [(s, e) for s, e in merged]
+        log.info(f"Female bypass segments: {len(result)} (thresh={female_f0_thresh:.0f}Hz)")
+        return result
+    except Exception as _ex:
+        log.warning(f"Gender detection failed (non-critical): {_ex}")
+        return []
+
+
+def _blend_with_bypass(rvc_path: Path, original_path: Path,
+                        bypass_regions: list, sr: int,
+                        work_dir: Path, fade_ms: int = 80) -> Path:
+    """v60: RVC 변환 트랙의 특정 구간을 원본 오디오로 교체 (크로스페이드).
+
+    화음 구간 또는 여성 보컬 구간에서 원본 보컬을 사용해
+    RVC 괴성/기계음을 제거. 경계는 fade_ms 크로스페이드로 자연스럽게 연결.
+
+    Args:
+        rvc_path: RVC 변환된 보컬 파일
+        original_path: 원본 보컬 (Demucs 분리된)
+        bypass_regions: [(start_sec, end_sec), ...] 원본으로 교체할 구간
+        sr: 처리 샘플레이트
+        work_dir: 출력 파일 저장 디렉토리
+        fade_ms: 경계 크로스페이드 길이 (ms)
+
+    Returns: 블렌딩된 보컬 파일 경로
+    """
+    import numpy as np
+    import soundfile as sf
+
+    if not bypass_regions:
+        return rvc_path
+
+    rvc_arr, rvc_sr = sf.read(str(rvc_path), always_2d=True)
+    org_arr, org_sr = sf.read(str(original_path), always_2d=True)
+
+    # SR 맞춤 (resampy 우선, 없으면 ffmpeg)
+    if rvc_sr != sr:
+        try:
+            import resampy
+            rvc_arr = resampy.resample(rvc_arr.T, rvc_sr, sr).T
+        except ImportError:
+            log.debug("resampy unavailable; skipping rvc resample in bypass blend")
+    if org_sr != sr:
+        try:
+            import resampy
+            org_arr = resampy.resample(org_arr.T, org_sr, sr).T
+        except ImportError:
+            log.debug("resampy unavailable; skipping orig resample in bypass blend")
+
+    # 채널 수 통일
+    n_ch = rvc_arr.shape[1]
+    if org_arr.shape[1] == 1 and n_ch > 1:
+        org_arr = np.repeat(org_arr, n_ch, axis=1)
+    elif org_arr.shape[1] > n_ch:
+        org_arr = org_arr[:, :n_ch]
+
+    min_len = min(len(rvc_arr), len(org_arr))
+    out = rvc_arr[:min_len].copy()
+    org_arr = org_arr[:min_len]
+
+    fade_len = min(int(sr * fade_ms / 1000), min_len // 4)
+    fade_in = np.linspace(0.0, 1.0, fade_len)
+    fade_out = np.linspace(1.0, 0.0, fade_len)
+
+    for start_s, end_s in bypass_regions:
+        a = min(int(start_s * sr), min_len)
+        b = min(int(end_s * sr), min_len)
+        if a >= b:
+            continue
+        out[a:b] = org_arr[a:b]
+        # 시작 경계 (RVC→원본 페이드)
+        fa = max(0, a - fade_len)
+        if a - fa > 0:
+            fl = a - fa
+            out[fa:a] = (rvc_arr[fa:a] * fade_out[-fl:, None] +
+                         org_arr[fa:a] * fade_in[-fl:, None])
+        # 끝 경계 (원본→RVC 페이드)
+        fb = min(min_len, b + fade_len)
+        if fb - b > 0:
+            fl = fb - b
+            out[b:fb] = (org_arr[b:fb] * fade_out[:fl, None] +
+                         rvc_arr[b:fb] * fade_in[:fl, None])
+
+    out_path = work_dir / "vocal_bypassed.wav"
+    sf.write(str(out_path), out, sr, subtype='PCM_24')
+    log.info(f"Bypass blend complete: {len(bypass_regions)} regions replaced with original")
+    return out_path
+
+
 def _demucs_separate(audio_paths: list[Path], output_dir: Path) -> dict:
     """
     Run Demucs htdemucs_6s model to separate vocals from accompaniment (v18: 6-stem).
@@ -3009,36 +3213,32 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # index_rate 0.45: v51 (v50: 0.55→0.45, 발음 명료도 우선 — 0.55는 발음 뭉개짐)
+    # v57: 0.50 (CLAUDE.md v57 동기화)
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.45))
+        index_rate: float = float(job_input.get("index_rate", 0.50))
     except (ValueError, TypeError):
-        index_rate = 0.45
+        index_rate = 0.50
     # rmvpe: stable, fast, accurate for singing — better default than crepe
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
     if f0_method not in _VALID_F0_CONVERT:
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # filter_radius 3: v53 (v50: 2→v53: 3, 커뮤니티: 가성 안정화에 median 3 필요)
-    # 분석: filter_radius 2는 가성 구간에서 피치 불안정→삑사리 유발
+    # v57: 2 (CLAUDE.md v57 동기화)
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 3))
+        filter_radius: int = int(job_input.get("filter_radius", 2))
     except (ValueError, TypeError):
-        filter_radius = 3
-    # rms_mix_rate 0.20: v53 — 원곡 음량 패턴 20% 반영 (음량 균일성 강화)
-    # v51: 0.1 → 여전히 음량 들쑥날쑥 (분석: LRA +0.8~+2.1 확대)
-    # v53: 0.20으로 원곡 엔벨로프 반영 강화 (커뮤니티 권장 0.15-0.25)
+        filter_radius = 2
+    # v57: 0.15 (CLAUDE.md v57 동기화)
     try:
-        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.20))
+        rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
     except (ValueError, TypeError):
-        rms_mix_rate = 0.20
-    # protect 0.40: v49 (0.33→0.40, 과도한 자음보호 완화→인덱스 정확도↑)
-    # RVC 구현: 0.50은 보호 기능 OFF, 0.0은 최대 보호
+        rms_mix_rate = 0.15
+    # v57: 0.50 (파열음/치찰음 보호 최대, CLAUDE.md v57)
     try:
-        protect: float = float(job_input.get("protect", 0.40))
+        protect: float = float(job_input.get("protect", 0.50))
     except (ValueError, TypeError):
-        protect = 0.40
+        protect = 0.50
     # v49: hop_length 128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     try:
         hop_length: int = int(job_input.get("hop_length", 128))
@@ -3057,9 +3257,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     _autotune_raw = job_input.get("f0_autotune", True)
     f0_autotune: bool = _autotune_raw in (True, "true", "True", "1", 1)
     try:
-        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.4))
+        f0_autotune_strength: float = float(job_input.get("f0_autotune_strength", 0.2))
     except (ValueError, TypeError):
-        f0_autotune_strength = 0.4  # v53: 0.6→0.4 (커뮤니티: 0.6은 비브라토 과도 평탄화, 0.4가 최적)
+        f0_autotune_strength = 0.2  # v57: 0.2 (피치 상방편향 교정, CLAUDE.md v57)
     f0_autotune_strength = max(0.0, min(1.0, f0_autotune_strength))
     clean_audio_raw = job_input.get("clean_audio", False)
     clean_audio: bool = clean_audio_raw in (True, "true", "True", "1", 1)
@@ -3096,6 +3296,14 @@ def task_convert(job_input: dict, job: dict) -> dict:
         harmony_filter: float = float(job_input.get("harmony_filter", 0.0))
     except (ValueError, TypeError):
         harmony_filter = 0.0
+    # v60: 화음 구간 자동 바이패스 (폴리포닉 감지 → 원본 보컬 사용)
+    # 활성화 시: 화음/유니즌 구간에서 RVC 괴성 제거, 원본 유지
+    harmony_bypass_raw = job_input.get("harmony_bypass", False)
+    harmony_bypass: bool = harmony_bypass_raw in (True, "true", "True", "1", 1)
+    # v60: 여성 보컬 구간 자동 바이패스 (F0 기반 성별 감지)
+    # 활성화 시: 여성 보컬 구간에서 남성 모델 적용 제거 → 원본 유지
+    female_bypass_raw = job_input.get("female_bypass", False)
+    female_bypass: bool = female_bypass_raw in (True, "true", "True", "1", 1)
 
     # 파라미터 범위 클램프
     pitch_shift = max(-24, min(24, pitch_shift))
@@ -3347,6 +3555,45 @@ def task_convert(job_input: dict, job: dict) -> dict:
                 f"Work dir contains: {[f.name for f in all_files if f.is_file()]}"
             )
 
+        # --- Step 3b: 화음/여성보컬 구간 바이패스 (v60) ---
+        # 폴리포닉(화음) 구간 또는 여성 보컬 구간을 원본 보컬로 교체
+        # RVC는 monophonic SVC이므로 화음 구간에서 괴성 발생 → 원본이 더 자연스러움
+        _bypass_regions: list = []
+        if (harmony_bypass or female_bypass) and rvc_input.exists() and converted_vocals_path.exists():
+            try:
+                if harmony_bypass:
+                    _poly = _detect_polyphonic_regions(rvc_input, sr=_process_sr)
+                    _bypass_regions.extend(_poly)
+                    log.info(f"Harmony bypass: {len(_poly)} polyphonic regions")
+                if female_bypass:
+                    _fem = _detect_gender_bypass_segments(rvc_input, sr=_process_sr)
+                    _bypass_regions.extend(_fem)
+                    log.info(f"Female bypass: {len(_fem)} female vocal regions")
+
+                if _bypass_regions:
+                    # 구간 정렬 + 중복 제거
+                    _bypass_regions.sort(key=lambda x: x[0])
+                    _merged: list = []
+                    for _seg in _bypass_regions:
+                        if _merged and _seg[0] - _merged[-1][1] < 0.3:
+                            _merged[-1] = (_merged[-1][0], max(_merged[-1][1], _seg[1]))
+                        else:
+                            _merged.append(tuple(_seg))
+                    _bypass_regions = _merged
+
+                    _blended = _blend_with_bypass(
+                        rvc_path=converted_vocals_path,
+                        original_path=rvc_input,
+                        bypass_regions=_bypass_regions,
+                        sr=_process_sr,
+                        work_dir=work,
+                    )
+                    if _blended.exists():
+                        converted_vocals_path = _blended
+                        log.info(f"Bypass blend applied: {len(_bypass_regions)} regions")
+            except Exception as _bp_err:
+                log.warning(f"Bypass blending failed (non-critical, using RVC output): {_bp_err}")
+
         # --- Step 3a-fix: RVC 출력 SR 정규화 (40kHz→44.1kHz) ---
         # RVC 모델은 보통 tgt_sr=40000Hz로 출력, 후처리/믹싱은 44.1kHz 기준.
         # SR 불일치 시 soxr 최고품질 리샘플링으로 44.1kHz 통일.
@@ -3594,17 +3841,17 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.45,     # v51: 0.55→0.45 (발음 명료도 우선)
-    protect: float = 0.40,        # v49: 0.33→0.40 (과도한 자음 보호 완화 → 인덱스 정확도 향상)
+    index_rate: float = 0.50,     # v57: 0.50 (CLAUDE.md v57 동기화)
+    protect: float = 0.50,        # v57: 0.50 (파열음/치찰음 보호 최대)
     hop_length: int = 128,        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 3,       # v53: 2→3 (가성 안정화, median 3 필요)
-    rms_mix_rate: float = 0.20,   # v53: 0.1→0.20 (원곡 음량 패턴 20% 반영, 균일성 강화)
+    filter_radius: int = 2,       # v57: 2 (CLAUDE.md v57 동기화)
+    rms_mix_rate: float = 0.15,   # v57: 0.15 (CLAUDE.md v57 동기화)
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
-    f0_autotune_strength: float = 0.4,  # v53: 0.6→0.4 (비브라토 보존, 커뮤니티 최적값)
+    f0_autotune_strength: float = 0.2,  # v57: 0.2 (피치 상방편향 교정)
     embedder_model: str = "contentvec",  # v54: spin, korean_hubert_base 선택 가능
 ) -> None:
     """

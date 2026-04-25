@@ -49,6 +49,13 @@
   - 학습 PCM_16 → PCM_24 (정밀도 향상)
   - 세그먼트 폴백 10s 하드코딩 → segment_max 동적 사용
   - silent except → log.debug, sf.info() 최적화 (메모리 절약)
+- ✅ **v60 화음/여성보컬 바이패스 + 파라미터 동기화 (2026-04-25)**:
+  - `_detect_polyphonic_regions()`: spectral flatness 기반 화음 구간 자동 감지
+  - `_detect_gender_bypass_segments()`: pYIN F0 기반 여성 보컬 구간 자동 감지 (200Hz 임계)
+  - `_blend_with_bypass()`: 바이패스 구간 원본 오디오 교체 + 80ms 크로스페이드
+  - `harmony_bypass`, `female_bypass` API 파라미터 추가 (server.py + index.html + runpod_handler)
+  - v57 파라미터 runpod_handler.py 동기화: index=0.50, protect=0.50, filter=2, rms=0.15, strength=0.2
+  - 테스트 50/50 통과
 - ✅ **v57 5곡 나노분석 기반 파라미터 최적화 (2026-04-23)**:
   - f0_autotune_strength: 0.4→0.2 (피치 상방편향 +2~3반음 교정)
   - protect: 0.40→0.50 (파열음 70회/치찰음 3.4% 개선)
