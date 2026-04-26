@@ -3269,10 +3269,10 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">음정 부드럽게 <i class="tip" data-tip="음정(높낮이) 변화를 얼마나 부드럽게 이어줄지 정합니다.\n\n🔢 설정 가이드:\n• 0 = 보정 없음 (원본 그대로)\n• 1~2 = 가성·고음, 빠른 멜로디 (비브라토 보존)\n• 2 = v57 기본값 (비브라토 보존 + 적정 안정화)\n• 3~4 = 일반 노래 (피치 안정화↑)\n• 5~7 = 발라드 등 느린 곡\n\n💡 삑사리가 나면 높이고, 너무 밋밋하면 낮추세요.">ⓘ</i></span>
-              <span class="slider-value" id="filter-val">2</span>
+              <span class="slider-value" id="filter-val">3</span>
             </div>
-            <input type="range" id="filter-slider" min="0" max="12" value="2" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">피치 안정화 (기본 2, 권장 1~3, 높을수록 삑사리↓ 비브라토↓)</div>
+            <input type="range" id="filter-slider" min="0" max="12" value="3" class="has-fill" aria-label="음정 부드럽게 (필터)" oninput="document.getElementById('filter-val').textContent=this.value; updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">피치 안정화 (기본 3, 권장 2~4, 높을수록 삑사리↓ 비브라토↓ — v62: 팔세토 F0 스무딩 재활성화)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -3347,28 +3347,40 @@ input[type="range"]::-moz-range-track {
             <div style="font-size:11px;color:var(--text3);margin-top:2px">숨결감·자연스러움 복원 — 원본 보컬 10~15% 블렌딩 권장 (0%=비활성)</div>
           </div>
 
-          <!-- v60: 화음 구간 자동 바이패스 -->
+          <!-- v62: 화음 구간 자동 바이패스 (기본 ON) -->
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">화음 구간 원본 유지 <i class="tip" data-tip="★ v60 신기능: 화음/코러스 구간을 AI 변환 없이 원본 그대로 사용합니다.\n\n📖 왜 필요한가요?\nRVC는 단일 음정(모노포닉)만 처리 가능합니다.\n화음(동시에 여러 음정)이 있으면 AI가 혼동해 '괴성/스크리밍'이 발생합니다.\n\n📌 작동 방식:\n1. 변환 후 보컬 트랙에서 화음 구간을 자동 감지\n2. 해당 구간만 원본 보컬로 교체 (80ms 크로스페이드)\n3. 나머지 구간은 AI 변환 적용\n\n🎯 권장 사용 케이스:\n• 화음/코러스/하모니가 있는 모든 곡\n• 변환 후 특정 구간에서 '괴성' 또는 '기계음'이 들릴 때\n• 리드 보컬 위에 화음이 얹혀있는 K-POP\n\n💡 가장 효과적인 화음 문제 해결 방법입니다!">ⓘ</i></span>
+              <span class="slider-label">화음 구간 원본 유지 <i class="tip" data-tip="★ v62: 기본 활성화. 화음/코러스 구간을 AI 변환 없이 원본 그대로 사용합니다.\n\n📖 왜 필요한가요?\nRVC는 단일 음정(모노포닉)만 처리 가능합니다.\n화음(동시에 여러 음정)이 있으면 AI가 혼동해 '괴성/스크리밍'이 발생합니다.\n\n📌 v62 개선사항:\n• 리드/백킹 분리 이전 전체 보컬로 화음 감지 (정확도 향상)\n• HPS 다중 피치 감지 + spectral flatness 병합\n• 크로스페이드 80ms→200ms (경계 클릭 제거)\n\n🎯 권장 사용 케이스:\n• 화음/코러스/하모니가 있는 모든 곡\n• 변환 후 특정 구간에서 '괴성' 또는 '기계음'이 들릴 때">ⓘ</i></span>
               <span style="display:flex;align-items:center;gap:6px">
-                <label class="toggle-switch"><input type="checkbox" id="harmony-bypass-cb" aria-label="화음 구간 원본 유지 활성화" onchange="document.getElementById('harmony-bypass-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
-                <span class="slider-value" id="harmony-bypass-val">OFF</span>
+                <label class="toggle-switch"><input type="checkbox" id="harmony-bypass-cb" checked aria-label="화음 구간 원본 유지 활성화" onchange="document.getElementById('harmony-bypass-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
+                <span class="slider-value" id="harmony-bypass-val">ON</span>
               </span>
             </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">★ 화음/코러스 구간 AI변환 건너뜀 → 괴성·기계음 완전 제거 (화음있는 곡 필수)</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">★ 기본 ON — 화음/코러스 구간 AI변환 건너뜀 → 괴성·기계음 완전 제거</div>
           </div>
 
-          <!-- v60: 여성 보컬 구간 바이패스 -->
+          <!-- v62: 팔세토·고음 불안정 구간 바이패스 (기본 ON) -->
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">여성 보컬 구간 원본 유지 <i class="tip" data-tip="★ v60 신기능: F0 분석으로 여성 보컬 구간을 자동 감지해 AI 변환을 건너뜁니다.\n\n📖 왜 필요한가요?\n남성 목소리 모델을 여성 보컬에 적용하면 심한 기계음/가래 소리가 발생합니다.\n이 옵션은 여성 보컬 구간을 원본 그대로 유지합니다.\n\n📌 감지 기준:\n• F0(기본주파수) 200Hz 이상인 구간을 여성 보컬로 판단\n• 1초 이상 지속되는 구간만 적용 (단발 고음 제외)\n\n🎯 권장 사용 케이스:\n• 남/녀 혼성 듀엣 곡 (예: comethru ft. Bea Miller)\n• 여성 솔로 + 남성 하모니 곡\n• 여성 보컬 파트에서 기계음이 나올 때\n\n⚠️ 남성 고음 구간도 일부 감지될 수 있습니다.">ⓘ</i></span>
+              <span class="slider-label">팔세토·고음 원본 유지 <i class="tip" data-tip="★ v62 신기능 (기본 활성화): 팔세토·고음에서 피치 불안정 구간을 원본 그대로 사용합니다.\n\n📖 왜 필요한가요?\nRVC 변환 시 팔세토(가성)와 고음 구간에서 피치 불안정·기계음이 특히 심합니다.\n원본 보컬이 깨끗하게 올라가는 구간은 변환하지 않는 것이 더 자연스럽습니다.\n\n📌 감지 기준:\n• F0 > 350Hz (E4 이상) AND 2초 윈도우 표준편차 > 1.8반음\n\n🎯 권장 사용 케이스:\n• 가성·팔세토가 있는 모든 곡\n• 고음 구간에서 떨림음·기계음이 나올 때">ⓘ</i></span>
+              <span style="display:flex;align-items:center;gap:6px">
+                <label class="toggle-switch"><input type="checkbox" id="falsetto-bypass-cb" checked aria-label="팔세토·고음 원본 유지 활성화" onchange="document.getElementById('falsetto-bypass-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
+                <span class="slider-value" id="falsetto-bypass-val">ON</span>
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">★ 기본 ON — F0&gt;350Hz 불안정 구간 원본 유지 → 팔세토 기계음·삑사리 제거</div>
+          </div>
+
+          <!-- v62: 여성 보컬 구간 바이패스 (280Hz 기준) -->
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">여성 보컬 구간 원본 유지 <i class="tip" data-tip="F0 분석으로 여성 보컬 구간을 자동 감지해 AI 변환을 건너뜁니다.\n\n📖 왜 필요한가요?\n남성 목소리 모델을 여성 보컬에 적용하면 심한 기계음/가래 소리가 발생합니다.\n이 옵션은 여성 보컬 구간을 원본 그대로 유지합니다.\n\n📌 v62 개선사항:\n• 감지 기준 200Hz→280Hz로 상향 (남성 팔세토 200-260Hz 범위 제외)\n• 최소 감지 길이 1.0s→0.4s (짧은 여성 구절도 감지)\n• 블록 해상도 500ms→250ms (경계 정밀도 향상)\n\n🎯 권장 사용 케이스:\n• 남/녀 혼성 듀엣 곡 (예: comethru ft. Bea Miller)\n• 여성 보컬 파트에서 기계음이 나올 때">ⓘ</i></span>
               <span style="display:flex;align-items:center;gap:6px">
                 <label class="toggle-switch"><input type="checkbox" id="female-bypass-cb" aria-label="여성 보컬 구간 원본 유지 활성화" onchange="document.getElementById('female-bypass-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
                 <span class="slider-value" id="female-bypass-val">OFF</span>
               </span>
             </div>
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">남/여 혼성 곡에서 여성 보컬 구간 AI변환 제외 → 가래·기계음 제거</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">혼성 곡에서 여성 보컬(F0&gt;280Hz) 구간 AI변환 제외 → 가래·기계음 제거</div>
           </div>
 
           <!-- v22: 화음 필터 (레거시, 비권장) -->
@@ -4827,39 +4839,39 @@ function applyConvertPreset(preset) {
   var presets = {
     default: {
       pitch: 0, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 2, hop: 2,
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: 'v57 기본 — autotune 0.2, protect 0.50, filter 2, rms 0.15'
+      desc: 'v62 기본 — autotune 0.2, protect 0.50, filter 3, rms 0.15'
     },
     korean: {
       pitch: 0, lang: 'ko', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 2, hop: 2,
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '한국어 노래 — 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호, protect 0.50'
+      desc: '한국어 노래 — 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호, protect 0.50, filter 3'
     },
     ballad: {
       pitch: 0, lang: 'auto', index: 45,
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 2,
+      f0: 'rmvpe', protect: 50, rms: 10, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '발라드/잔잔한 — index 낮춤, rms 0.10 (다이나믹 보존)'
+      desc: '발라드/잔잔한 — index 낮춤, rms 0.10 (다이나믹 보존), filter 3'
     },
     falsetto: {
       pitch: 0, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 2, hop: 2,
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
       highNote: true, autotune: true,
-      desc: '가성·고음 — 고음모드 ON, protect 0.50'
+      desc: '가성·고음 — 고음모드 ON, protect 0.50, filter 3 (팔세토 바이패스 함께 사용 권장)'
     },
     natural: {
       pitch: 0, lang: 'auto', index: 40,
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 2, hop: 2,
+      f0: 'rmvpe', protect: 50, rms: 10, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '최대 자연스러움 — index 낮춤, rms 낮춤 (원곡 성질 최대 보존)'
+      desc: '최대 자연스러움 — index 낮춤, rms 낮춤 (원곡 성질 최대 보존), filter 3'
     },
     studio: {
       pitch: 0, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 2, hop: 2,
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '스튜디오 — 기본값과 동일, 깨끗한 원본 최적'
+      desc: '스튜디오 — 기본값과 동일, 깨끗한 원본 최적, filter 3'
     },
     harmony: {
       pitch: 0, lang: 'auto', index: 30,
@@ -4881,9 +4893,9 @@ function applyConvertPreset(preset) {
     },
     high_range: {
       pitch: -3, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 2, hop: 2,
+      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
       highNote: true, autotune: true,
-      desc: '고음곡 전용 — pitch -3, 고음모드 ON (플레이브·BTS 고음곡)'
+      desc: '고음곡 전용 — pitch -3, 고음모드+팔세토바이패스 ON, filter 3 (플레이브·BTS 고음곡)'
     },
   };
   var p = presets[preset];
@@ -6447,7 +6459,7 @@ async function startConversion() {
   form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
   form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
   form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
-  form.append('filter_radius', getVal('filter-slider', '2'));
+  form.append('filter_radius', getVal('filter-slider', '3'));
   var hopSteps = [32, 64, 128, 256];
   form.append('hop_length', hopSteps[getVal('hop-slider', '2')] || 128);
   // language (한/영 EQ 분리)
@@ -6464,9 +6476,11 @@ async function startConversion() {
   form.append('vocal_pitch_pre_shift', parseInt(getVal('vocal-pre-shift-slider', '0')));
   // harmony filter (레거시)
   form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
-  // v60: 화음 구간 원본 유지 + 여성 보컬 바이패스
+  // v62: 화음/팔세토/여성보컬 구간 바이패스
   var harmonyBypassCb = document.getElementById('harmony-bypass-cb');
-  form.append('harmony_bypass', harmonyBypassCb ? harmonyBypassCb.checked : false);
+  form.append('harmony_bypass', harmonyBypassCb ? harmonyBypassCb.checked : true);
+  var falsettoBypassCb = document.getElementById('falsetto-bypass-cb');
+  form.append('falsetto_bypass', falsettoBypassCb ? falsettoBypassCb.checked : true);
   var femaleBypassCb = document.getElementById('female-bypass-cb');
   form.append('female_bypass', femaleBypassCb ? femaleBypassCb.checked : false);
   // 원본 보컬 블렌딩
@@ -6874,7 +6888,7 @@ async function startBatchConversion() {
       form.append('clean_strength', (getVal('clean-strength-slider', '70') / 100).toFixed(2));
       form.append('protect', (getVal('protect-slider', '50') / 100).toFixed(2));
       form.append('rms_mix_rate', (getVal('rms-slider', '15') / 100).toFixed(2));
-      form.append('filter_radius', getVal('filter-slider', '2'));
+      form.append('filter_radius', getVal('filter-slider', '3'));
       var hopSteps2 = [32, 64, 128, 256];
       form.append('hop_length', hopSteps2[getVal('hop-slider', '2')] || 128);
       // Post-processing for naturalness
@@ -6888,9 +6902,11 @@ async function startBatchConversion() {
       form.append('high_note_mode', batchHighNoteCb ? batchHighNoteCb.checked : false);
       // harmony filter (레거시)
       form.append('harmony_filter', (getVal('harmony-filter-slider', '0') / 100).toFixed(2));
-      // v60: 화음 구간 원본 유지 + 여성 보컬 바이패스
+      // v62: 화음/팔세토/여성보컬 구간 바이패스
       var batchHarmonyBypassCb = document.getElementById('harmony-bypass-cb');
-      form.append('harmony_bypass', batchHarmonyBypassCb ? batchHarmonyBypassCb.checked : false);
+      form.append('harmony_bypass', batchHarmonyBypassCb ? batchHarmonyBypassCb.checked : true);
+      var batchFalsettoBypassCb = document.getElementById('falsetto-bypass-cb');
+      form.append('falsetto_bypass', batchFalsettoBypassCb ? batchFalsettoBypassCb.checked : true);
       var batchFemaleBypassCb = document.getElementById('female-bypass-cb');
       form.append('female_bypass', batchFemaleBypassCb ? batchFemaleBypassCb.checked : false);
       // 원본 보컬 블렌딩

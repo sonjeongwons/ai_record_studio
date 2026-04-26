@@ -34,7 +34,7 @@
 | CI/CD | GitHub Actions (Docker 빌드 + pytest) |
 | 정적분석 | ruff (린터) + bandit (보안) |
 
-## 3. 현재 상태 (2026-04-24)
+## 3. 현재 상태 (2026-04-26)
 
 - ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **50/50 통과**
 - ✅ RunPod Serverless Handler 구현 완료
@@ -49,6 +49,14 @@
   - 학습 PCM_16 → PCM_24 (정밀도 향상)
   - 세그먼트 폴백 10s 하드코딩 → segment_max 동적 사용
   - silent except → log.debug, sf.info() 최적화 (메모리 절약)
+- ✅ **v62 바이패스 전면 재설계 (2026-04-26)**:
+  - `_detect_gender_bypass_segments`: 200Hz→280Hz (남성 팔세토 범위 제외), frame 0.5s→0.25s, min_dur 1.0s→0.4s, 마지막 블록 truncation 버그 수정
+  - `_detect_polyphonic_regions`: HPS 다중 피치 감지 추가, flatness 0.12→0.08, full_vocal_path(리드/백킹 분리 전) 우선 사용
+  - `_detect_falsetto_regions` 신규: F0>350Hz + 2초 윈도우 std>1.8반음 조건 불안정 고음 구간 → 원본 유지
+  - `_blend_with_bypass`: fade_ms 80→200ms, adjacent segment overlap 버그 수정, rvc_ref/org_ref 불변 참조
+  - 파이프라인: full_vocal_path 저장(리드/백킹 분리 전), falsetto_bypass 파라미터 추가(기본 True), harmony_bypass 기본 True로 변경, bypass 원본 소스 full_vocal_path 우선 사용
+  - filter_radius 기본값 2→3 (미디언 F0 스무딩 재활성화, 팔세토 안정화)
+  - 테스트 50/50 통과
 - ✅ **v60 화음/여성보컬 바이패스 + 파라미터 동기화 (2026-04-25)**:
   - `_detect_polyphonic_regions()`: spectral flatness 기반 화음 구간 자동 감지
   - `_detect_gender_bypass_segments()`: pYIN F0 기반 여성 보컬 구간 자동 감지 (200Hz 임계)
@@ -74,7 +82,7 @@
 | **index_rate** | **0.50** (기본값, 서버/HTML 기준) | v55: 0.45→0.50 |
 | **rms_mix_rate** | **0.15** | v55: 0.20→0.15 |
 | **protect** | **0.50** | v55: 0.40→0.50 |
-| **filter_radius** | **2** | v55: 3→2 |
+| **filter_radius** | **3** | v62: 2→3 (미디언 F0 스무딩 재활성화, 팔세토 안정화) |
 | **hop_length** | **128** | v49: 64→128 |
 | **vocal_blend** | **0%** (비활성) | v45: 더블링 원인 제거 |
 | **language** | **auto/ko/en** | v49: 한/영 EQ 분리 |
