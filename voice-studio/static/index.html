@@ -3182,7 +3182,7 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('english')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(56,189,248,0.4);color:#38bdf8" title="영어/팝 노래 최적화 — index 0.35, language=en 치찰음 EQ. 팝, 인디, R&B 권장">
               🌍 영어/팝송
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('falsetto')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(245,158,11,0.4);color:#fbbf24" title="가성·고음이 많은 노래에 최적화된 설정. 고음모드 ON, protect 0.50, filter 2, hop 128">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('falsetto')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(245,158,11,0.4);color:#fbbf24" title="가성·고음이 많은 노래에 최적화된 설정. Hybrid F0, 고음모드 ON, protect 0.33 (강한자음보호), filter 3">
               🎤 가성/고음 최적화
             </button>
             <button class="btn btn-ghost" onclick="applyConvertPreset('natural')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(16,185,129,0.4);color:#10b981" title="자연스럽고 원본에 가까운 변환. 원본 질감을 최대한 보존">
@@ -3200,10 +3200,10 @@ input[type="range"]::-moz-range-track {
             <button class="btn btn-ghost" onclick="applyConvertPreset('chorus_v2')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(251,146,60,0.4);color:#fb923c" title="화음/그룹 곡 v2 — 발음 선명도 최우선. index 0.15, filter 5 (기다릴게 최적화)">
               🎤 화음 v2 (발음선명)
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 — protect 0.50, lang en, filter 3 (comethru 최적화)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('duet')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(167,139,250,0.4);color:#a78bfa" title="남녀 듀엣곡 — protect 0.40, lang en, filter 3, 여성파트 바이패스 권장 (comethru 최적화)">
               👫 남녀 듀엣곡
             </button>
-            <button class="btn btn-ghost" onclick="applyConvertPreset('high_range')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(239,68,68,0.4);color:#ef4444" title="고음/음역 불일치 전용 — pitch -3, 고음모드 ON, protect 0.50, filter 2 (플레이브·BTS 고음곡)">
+            <button class="btn btn-ghost" onclick="applyConvertPreset('high_range')" style="font-size:11px;padding:5px 12px;border-radius:8px;border-color:rgba(239,68,68,0.4);color:#ef4444" title="고음곡 전용 — pitch -3, Hybrid F0, protect 0.33 강한보호, 팔세토+화음바이패스 ON (플레이브·BTS 고음곡)">
               🔥 고음곡 전용
             </button>
           </div>
@@ -3213,6 +3213,7 @@ input[type="range"]::-moz-range-track {
             </div>
             <select id="convert-f0" onchange="onF0MethodChange()" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px">
               <option value="rmvpe" selected>RMVPE (빠름 · 안정적 · 노래에 권장)</option>
+              <option value="hybrid[rmvpe+fcpe]">Hybrid RMVPE+FCPE ✨ (팔세토/고음 최고 안정성)</option>
               <option value="fcpe">FCPE (풍성한 보컬 · RMVPE 대비 5배 빠름)</option>
               <option value="crepe">Crepe ⚠️ (화음/코러스 곡 비권장 · 속도 느림)</option>
               <option value="crepe-tiny">Crepe-tiny ⚠️ (Crepe 경량 버전)</option>
@@ -3252,11 +3253,11 @@ input[type="range"]::-moz-range-track {
           </div>
           <div class="slider-group">
             <div class="slider-header">
-              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.50 = 기본값 v57 (자음·가성 최대 보호)\n• 0.35~0.49 = 가성·고음 많은 노래 (기계음 방지)\n• 0.20~0.30 = AI 목소리 개성을 강하게 살리고 싶을 때\n\n⚠️ 고음이 로봇처럼 들리면 → 0.40~0.50 유지\n⚠️ 자음이 뭉개지면 → 0.35에서 조금씩 낮추기">ⓘ</i></span>
-              <span class="slider-value" id="protect-val">0.50</span>
+              <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.50 = ⚠️ 자음보호 완전 비활성화 (기계음 발생 원인!)\n• 0.40 = v64 기본값 (자음·가성 보호 활성화 — 권장)\n• 0.33 = 강한 보호 (자음 뭉개짐 방지, 커뮤니티 기본값)\n• 0.25 = 팔세토/화음 구간 최대 보호\n\n⚠️ 0.50에서 자음이 가래끼거나 기계음 → 0.40으로 낮추기\n💡 AI Hub 공식: 0.5는 보호 완전 비활성화 (기계음 원인)">ⓘ</i></span>
+              <span class="slider-value" id="protect-val">0.40</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="50" value="50" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (v57 기본 0.50, 낮을수록 AI 개성↑, 높을수록 원본 자음/가성 보호↑)</div>
+            <input type="range" id="protect-slider" min="0" max="50" value="40" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (v64 기본 0.40 — 0.5=보호비활성화/기계음원인, 0.4=자음보호, 낮을수록 보호↑)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -3369,6 +3370,18 @@ input[type="range"]::-moz-range-track {
               </span>
             </div>
             <div style="font-size:11px;color:var(--text3);margin-top:2px">★ 기본 ON — F0&gt;350Hz 불안정 구간 원본 유지 → 팔세토 기계음·삑사리 제거</div>
+          </div>
+
+          <!-- v64: 기계음/뭉개짐 구간 바이패스 (spectral flatness 기반) -->
+          <div class="slider-group">
+            <div class="slider-header">
+              <span class="slider-label">노이즈 구간 자동 원본유지 <i class="tip" data-tip="★ v64 신기능 (기본 활성화): 변환 시 기계음·뭉개짐이 심한 구간(spectral flatness > 0.12)을 자동 감지하여 원본 보컬로 교체합니다.\n\n📖 왜 필요한가요?\nRVC 변환 시 복잡한 화음·배경음이 섞인 구간에서 기계음·뭉개짐이 발생합니다.\n이 구간을 감지해 원본 보컬로 대체하면 더 자연스러운 결과를 얻습니다.\n\n📌 감지 기준:\n• spectral flatness > 0.12 (노이즈성 스펙트럼)\n\n🎯 권장 사용 케이스:\n• Lovers rough 0~17초 뭉개짐\n• Monster 15~17초 기계음\n• 복잡한 화음·코러스가 있는 구간">ⓘ</i></span>
+              <span style="display:flex;align-items:center;gap:6px">
+                <label class="toggle-switch"><input type="checkbox" id="noisy-bypass-cb" checked aria-label="노이즈 구간 자동 원본유지 활성화" onchange="document.getElementById('noisy-bypass-val').textContent=this.checked?'ON':'OFF'"><span class="toggle-track"></span></label>
+                <span class="slider-value" id="noisy-bypass-val">ON</span>
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">★ 기본 ON — spectral flatness &gt; 0.12 기계음 구간 원본 유지 → 뭉개짐·기계음 제거</div>
           </div>
 
           <!-- v62: 여성 보컬 구간 바이패스 (280Hz 기준) -->
@@ -4787,7 +4800,7 @@ function estimateConversionCost() {
 
   var f0El = document.getElementById('convert-f0');
   var f0   = f0El ? f0El.value.toLowerCase() : 'crepe';
-  var f0Factor = (f0 === 'crepe') ? 1.10 : (f0 === 'crepe-tiny') ? 0.85 : 1.0; // rmvpe=1.0 기본
+  var f0Factor = (f0 === 'crepe') ? 1.10 : (f0 === 'crepe-tiny') ? 0.85 : (f0.startsWith('hybrid[')) ? 1.15 : 1.0; // hybrid는 +15%, rmvpe=1.0 기본
 
   // GPU 시간: Demucs 보컬 분리(~1x realtime) + RVC 추론(~0.3x) + 모델 로딩
   var overheadSecs  = 60 + (files.length - 1) * 10; // 첫 파일 60s(모델+Demucs 로딩), 이후 10s
@@ -4799,7 +4812,7 @@ function estimateConversionCost() {
   var minSec    = totalGpu * 0.65;
   var maxSec    = totalGpu * 1.50;
 
-  var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)' }[f0] || f0;
+  var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)', fcpe: 'FCPE', 'hybrid[rmvpe+fcpe]': 'Hybrid RMVPE+FCPE (+15%)' }[f0] || f0;
   var cleanLabel = (cleanCb && cleanCb.checked) ? 'ON (+15% 시간 추가)' : 'OFF (기본)';
 
   document.getElementById('cost-conv-files').textContent = files.length + '개';
@@ -4839,63 +4852,63 @@ function applyConvertPreset(preset) {
   var presets = {
     default: {
       pitch: 0, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: 'v62 기본 — autotune 0.2, protect 0.50, filter 3, rms 0.15'
+      desc: 'v64 기본 — protect 0.40 (자음보호 재활성화), filter 3, rms 0.15'
     },
     korean: {
       pitch: 0, lang: 'ko', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '한국어 노래 — 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호, protect 0.50, filter 3'
+      desc: '한국어 노래 — 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호, protect 0.40, filter 3'
     },
     ballad: {
       pitch: 0, lang: 'auto', index: 45,
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 10, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '발라드/잔잔한 — index 낮춤, rms 0.10 (다이나믹 보존), filter 3'
+      desc: '발라드/잔잔한 — index 낮춤, rms 0.10 (다이나믹 보존), protect 0.40'
     },
     falsetto: {
       pitch: 0, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
+      f0: 'hybrid[rmvpe+fcpe]', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: true, autotune: true,
-      desc: '가성·고음 — 고음모드 ON, protect 0.50, filter 3 (팔세토 바이패스 함께 사용 권장)'
+      desc: '가성·고음 — Hybrid F0, protect 0.33 (강한 자음보호), 팔세토 바이패스 권장'
     },
     natural: {
       pitch: 0, lang: 'auto', index: 40,
-      f0: 'rmvpe', protect: 50, rms: 10, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 10, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '최대 자연스러움 — index 낮춤, rms 낮춤 (원곡 성질 최대 보존), filter 3'
+      desc: '최대 자연스러움 — index 낮춤, rms 낮춤 (원곡 성질 최대 보존), protect 0.40'
     },
     studio: {
       pitch: 0, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '스튜디오 — 기본값과 동일, 깨끗한 원본 최적, filter 3'
+      desc: '스튜디오 — protect 0.40, 깨끗한 원본 최적, filter 3'
     },
     harmony: {
       pitch: 0, lang: 'auto', index: 30,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '화음 — index 0.30 낮춤, filter 3 (화음 발음 뭉개짐 방지)'
+      desc: '화음 — index 0.30, protect 0.33 (강한 자음보호), filter 3'
     },
     harmony2: {
       pitch: 0, lang: 'auto', index: 20,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '화음 v2 (발음선명) — index 0.20 최소, filter 3'
+      desc: '화음 v2 (발음선명) — index 0.20 최소, protect 0.33 최강 보호'
     },
     duet: {
       pitch: 0, lang: 'en', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
+      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '영어 듀엣/인디팝 — lang en, filter 3 (치찰음 완화)'
+      desc: '영어 듀엣/인디팝 — lang en, protect 0.40, 여성파트 바이패스 권장'
     },
     high_range: {
       pitch: -3, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 50, rms: 15, filter: 3, hop: 2,
+      f0: 'hybrid[rmvpe+fcpe]', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: true, autotune: true,
-      desc: '고음곡 전용 — pitch -3, 고음모드+팔세토바이패스 ON, filter 3 (플레이브·BTS 고음곡)'
+      desc: '고음곡 전용 — pitch -3, Hybrid F0, protect 0.33, 팔세토+화음 바이패스 ON'
     },
   };
   var p = presets[preset];
@@ -6481,6 +6494,8 @@ async function startConversion() {
   form.append('harmony_bypass', harmonyBypassCb ? harmonyBypassCb.checked : true);
   var falsettoBypassCb = document.getElementById('falsetto-bypass-cb');
   form.append('falsetto_bypass', falsettoBypassCb ? falsettoBypassCb.checked : true);
+  var noisyBypassCb = document.getElementById('noisy-bypass-cb');
+  form.append('noisy_bypass', noisyBypassCb ? noisyBypassCb.checked : true);
   var femaleBypassCb = document.getElementById('female-bypass-cb');
   form.append('female_bypass', femaleBypassCb ? femaleBypassCb.checked : false);
   // 원본 보컬 블렌딩
@@ -6907,6 +6922,8 @@ async function startBatchConversion() {
       form.append('harmony_bypass', batchHarmonyBypassCb ? batchHarmonyBypassCb.checked : true);
       var batchFalsettoBypassCb = document.getElementById('falsetto-bypass-cb');
       form.append('falsetto_bypass', batchFalsettoBypassCb ? batchFalsettoBypassCb.checked : true);
+      var batchNoisyBypassCb = document.getElementById('noisy-bypass-cb');
+      form.append('noisy_bypass', batchNoisyBypassCb ? batchNoisyBypassCb.checked : true);
       var batchFemaleBypassCb = document.getElementById('female-bypass-cb');
       form.append('female_bypass', batchFemaleBypassCb ? batchFemaleBypassCb.checked : false);
       // 원본 보컬 블렌딩
