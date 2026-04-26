@@ -40,6 +40,16 @@
 - ✅ RunPod Serverless Handler 구현 완료
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원, 중복 스킵)
 - ✅ 보안 감사 완료 (44건+ 수정)
+- ✅ **v64 자음보호 복구 + 노이즈 바이패스 + 팔세토 감지 강화 (2026-04-26)**:
+  - **protect: 0.50→0.40** (AI Hub 공식: 0.5=자음보호 완전비활성화 → 기계음/가래 원인; 0.4=재활성화)
+  - `_detect_falsetto_regions` 강화: 380Hz 무조건 bypass (안정적 팔세토도 RVC 처리 불가) + 800Hz 옥타브에러 bypass
+  - `_detect_noisy_regions` 신규: spectral flatness>0.12 지속 → 기계음/뭉개짐 구간 원본 대체
+  - `noisy_bypass` 파라미터 추가 (기본 True): server.py + runpod_handler.py + index.html UI
+  - 영어(en/auto) 7.5kHz -0.5dB EQ 추가 (치찰음 집중대역 추가 감쇄)
+  - 시작부 0.3초 afade-in (RVC 도입부 아티팩트 억제)
+  - 모든 프리셋 protect 0.50→0.40; falsetto/high_range 프리셋 Hybrid F0 + protect 0.33
+  - filter_radius fallback 2→3 동기화; noisy_bypass 조건을 메인 bypass 블록에 포함
+  - 테스트 50/50 통과
 - ✅ **v63 FAISS nprobe + Hybrid F0 지원 (2026-04-26)**:
   - FAISS IVF index nprobe: 1 → min(32, n_ivf//10) — 검색 recall 1.9%→~9% 향상 (AI스러움 감소)
   - `_build_faiss_index`: nprobe를 index 저장 전 설정 (faiss.write_index가 직렬화 보존)
@@ -89,7 +99,7 @@
 | **FAISS nprobe** | **min(32, n_ivf//10)** (학습 시 index 생성) | v63: 1→32 (recall 1.9%→9%, AI스러움 감소) |
 | **index_rate** | **0.50** (기본값, 서버/HTML 기준) | v55: 0.45→0.50 |
 | **rms_mix_rate** | **0.15** | v55: 0.20→0.15 |
-| **protect** | **0.50** | v55: 0.40→0.50 |
+| **protect** | **0.40** | v64: 0.50→0.40 (protect=0.5=자음보호비활성화 — AI Hub 공식; 0.4=재활성화) |
 | **filter_radius** | **3** | v62: 2→3 (미디언 F0 스무딩 재활성화, 팔세토 안정화) |
 | **hop_length** | **128** | v49: 64→128 |
 | **vocal_blend** | **0%** (비활성) | v45: 더블링 원인 제거 |

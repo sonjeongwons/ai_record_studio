@@ -2539,7 +2539,7 @@ async def start_conversion(
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.50),        # v57: 0.40→0.50 (파열음/치찰음 보호 강화, 분석 결과)
+    protect: float = Form(0.40),        # v64: 0.50→0.40 (protect=0.5=보호완전비활성화 — AI Hub 공식; 0.4=자음보호 재활성화)
     rms_mix_rate: float = Form(0.15),   # v55: 0.20→0.15 (CLAUDE.md v55 동기화)
     filter_radius: int = Form(3),       # v62: 2→3 (미디언 필터 재활성화, 팔세토 F0 스무딩)
     hop_length: int = Form(128),        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
@@ -2550,6 +2550,7 @@ async def start_conversion(
     harmony_bypass: str = Form("true"),    # v62: 기본 활성화 (화음 구간 원본 유지)
     female_bypass: str = Form("false"),    # v60: 여성 보컬 구간 자동 바이패스 (남성 모델 미적용)
     falsetto_bypass: str = Form("true"),   # v62: 팔세토/고음 불안정 구간 원본 유지 (기본 활성)
+    noisy_bypass: str = Form("true"),      # v64: 기계음/뭉개짐 구간 자동 감지 바이패스
     separate_vocals: str = Form("true"),
     vocal_pitch_pre_shift: int = Form(0),
     vocal_blend: float = Form(0.0),    # v45: 0% (더블링 원인 제거)
@@ -2672,6 +2673,7 @@ async def start_conversion(
             "harmony_bypass": _parse_form_bool(harmony_bypass, True),    # v62: 기본 활성 (화음 구간 바이패스)
             "female_bypass": _parse_form_bool(female_bypass, False),    # v60: 여성 보컬 구간 바이패스
             "falsetto_bypass": _parse_form_bool(falsetto_bypass, True), # v62: 팔세토 불안정 구간 바이패스
+            "noisy_bypass": _parse_form_bool(noisy_bypass, True),      # v64: 기계음/뭉개짐 구간 자동 감지 바이패스
             "vocal_pitch_pre_shift": max(-12, min(12, vocal_pitch_pre_shift)),
             "vocal_blend": vocal_blend,
             "language": language,         # v49: 한/영 EQ 분리

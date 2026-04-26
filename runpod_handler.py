@@ -832,13 +832,18 @@ def _detect_gender_bypass_segments(vocal_path: Path, sr: int = 44100,
 def _detect_falsetto_regions(vocal_path: Path, sr: int = 44100,
                               high_f0_thresh: float = 350.0,
                               instability_thresh: float = 1.8,
+                              unconditional_high_thresh: float = 380.0,
+                              octave_error_thresh: float = 800.0,
                               min_duration: float = 0.5) -> list:
-    """v62: 팔세토/고음 불안정 구간 자동 감지 → 원본 보컬로 바이패스 대상.
+    """v64: 팔세토/고음 불안정 구간 자동 감지 → 원본 보컬로 바이패스 대상.
 
-    조건: F0 > high_f0_thresh Hz AND 2초 윈도우 F0 표준편차 > instability_thresh 반음.
-    RVC 변환 시 팔세토/고음에서 피치 불안정 + 기계음 발생 → 원본이 더 자연스러움.
+    조건 1 (기존): F0 > high_f0_thresh Hz AND 2초 윈도우 F0 표준편차 > instability_thresh 반음.
+    조건 2 (신규): F0 > unconditional_high_thresh Hz 지속 → 무조건 bypass.
+      - RVC는 380Hz 이상 팔세토를 안정적이어도 항상 망침 (기다릴게 95-118s, 520Hz).
+    조건 3 (신규): F0 > octave_error_thresh Hz 지속 → 옥타브 에러 bypass.
+      - 인간 음역 초과 = RVC가 피치를 2배로 잘못 추출 (기다릴게 20-30s, max 2093Hz).
 
-    Returns: [(start_sec, end_sec), ...] 불안정 고음 구간 목록
+    Returns: [(start_sec, end_sec), ...] 불안정/고음/옥타브에러 구간 목록
     """
     try:
         import librosa
@@ -877,11 +882,26 @@ def _detect_falsetto_regions(vocal_path: Path, sr: int = 44100,
             if float(np.std(valid)) > instability_thresh:
                 is_unstable_high[i] = True
 
+        # 추가: 무조건 bypass (380Hz+ 지속 = 순수 팔세토 영역, RVC 변환 불가)
+        is_unconditional = np.zeros(n, dtype=bool)
+        for i in range(n):
+            if not np.isnan(f0[i]) and f0[i] >= unconditional_high_thresh:
+                is_unconditional[i] = True
+
+        # 추가: 옥타브 에러 (800Hz+ = 인간 음역 초과, RVC가 피치를 2배로 잘못 추출)
+        is_octave_err = np.zeros(n, dtype=bool)
+        for i in range(n):
+            if not np.isnan(f0[i]) and f0[i] >= octave_error_thresh:
+                is_octave_err[i] = True
+
+        # 최종 플래그: 기존 instability OR 무조건고음 OR 옥타브에러
+        combined_flag = is_unstable_high | is_unconditional | is_octave_err
+
         # 연속 구간 추출
         regions: list = []
         in_region = False
         start_frame = 0
-        for i, flag in enumerate(is_unstable_high):
+        for i, flag in enumerate(combined_flag):
             if flag and not in_region:
                 in_region = True
                 start_frame = i
@@ -906,11 +926,69 @@ def _detect_falsetto_regions(vocal_path: Path, sr: int = 44100,
                 merged.append(list(seg))
 
         result = [(s, e) for s, e in merged]
+        _uncond_cnt = int(is_unconditional.sum())
+        _oct_cnt = int(is_octave_err.sum())
         log.info(f"Falsetto bypass regions: {len(result)} (F0>{high_f0_thresh:.0f}Hz, "
-                 f"instab>{instability_thresh:.1f}st)")
+                 f"instab>{instability_thresh:.1f}st, uncond380={_uncond_cnt}f, "
+                 f"octave_err={_oct_cnt}f)")
         return result
     except Exception as _ex:
         log.warning(f"Falsetto detection failed (non-critical): {_ex}")
+        return []
+
+
+def _detect_noisy_regions(vocal_path: Path, sr: int = 44100,
+                           flatness_thresh: float = 0.12,
+                           min_duration: float = 0.4,
+                           merge_gap: float = 0.5) -> list:
+    """v64: RVC 변환 실패 구간 감지: spectral flatness > flatness_thresh 지속 구간.
+
+    flatness > 0.12 = 잡음에 가까운 신호 (기계음/뭉개짐 artifact).
+    Lovers rough 0-17s (flatness_p95=0.96), Monster 15-17s (flatness=0.18) 잡음.
+
+    Returns: [(start_sec, end_sec), ...]
+    """
+    try:
+        import librosa
+        import numpy as np
+
+        y, _sr = librosa.load(str(vocal_path), sr=sr, mono=True)
+        hop = 512
+        flatness = librosa.feature.spectral_flatness(y=y, hop_length=hop)[0]
+        frame_sec = hop / sr
+        n = len(flatness)
+
+        # 연속 구간 추출
+        regions = []
+        in_region = False
+        start_frame = 0
+        for i, fl in enumerate(flatness):
+            if fl > flatness_thresh and not in_region:
+                in_region = True
+                start_frame = i
+            elif fl <= flatness_thresh and in_region:
+                in_region = False
+                s, e = start_frame * frame_sec, i * frame_sec
+                if e - s >= min_duration:
+                    regions.append([s, e])
+        if in_region:
+            s, e = start_frame * frame_sec, n * frame_sec
+            if e - s >= min_duration:
+                regions.append([s, e])
+
+        # 병합
+        merged = []
+        for seg in regions:
+            if merged and seg[0] - merged[-1][1] < merge_gap:
+                merged[-1][1] = max(merged[-1][1], seg[1])
+            else:
+                merged.append(list(seg))
+
+        result = [(s, e) for s, e in merged]
+        log.info(f"Noisy bypass regions: {len(result)} (flatness>{flatness_thresh:.2f})")
+        return result
+    except Exception as _ex:
+        log.warning(f"Noisy region detection failed (non-critical): {_ex}")
         return []
 
 
@@ -2788,27 +2866,31 @@ def _post_process_vocal(
     sample_rate: int = 44100,
     language: str = "auto",
 ) -> None:
-    """Post-process converted vocal v54 — 부밍 억제 + 보수적 디에서 + Air 복원.
+    """Post-process converted vocal v64 — 영어 치찰음 강화 + 시작 페이드인.
 
-    ── v54 (v53→v54, v53 4곡 분석 기반) ──
+    ── v64 (5곡 sibilance 분석 기반) ──
     핵심 변경:
-      - 800Hz -1.5dB 부밍 억제 (500-2kHz +3.1dB 보코더 에너지 집중)
-      - 5kHz/8kHz/디에서 감쇄량 축소 (v53이 8-16kHz -7~-12dB 과도 손실)
-      - 10kHz +1.5dB 하이셸프 (Air band 복원 — 발음/자연스러움 핵심)
-      - 백킹 보컬 완전 제거 (화음 발음 뭉개짐 해소)
-      - 원곡 LUFS 매칭 정규화 (-14 하드코딩 → 원곡 LUFS 측정 후 매칭)
+      - 영어(en/auto): 7.5kHz -0.5dB 추가 (Monster 0.523 / Breaking 0.477 치찰음 과다)
+      - 시작 0.3초 페이드인: RVC 무음 구간 노이즈 아티팩트 억제
+      - agate threshold=0.002 유지 (이미 최적값)
 
-    v54 체인 (공통):
-      HPF 80Hz → 800Hz -1.5dB → 1.2kHz -0.5dB →
-      5kHz -1.0dB → 8kHz -0.5dB →
-      6.5kHz -1.0dB (디에서) → 9kHz -0.5dB →
-      10kHz +1.5dB (Air 복원) → (리버브) → loudnorm
+    ── v54 기준 체인 (공통) ──
+      afade(in 0.3s) → agate → HPF 80Hz →
+      [en/auto] 300Hz -0.3 + 600Hz -0.3 + 7.5kHz -0.5 →
+      800Hz -1.0 → 5kHz -0.7 →
+      6.5kHz -1.0 (디에서) → 9kHz -0.3 →
+      10kHz +0.8 (Air) → (리버브) → 피크 정규화
     """
     filters = []
 
     # ━━━ 0. 노이즈 게이트 (RVC 추론 노이즈 제거) ━━━
     # v51: threshold -55dB (소프트 보컬/속삭임 보호)
     filters.append("agate=threshold=0.002:range=0.001:attack=25:release=150")
+
+    # ━━━ 0b. 시작 구간 페이드인 (v64) ━━━
+    # RVC가 무음/조용한 시작 구간을 변환할 때 노이즈 생성 방지
+    # 0.3초 페이드인 — 도입부 아티팩트(Lovers rough 0-17s 유형) 억제
+    filters.append("afade=t=in:st=0:d=0.3")
 
     # ━━━ 1. 초저역 제거 (파열음 에너지 제어) ━━━
     # v53: 70→80Hz (분석: 파열음 에너지가 80Hz 이하에 집중, 커뮤니티 권장)
@@ -2823,10 +2905,15 @@ def _post_process_vocal(
         # 영어: 경미한 저역 감쇄만 (발음 명료도 유지)
         filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
         filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.3")
+        # v64: 치찰음 분석(Monster 0.523/Breaking 0.477) 기반 7.5kHz 추가 디에서
+        # 영어 sibilance 중심 대역(7~9kHz) — -0.5dB 보수적 감쇄 (발음 s/sh 보호)
+        filters.append("equalizer=f=7500:width_type=o:width=2.0:g=-0.5")
     else:
         # auto/기타: 영어 기본값 (안전한 기본)
         filters.append("equalizer=f=300:width_type=o:width=0.5:g=-0.3")
         filters.append("equalizer=f=600:width_type=o:width=0.7:g=-0.3")
+        # v64: auto도 영어 de-essing 적용 (comethru/Lovers rough 포함)
+        filters.append("equalizer=f=7500:width_type=o:width=2.0:g=-0.5")
 
     # ━━━ 2b. HiFi-GAN 보코더 부밍 억제 (공통) ━━━
     # v55: -1.5→-1.0dB (부밍 억제하되 발음 명료도 보존)
@@ -2917,8 +3004,8 @@ def _post_process_vocal(
         log.warning(f"Peak normalization failed: {_pk_err}, using EQ output")
 
     log.info(
-        f"Vocal post-processed v55 → {output_path.name} "
-        f"(reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
+        f"Vocal post-processed v64 → {output_path.name} "
+        f"(lang={language}, reverb={reverb_amount:.2f}, high_note={high_note_mode}, "
         f"filters={len(filters)}, peak_norm=-1dBFS)"
     )
 
@@ -3351,21 +3438,21 @@ def task_convert(job_input: dict, job: dict) -> dict:
     if f0_method not in _VALID_F0_CONVERT and not f0_method.startswith("hybrid["):
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
-    # v57: 2 (CLAUDE.md v57 동기화)
+    # v62: 3 (미디언 F0 스무딩 재활성화, 팔세토 안정화)
     try:
-        filter_radius: int = int(job_input.get("filter_radius", 2))
+        filter_radius: int = int(job_input.get("filter_radius", 3))
     except (ValueError, TypeError):
-        filter_radius = 2
+        filter_radius = 3
     # v57: 0.15 (CLAUDE.md v57 동기화)
     try:
         rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
     except (ValueError, TypeError):
         rms_mix_rate = 0.15
-    # v57: 0.50 (파열음/치찰음 보호 최대, CLAUDE.md v57)
+    # v64: 0.40 (protect=0.5=자음보호 완전비활성화; 0.4=자음보호 재활성화 — AI Hub 공식 문서)
     try:
-        protect: float = float(job_input.get("protect", 0.50))
+        protect: float = float(job_input.get("protect", 0.40))
     except (ValueError, TypeError):
-        protect = 0.50
+        protect = 0.40
     # v49: hop_length 128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     try:
         hop_length: int = int(job_input.get("hop_length", 128))
@@ -3434,6 +3521,9 @@ def task_convert(job_input: dict, job: dict) -> dict:
     falsetto_bypass = job_input.get("falsetto_bypass", True)
     if isinstance(falsetto_bypass, str):
         falsetto_bypass = falsetto_bypass.lower() in ("true", "1", "yes")
+    noisy_bypass = job_input.get("noisy_bypass", True)
+    if isinstance(noisy_bypass, str):
+        noisy_bypass = noisy_bypass.lower() in ("true", "1", "yes")
 
     # 파라미터 범위 클램프
     pitch_shift = max(-24, min(24, pitch_shift))
@@ -3690,7 +3780,7 @@ def task_convert(job_input: dict, job: dict) -> dict:
         # 폴리포닉(화음), 여성 보컬, 팔세토 불안정 구간을 원본 보컬로 교체
         # RVC는 monophonic SVC → 화음/팔세토에서 괴성/기계음 발생 → 원본이 더 자연스러움
         _bypass_regions: list = []
-        if (harmony_bypass or female_bypass or falsetto_bypass) and rvc_input.exists() and converted_vocals_path.exists():
+        if (harmony_bypass or female_bypass or falsetto_bypass or noisy_bypass) and rvc_input.exists() and converted_vocals_path.exists():
             try:
                 if harmony_bypass:
                     # v62: full_vocal_path (리드+백킹 포함) 우선 사용 → 실제 화음 감지 가능
@@ -3705,10 +3795,15 @@ def task_convert(job_input: dict, job: dict) -> dict:
                     _bypass_regions.extend(_fem)
                     log.info(f"Female bypass: {len(_fem)} female vocal regions")
                 if falsetto_bypass:
-                    # v62: 팔세토 불안정 구간 (F0>350Hz + std>1.8st) 원본 유지
+                    # v64: 팔세토 불안정/380Hz무조건/옥타브에러 구간 원본 유지
                     _fal = _detect_falsetto_regions(rvc_input, sr=_process_sr)
                     _bypass_regions.extend(_fal)
                     log.info(f"Falsetto bypass: {len(_fal)} unstable high-note regions")
+                if noisy_bypass:
+                    # v64: 변환 결과 노이즈 구간 감지 (기계음/뭉개짐 artifact → 원본 유지)
+                    _noisy = _detect_noisy_regions(converted_vocals_path, sr=_process_sr)
+                    _bypass_regions.extend(_noisy)
+                    log.info(f"Noisy bypass: {len(_noisy)} high-flatness artifact regions")
 
                 if _bypass_regions:
                     # 구간 정렬 + 인접 병합 (0.5초 이내)
@@ -3989,12 +4084,12 @@ def _rvc_infer(
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
     index_rate: float = 0.50,     # v57: 0.50 (CLAUDE.md v57 동기화)
-    protect: float = 0.50,        # v57: 0.50 (파열음/치찰음 보호 최대)
+    protect: float = 0.40,        # v64: 0.50→0.40 (protect=0.5=자음보호비활성화 — AI Hub 공식)
     hop_length: int = 128,        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     clean_audio: bool = False,
     clean_strength: float = 0.7,
     export_format: str = "wav",
-    filter_radius: int = 2,       # v57: 2 (CLAUDE.md v57 동기화)
+    filter_radius: int = 3,       # v62: 2→3 (미디언 F0 스무딩 재활성화)
     rms_mix_rate: float = 0.15,   # v57: 0.15 (CLAUDE.md v57 동기화)
     split_audio: bool = True,
     f0_autotune: bool = True,     # v49: False→True (Applio 공식 권장: 노래 변환 시 활성)
