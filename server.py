@@ -2583,7 +2583,7 @@ async def start_conversion(
     # v49: language 검증
     if language not in ("ko", "en", "auto"):
         language = "auto"
-    if f0_method not in ("rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"):
+    if f0_method not in ("rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm") and not f0_method.startswith("hybrid["):
         raise HTTPException(400, f"유효하지 않은 F0 방법입니다: {f0_method}")
     if not (0.0 <= vocal_volume <= 2.0):
         raise HTTPException(400, f"보컬 볼륨은 0.0~2.0 사이여야 합니다. (입력: {vocal_volume})")
