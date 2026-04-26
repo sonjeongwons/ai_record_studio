@@ -40,7 +40,14 @@
 - ✅ RunPod Serverless Handler 구현 완료
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원, 중복 스킵)
 - ✅ 보안 감사 완료 (44건+ 수정)
-- ✅ **v55 음질 종합 개선 (2026-04-21)**:
+- ✅ **v63 FAISS nprobe + Hybrid F0 지원 (2026-04-26)**:
+  - FAISS IVF index nprobe: 1 → min(32, n_ivf//10) — 검색 recall 1.9%→~9% 향상 (AI스러움 감소)
+  - `_build_faiss_index`: nprobe를 index 저장 전 설정 (faiss.write_index가 직렬화 보존)
+  - Hybrid F0 `hybrid[rmvpe+fcpe]` 지원 (학습/변환 파이프라인 양쪽): 팔세토 최고 안정성
+  - UI convert-f0 드롭다운에 Hybrid RMVPE+FCPE 옵션 추가
+  - 비용 추정기: hybrid f0Factor +15% 반영
+  - 테스트 50/50 통과
+- ✅ **v62 바이패스 전면 재설계 (2026-04-26)**:
   - EQ 감쇠량 65% 축소: 영어 -6.4dB → -2.1dB, 한국어 -5.0dB → -1.5dB (순수 감쇠)
   - 보컬 2-pass loudnorm → 피크 정규화 (-1 dBFS): 다이나믹 레인지 보존
   - LRA=11 → LRA=20 전체 통일 (5곳): 다이나믹 압축 해소
@@ -72,13 +79,14 @@
   - GHA Docker 캐시 손상 수정 (scope v2→v3, invalid JSON 에러 해결)
 - ⚠️ **CVE-2025-32434**: PyTorch 2.1.0 RCE — 2.6.0+ 업그레이드 예정
 
-## 4. 변환 파라미터 (v55 — 최신)
+## 4. 변환 파라미터 (v63 — 최신)
 
 | 파라미터 | 값 | 변경 이력 |
 |----------|-----|-----------|
 | Pretrained | **KLM49_HFG** (한국어) / **RIN_E3** (다국어) | |
 | Epochs | **150** (기본값), Batch: **8**, SR: 40kHz | |
-| F0 | RMVPE (+ **f0_autotune=True, strength=0.2**) | v57: 0.4→0.2 (피치 상방편향 교정) |
+| F0 | RMVPE / **hybrid[rmvpe+fcpe]** (팔세토 권장) + **f0_autotune=True, strength=0.2** | v63: hybrid 추가; v57: 0.4→0.2 |
+| **FAISS nprobe** | **min(32, n_ivf//10)** (학습 시 index 생성) | v63: 1→32 (recall 1.9%→9%, AI스러움 감소) |
 | **index_rate** | **0.50** (기본값, 서버/HTML 기준) | v55: 0.45→0.50 |
 | **rms_mix_rate** | **0.15** | v55: 0.20→0.15 |
 | **protect** | **0.50** | v55: 0.40→0.50 |

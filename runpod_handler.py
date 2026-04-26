@@ -1569,7 +1569,8 @@ def task_train(job_input: dict, job: dict) -> dict:
         batch_size = 8  # v49.7: 폴백도 8 (AI Hub: >30분=8)
     _VALID_F0 = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    if f0_method not in _VALID_F0:
+    # hybrid[rmvpe+fcpe] and similar compound methods are also valid (Applio 3.x+)
+    if f0_method not in _VALID_F0 and not f0_method.startswith("hybrid["):
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
     embedder_model: str = job_input.get("embedder_model", "contentvec")
@@ -2676,6 +2677,11 @@ def _rvc_create_index(model_name: str, logs_dir: Path) -> None:
             index = faiss.index_factory(dim, f"IVF{n_ivf},Flat")
             index.train(big_npy)
             index.add(big_npy)
+            # nprobe=1(기본값)은 participation ratio ~1.9% → 검색 품질 저하 원인
+            # nprobe=32로 높이면 ~9% 클러스터 탐색 → recall 향상, AI스러움 감소
+            # faiss.write_index가 nprobe를 직렬화하므로 추론 시에도 반영됨
+            index.nprobe = min(32, max(1, n_ivf // 10))
+            log.info(f"FAISS nprobe set to {index.nprobe} (n_ivf={n_ivf})")
 
         index_path = logs_dir / f"{model_name}.index"
         faiss.write_index(index, str(index_path))
@@ -3339,9 +3345,10 @@ def task_convert(job_input: dict, job: dict) -> dict:
     except (ValueError, TypeError):
         index_rate = 0.50
     # rmvpe: stable, fast, accurate for singing — better default than crepe
+    # hybrid[rmvpe+fcpe]: Applio 3.x+ 지원, 팔세토 안정성 최고 (커뮤니티 권장)
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
-    if f0_method not in _VALID_F0_CONVERT:
+    if f0_method not in _VALID_F0_CONVERT and not f0_method.startswith("hybrid["):
         log.warning(f"Invalid f0_method '{f0_method}', falling back to rmvpe")
         f0_method = "rmvpe"
     # v57: 2 (CLAUDE.md v57 동기화)

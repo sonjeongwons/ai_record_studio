@@ -3213,6 +3213,7 @@ input[type="range"]::-moz-range-track {
             </div>
             <select id="convert-f0" onchange="onF0MethodChange()" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid rgba(255,255,255,0.08);border-radius:8px;font-size:13px">
               <option value="rmvpe" selected>RMVPE (빠름 · 안정적 · 노래에 권장)</option>
+              <option value="hybrid[rmvpe+fcpe]">Hybrid RMVPE+FCPE ✨ (팔세토/고음 최고 안정성)</option>
               <option value="fcpe">FCPE (풍성한 보컬 · RMVPE 대비 5배 빠름)</option>
               <option value="crepe">Crepe ⚠️ (화음/코러스 곡 비권장 · 속도 느림)</option>
               <option value="crepe-tiny">Crepe-tiny ⚠️ (Crepe 경량 버전)</option>
@@ -4787,7 +4788,7 @@ function estimateConversionCost() {
 
   var f0El = document.getElementById('convert-f0');
   var f0   = f0El ? f0El.value.toLowerCase() : 'crepe';
-  var f0Factor = (f0 === 'crepe') ? 1.10 : (f0 === 'crepe-tiny') ? 0.85 : 1.0; // rmvpe=1.0 기본
+  var f0Factor = (f0 === 'crepe') ? 1.10 : (f0 === 'crepe-tiny') ? 0.85 : (f0.startsWith('hybrid[')) ? 1.15 : 1.0; // hybrid는 +15%, rmvpe=1.0 기본
 
   // GPU 시간: Demucs 보컬 분리(~1x realtime) + RVC 추론(~0.3x) + 모델 로딩
   var overheadSecs  = 60 + (files.length - 1) * 10; // 첫 파일 60s(모델+Demucs 로딩), 이후 10s
@@ -4799,7 +4800,7 @@ function estimateConversionCost() {
   var minSec    = totalGpu * 0.65;
   var maxSec    = totalGpu * 1.50;
 
-  var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)' }[f0] || f0;
+  var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)', fcpe: 'FCPE', 'hybrid[rmvpe+fcpe]': 'Hybrid RMVPE+FCPE (+15%)' }[f0] || f0;
   var cleanLabel = (cleanCb && cleanCb.checked) ? 'ON (+15% 시간 추가)' : 'OFF (기본)';
 
   document.getElementById('cost-conv-files').textContent = files.length + '개';
