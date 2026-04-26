@@ -40,10 +40,16 @@
 - ✅ RunPod Serverless Handler 구현 완료
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원, 중복 스킵)
 - ✅ 보안 감사 완료 (44건+ 수정)
+- ✅ **v65 바이패스 감지 민감도 강화 (2026-04-26)**:
+  - `_detect_falsetto_regions`: instability_thresh 1.8→**1.0st** (Monster 90-92s 1.475st, 99-118s 1.015st 포착)
+  - `_detect_falsetto_regions`: unconditional_high_thresh 380→**360Hz** (Monster 15-17s 370Hz median 포착)
+  - `_detect_polyphonic_regions`: HPS candidates ≥4→**≥3** (2성부 화음/듀엣 구간도 감지)
+  - `_detect_noisy_regions`: flatness_thresh 0.12→**0.10** (경계성 기계음 구간 감도 향상)
+  - 테스트 50/50 통과
 - ✅ **v64 자음보호 복구 + 노이즈 바이패스 + 팔세토 감지 강화 (2026-04-26)**:
   - **protect: 0.50→0.40** (AI Hub 공식: 0.5=자음보호 완전비활성화 → 기계음/가래 원인; 0.4=재활성화)
-  - `_detect_falsetto_regions` 강화: 380Hz 무조건 bypass (안정적 팔세토도 RVC 처리 불가) + 800Hz 옥타브에러 bypass
-  - `_detect_noisy_regions` 신규: spectral flatness>0.12 지속 → 기계음/뭉개짐 구간 원본 대체
+  - `_detect_falsetto_regions` 강화: 380Hz 무조건 bypass (안정적 팔세토도 RVC 처리 불가) + 800Hz 옥타브에러 bypass (v65: 360Hz+1.0st로 강화)
+  - `_detect_noisy_regions` 신규: spectral flatness>0.12 지속 → 기계음/뭉개짐 구간 원본 대체 (v65: 0.10으로 강화)
   - `noisy_bypass` 파라미터 추가 (기본 True): server.py + runpod_handler.py + index.html UI
   - 영어(en/auto) 7.5kHz -0.5dB EQ 추가 (치찰음 집중대역 추가 감쇄)
   - 시작부 0.3초 afade-in (RVC 도입부 아티팩트 억제)

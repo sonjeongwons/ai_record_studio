@@ -723,8 +723,9 @@ def _detect_polyphonic_regions(vocal_path: Path, sr: int = 44100,
             peaks = np.where((hps[1:-1] > hps[:-2]) & (hps[1:-1] > hps[2:]) & (hps[1:-1] > threshold))[0]
             hps_candidates[frame_idx] = len(peaks)
 
-        # 폴리포닉 판단: flatness > thresh 또는 HPS 후보 ≥ 4
-        polyphonic = voiced & ((flatness > flatness_thresh) | (hps_candidates >= 4))
+        # 폴리포닉 판단: flatness > thresh 또는 HPS 후보 ≥ 3
+        # v65: >=4→>=3 (2성부 화음/유니즌도 검출, 듀엣 구간 원본 유지)
+        polyphonic = voiced & ((flatness > flatness_thresh) | (hps_candidates >= 3))
 
         regions: list = []
         in_region = False
@@ -831,16 +832,18 @@ def _detect_gender_bypass_segments(vocal_path: Path, sr: int = 44100,
 
 def _detect_falsetto_regions(vocal_path: Path, sr: int = 44100,
                               high_f0_thresh: float = 350.0,
-                              instability_thresh: float = 1.8,
-                              unconditional_high_thresh: float = 380.0,
+                              instability_thresh: float = 1.0,
+                              unconditional_high_thresh: float = 360.0,
                               octave_error_thresh: float = 800.0,
                               min_duration: float = 0.5) -> list:
-    """v64: 팔세토/고음 불안정 구간 자동 감지 → 원본 보컬로 바이패스 대상.
+    """v65: 팔세토/고음 불안정 구간 자동 감지 → 원본 보컬로 바이패스 대상.
 
-    조건 1 (기존): F0 > high_f0_thresh Hz AND 2초 윈도우 F0 표준편차 > instability_thresh 반음.
-    조건 2 (신규): F0 > unconditional_high_thresh Hz 지속 → 무조건 bypass.
-      - RVC는 380Hz 이상 팔세토를 안정적이어도 항상 망침 (기다릴게 95-118s, 520Hz).
-    조건 3 (신규): F0 > octave_error_thresh Hz 지속 → 옥타브 에러 bypass.
+    조건 1: F0 > high_f0_thresh Hz AND 2초 윈도우 F0 표준편차 > instability_thresh 반음.
+      - v65: instability_thresh 1.8→1.0st (Monster 90-92s 1.475st, 99-118s 1.015st 포착).
+    조건 2: F0 > unconditional_high_thresh Hz 지속 → 무조건 bypass.
+      - v65: 380→360Hz (Monster 15-17s 370Hz median, 기다릴게 95-118s 520Hz 포착).
+      - RVC는 360Hz 이상 팔세토를 안정적이어도 항상 망침.
+    조건 3: F0 > octave_error_thresh Hz 지속 → 옥타브 에러 bypass.
       - 인간 음역 초과 = RVC가 피치를 2배로 잘못 추출 (기다릴게 20-30s, max 2093Hz).
 
     Returns: [(start_sec, end_sec), ...] 불안정/고음/옥타브에러 구간 목록
@@ -929,7 +932,7 @@ def _detect_falsetto_regions(vocal_path: Path, sr: int = 44100,
         _uncond_cnt = int(is_unconditional.sum())
         _oct_cnt = int(is_octave_err.sum())
         log.info(f"Falsetto bypass regions: {len(result)} (F0>{high_f0_thresh:.0f}Hz, "
-                 f"instab>{instability_thresh:.1f}st, uncond380={_uncond_cnt}f, "
+                 f"instab>{instability_thresh:.1f}st, uncond{unconditional_high_thresh:.0f}={_uncond_cnt}f, "
                  f"octave_err={_oct_cnt}f)")
         return result
     except Exception as _ex:
@@ -938,12 +941,13 @@ def _detect_falsetto_regions(vocal_path: Path, sr: int = 44100,
 
 
 def _detect_noisy_regions(vocal_path: Path, sr: int = 44100,
-                           flatness_thresh: float = 0.12,
+                           flatness_thresh: float = 0.10,
                            min_duration: float = 0.4,
                            merge_gap: float = 0.5) -> list:
-    """v64: RVC 변환 실패 구간 감지: spectral flatness > flatness_thresh 지속 구간.
+    """v65: RVC 변환 실패 구간 감지: spectral flatness > flatness_thresh 지속 구간.
 
-    flatness > 0.12 = 잡음에 가까운 신호 (기계음/뭉개짐 artifact).
+    v65: flatness_thresh 0.12→0.10 (감도 향상, 경계성 기계음 구간도 포착).
+    flatness > 0.10 = 잡음에 가까운 신호 (기계음/뭉개짐 artifact).
     Lovers rough 0-17s (flatness_p95=0.96), Monster 15-17s (flatness=0.18) 잡음.
 
     Returns: [(start_sec, end_sec), ...]
