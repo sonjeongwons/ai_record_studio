@@ -4080,6 +4080,31 @@ def task_convert(job_input: dict, job: dict) -> dict:
             cleanup_gpu()
 
 
+def _recover_applio_output(output_path: Path, export_format: str) -> bool:
+    """Applio가 기본 output 디렉토리에 저장한 파일을 output_path로 복사. True=성공.
+    Strategy 1/2/4가 성공했지만 파일이 예상 경로에 없을 때 호출."""
+    if output_path.exists():
+        return True
+    for search_dir in [
+        APPLIO_ROOT / "audio" / "outputs",
+        APPLIO_ROOT / "audio",
+        APPLIO_ROOT / "output",
+        APPLIO_ROOT / "outputs",
+    ]:
+        if not search_dir.exists():
+            continue
+        candidates = sorted(
+            search_dir.rglob(f"*.{export_format}"),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+        if candidates:
+            shutil.copy2(str(candidates[0]), str(output_path))
+            log.info(f"Applio output recovered: {candidates[0].name} → {output_path.name}")
+            return True
+    return False
+
+
 def _rvc_infer(
     pth_path: Path,
     index_path: Optional[Path],
@@ -4134,6 +4159,7 @@ def _rvc_infer(
             embedder_model=embedder_model,
             embedder_model_custom=None,
         )
+        _recover_applio_output(output_path, export_format)  # v68: Applio가 자체 dir에 저장했을 수 있음
         log.info("Inference completed via core.run_infer_script")
         return
     except ImportError as e:
@@ -4166,6 +4192,7 @@ def _rvc_infer(
             export_format=export_format.upper(),
             embedder_model=embedder_model,
         )
+        _recover_applio_output(output_path, export_format)  # v68: Applio가 자체 dir에 저장했을 수 있음
         log.info("Inference completed via VoiceConverter class")
         return
     except ImportError as e:
@@ -4339,28 +4366,12 @@ def _rvc_infer(
     else:
         log.info("Inference completed via CLI fallback")
 
-    # --- 출력 파일 탐색: CLI가 다른 경로에 저장했을 수 있음 ---
+    # --- 출력 파일 탐색: CLI가 다른 경로에 저장했을 수 있음 (v68: _recover_applio_output 통일) ---
     if not output_path.exists():
-        log.warning(f"Output not at expected path: {output_path}")
-        # work 디렉토리에서 변환된 파일 검색
+        log.warning(f"CLI output not at expected path: {output_path}")
         found_files = list(output_path.parent.glob("*"))
         log.info(f"Files in work dir: {[f.name for f in found_files]}")
-        # Applio 기본 출력 디렉토리도 검색
-        for search_dir in [
-            APPLIO_ROOT / "audio" / "outputs",
-            APPLIO_ROOT / "audio",
-            APPLIO_ROOT / "output",
-            APPLIO_ROOT / "outputs",
-        ]:
-            if search_dir.exists():
-                applio_files = list(search_dir.rglob(f"*.{export_format}"))
-                if applio_files:
-                    log.info(f"Found in {search_dir}: {[f.name for f in applio_files]}")
-                    # 가장 최근 파일을 사용
-                    newest = max(applio_files, key=lambda f: f.stat().st_mtime)
-                    shutil.copy2(str(newest), str(output_path))
-                    log.info(f"Copied {newest} → {output_path}")
-                    break
+        _recover_applio_output(output_path, export_format)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
