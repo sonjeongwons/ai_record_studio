@@ -4115,19 +4115,17 @@ def _rvc_infer(
 
         run_infer_script(
             pitch=pitch_shift,
-            filter_radius=filter_radius,
             index_rate=index_rate,
-            volume_envelope=1.0,
+            volume_envelope=rms_mix_rate,  # v67: rms_mix_rate→volume_envelope (Applio API 변경)
             protect=protect,
-            hop_length=hop_length,
             f0_method=f0_method,
             input_path=str(input_audio),
             output_path=str(output_path),
             pth_path=str(pth_path),
             index_path=index_str,
             split_audio=split_audio,
-            f0_autotune=f0_autotune,              # v49: True (노래 변환 피치 안정화)
-            f0_autotune_strength=f0_autotune_strength,  # v54: 0.4 (비브라토 보존, 커뮤니티 최적값)
+            f0_autotune=f0_autotune,
+            f0_autotune_strength=f0_autotune_strength,
             proposed_pitch=False,
             proposed_pitch_threshold=155.0,
             clean_audio=clean_audio,
@@ -4135,7 +4133,6 @@ def _rvc_infer(
             export_format=export_format.upper(),
             embedder_model=embedder_model,
             embedder_model_custom=None,
-            rms_mix_rate=rms_mix_rate,
         )
         log.info("Inference completed via core.run_infer_script")
         return
@@ -4158,11 +4155,9 @@ def _rvc_infer(
             model_path=str(pth_path),
             index_path=index_str,
             pitch=pitch_shift,
-            filter_radius=filter_radius,
             f0_method=f0_method,
             index_rate=index_rate,
-            rms_mix_rate=rms_mix_rate,
-            volume_envelope=1.0,
+            volume_envelope=rms_mix_rate,  # v67: rms_mix_rate→volume_envelope (Applio API 변경)
             protect=protect,
             hop_length=hop_length,
             split_audio=split_audio,
@@ -4255,29 +4250,25 @@ def _rvc_infer(
         if index_path and index_path.exists():
             file_index = str(index_path)
 
-        # Run pipeline
+        # Run pipeline — v67: Applio 신규 시그니처 (filter_radius/rms_mix_rate/hop_length 제거)
         sid = torch.tensor([0], dtype=torch.long, device=device)
         audio_opt = pipeline.pipeline(
-            hubert_model,
-            net_g,
-            sid,
-            audio_16k,
-            str(input_audio),
-            [0, 0, 0],  # times (not used meaningfully)
-            pitch_shift,
-            f0_method,
-            file_index,
-            index_rate,
-            if_f0,
-            filter_radius,
-            tgt_sr,
-            0,  # resample_sr
-            rms_mix_rate,
-            version,
-            protect,
-            hop_length,
-            f0_autotune,  # v49: True (노래 변환 피치 안정화)
-            f0_autotune_strength,  # v49.8: 0.3 (이중 스무딩→비음 완화)
+            model=hubert_model,
+            net_g=net_g,
+            sid=sid,
+            audio=audio_16k,
+            pitch=pitch_shift,
+            f0_method=f0_method,
+            file_index=file_index,
+            index_rate=index_rate,
+            pitch_guidance=if_f0,
+            volume_envelope=rms_mix_rate,
+            version=version,
+            protect=protect,
+            f0_autotune=f0_autotune,
+            f0_autotune_strength=f0_autotune_strength,
+            proposed_pitch=False,
+            proposed_pitch_threshold=155.0,
         )
 
         # Save output — always write as WAV first, then convert to target format if needed
@@ -4300,17 +4291,15 @@ def _rvc_infer(
         cleanup_gpu()
 
     # --- Strategy 4: CLI fallback (last resort) ---
+    # v67: Applio 신규 CLI (filter_radius/rms_mix_rate/hop_length 제거, volume_envelope 사용)
     cmd = [
         sys.executable,
         str(APPLIO_ROOT / "core.py"),
         "infer",
         "--pitch", str(pitch_shift),
-        "--filter_radius", str(filter_radius),
         "--index_rate", str(index_rate),
-        "--rms_mix_rate", str(rms_mix_rate),
-        "--volume_envelope", "1.0",
+        "--volume_envelope", str(rms_mix_rate),
         "--protect", str(protect),
-        "--hop_length", str(hop_length),
         "--f0_method", f0_method,
         "--input_path", str(input_audio),
         "--output_path", str(output_path),
@@ -4320,7 +4309,7 @@ def _rvc_infer(
         "--clean_audio", str(clean_audio),
         "--clean_strength", str(clean_strength),
         "--export_format", export_format.upper(),
-        "--embedder_model", "contentvec",
+        "--embedder_model", embedder_model,
         "--f0_autotune", str(f0_autotune),
         "--f0_autotune_strength", str(f0_autotune_strength),
     ]
