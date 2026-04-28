@@ -4081,27 +4081,34 @@ def task_convert(job_input: dict, job: dict) -> dict:
 
 
 def _recover_applio_output(output_path: Path, export_format: str) -> bool:
-    """Applio가 기본 output 디렉토리에 저장한 파일을 output_path로 복사. True=성공.
-    Strategy 1/2/4가 성공했지만 파일이 예상 경로에 없을 때 호출."""
+    """Applio가 자체 디렉토리에 저장한 파일을 output_path로 복사. True=성공.
+    Strategy 1/2/4가 완료했지만 파일이 예상 경로에 없을 때 호출."""
     if output_path.exists():
         return True
-    for search_dir in [
+    fmt_lower = export_format.lower()
+    # Applio 기본 출력 디렉토리 우선 검색
+    search_dirs = [
         APPLIO_ROOT / "audio" / "outputs",
         APPLIO_ROOT / "audio",
         APPLIO_ROOT / "output",
         APPLIO_ROOT / "outputs",
-    ]:
+        APPLIO_ROOT,  # v69: root도 검색
+    ]
+    for search_dir in search_dirs:
         if not search_dir.exists():
             continue
-        candidates = sorted(
-            search_dir.rglob(f"*.{export_format}"),
-            key=lambda f: f.stat().st_mtime,
-            reverse=True,
-        )
+        # 대소문자 모두 검색 (Linux 파일시스템은 case-sensitive)
+        candidates = [
+            f for f in search_dir.rglob("*")
+            if f.is_file() and f.suffix.lower() == f".{fmt_lower}"
+            and f != output_path  # 자기 자신 제외
+        ]
         if candidates:
-            shutil.copy2(str(candidates[0]), str(output_path))
-            log.info(f"Applio output recovered: {candidates[0].name} → {output_path.name}")
+            newest = max(candidates, key=lambda f: f.stat().st_mtime)
+            shutil.copy2(str(newest), str(output_path))
+            log.info(f"Applio output recovered: {newest.name} → {output_path.name}")
             return True
+    log.warning(f"_recover_applio_output: no .{fmt_lower} file found in any search dir")
     return False
 
 
@@ -4138,7 +4145,8 @@ def _rvc_infer(
         os.chdir(APPLIO_ROOT)
         from core import run_infer_script
 
-        run_infer_script(
+        # v69: run_infer_script returns (success_msg, actual_output_path)
+        infer_result = run_infer_script(
             pitch=pitch_shift,
             index_rate=index_rate,
             volume_envelope=rms_mix_rate,  # v67: rms_mix_rate→volume_envelope (Applio API 변경)
@@ -4159,9 +4167,18 @@ def _rvc_infer(
             embedder_model=embedder_model,
             embedder_model_custom=None,
         )
-        _recover_applio_output(output_path, export_format)  # v68: Applio가 자체 dir에 저장했을 수 있음
-        log.info("Inference completed via core.run_infer_script")
-        return
+        # Applio returns (success_msg, actual_path) — use actual_path if different from expected
+        if isinstance(infer_result, (tuple, list)) and len(infer_result) >= 2:
+            actual = Path(infer_result[1]) if infer_result[1] else None
+            if actual and actual.exists() and actual != output_path:
+                shutil.copy2(str(actual), str(output_path))
+                log.info(f"Copied Applio output: {actual.name} → {output_path.name}")
+        if not output_path.exists():
+            _recover_applio_output(output_path, export_format)
+        if output_path.exists():
+            log.info("Inference completed via core.run_infer_script")
+            return
+        log.warning("run_infer_script completed but output not found, falling through to next strategy")
     except ImportError as e:
         log.info(f"core.run_infer_script not available ({e}), trying alternative")
     except Exception as e:
@@ -4192,9 +4209,12 @@ def _rvc_infer(
             export_format=export_format.upper(),
             embedder_model=embedder_model,
         )
-        _recover_applio_output(output_path, export_format)  # v68: Applio가 자체 dir에 저장했을 수 있음
-        log.info("Inference completed via VoiceConverter class")
-        return
+        if not output_path.exists():
+            _recover_applio_output(output_path, export_format)
+        if output_path.exists():
+            log.info("Inference completed via VoiceConverter class")
+            return
+        log.warning("VoiceConverter completed but output not found, falling through to next strategy")
     except ImportError as e:
         log.info(f"rvc.infer.infer.VoiceConverter not available ({e}), trying CLI")
     except Exception as e:
