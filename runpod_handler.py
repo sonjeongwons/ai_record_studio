@@ -4127,6 +4127,77 @@ def _recover_applio_output(output_path: Path, export_format: str) -> bool:
     return False
 
 
+def _run_cli_infer(
+    f0_method: str,
+    pitch_shift: int,
+    index_rate: float,
+    rms_mix_rate: float,
+    protect: float,
+    input_audio: Path,
+    output_path: Path,
+    pth_path: Path,
+    index_str: str,
+    split_audio: bool,
+    clean_audio: bool,
+    clean_strength: float,
+    export_format: str,
+    embedder_model: str,
+    f0_autotune: bool,
+    f0_autotune_strength: float,
+) -> None:
+    """Applio CLI subprocess 인퍼런스 (Strategy 4 / hybrid 직접 진입로).
+    독립 프로세스라 hybrid f0 포함 모든 방식을 안정적으로 지원."""
+    cmd = [
+        sys.executable,
+        str(APPLIO_ROOT / "core.py"),
+        "infer",
+        "--pitch", str(pitch_shift),
+        "--index_rate", str(index_rate),
+        "--volume_envelope", str(rms_mix_rate),
+        "--protect", str(protect),
+        "--f0_method", f0_method,
+        "--input_path", str(input_audio),
+        "--output_path", str(output_path),
+        "--pth_path", str(pth_path),
+        "--index_path", index_str,
+        "--split_audio", str(split_audio),
+        "--clean_audio", str(clean_audio),
+        "--clean_strength", str(clean_strength),
+        "--export_format", export_format.upper(),
+        "--embedder_model", embedder_model,
+        "--f0_autotune", str(f0_autotune),
+        "--f0_autotune_strength", str(f0_autotune_strength),
+    ]
+    log.info(f"CLI infer command: {' '.join(cmd)}")
+    cli_result = subprocess.run(
+        cmd,
+        cwd=str(APPLIO_ROOT),
+        capture_output=True, text=True, timeout=600,
+    )
+    log.info(f"CLI exit code: {cli_result.returncode}")
+    if cli_result.stdout.strip():
+        log.info(f"CLI stdout: {cli_result.stdout[-2000:]}")
+    if cli_result.stderr.strip():
+        log.warning(f"CLI stderr: {cli_result.stderr[-2000:]}")
+
+    if cli_result.returncode != 0:
+        stdout_lines = [ln for ln in cli_result.stdout.strip().splitlines() if ln.strip()]
+        tail = "\n".join(stdout_lines[-5:]) if stdout_lines else "(no stdout)"
+        stderr_tail = cli_result.stderr.strip()[-500:] if cli_result.stderr.strip() else ""
+        raise RuntimeError(
+            f"CLI infer failed (exit {cli_result.returncode}).\n"
+            f"Last stdout:\n{tail}"
+            + (f"\nStderr:\n{stderr_tail}" if stderr_tail else "")
+        )
+    log.info("CLI infer completed successfully")
+
+    if not output_path.exists():
+        log.warning(f"CLI output not at expected path: {output_path}")
+        found_files = list(output_path.parent.glob("*"))
+        log.info(f"Files in work dir: {[f.name for f in found_files]}")
+        _recover_applio_output(output_path, export_format)
+
+
 def _rvc_infer(
     pth_path: Path,
     index_path: Optional[Path],
@@ -4154,6 +4225,30 @@ def _rvc_infer(
     """
     index_str = str(index_path) if index_path and index_path.exists() else ""
     original_cwd = os.getcwd()
+
+    # v71: hybrid f0 method는 Applio 고수준 API/Pipeline 내부에서 환경 문제로 실패하는 경우가 있음.
+    # CLI(Strategy 4) subprocess는 독립 프로세스라 가장 안정적으로 hybrid를 지원 → 직행.
+    if f0_method.startswith("hybrid["):
+        log.info(f"Hybrid F0 ({f0_method}): skipping Strategies 1-3, using CLI directly")
+        _run_cli_infer(
+            f0_method=f0_method,
+            pitch_shift=pitch_shift,
+            index_rate=index_rate,
+            rms_mix_rate=rms_mix_rate,
+            protect=protect,
+            input_audio=input_audio,
+            output_path=output_path,
+            pth_path=pth_path,
+            index_str=index_str,
+            split_audio=split_audio,
+            clean_audio=clean_audio,
+            clean_strength=clean_strength,
+            export_format=export_format,
+            embedder_model=embedder_model,
+            f0_autotune=f0_autotune,
+            f0_autotune_strength=f0_autotune_strength,
+        )
+        return
 
     # --- Strategy 1: Applio core API ---
     try:
@@ -4365,60 +4460,28 @@ def _rvc_infer(
         cleanup_gpu()
 
     # --- Strategy 4: CLI fallback (last resort) ---
-    # v67: Applio 신규 CLI (filter_radius/rms_mix_rate/hop_length 제거, volume_envelope 사용)
-    cmd = [
-        sys.executable,
-        str(APPLIO_ROOT / "core.py"),
-        "infer",
-        "--pitch", str(pitch_shift),
-        "--index_rate", str(index_rate),
-        "--volume_envelope", str(rms_mix_rate),
-        "--protect", str(protect),
-        "--f0_method", f0_method,
-        "--input_path", str(input_audio),
-        "--output_path", str(output_path),
-        "--pth_path", str(pth_path),
-        "--index_path", index_str,
-        "--split_audio", str(split_audio),
-        "--clean_audio", str(clean_audio),
-        "--clean_strength", str(clean_strength),
-        "--export_format", export_format.upper(),
-        "--embedder_model", embedder_model,
-        "--f0_autotune", str(f0_autotune),
-        "--f0_autotune_strength", str(f0_autotune_strength),
-    ]
-
-    log.info(f"CLI command: {' '.join(cmd)}")
-    cli_result = subprocess.run(
-        cmd,
-        cwd=str(APPLIO_ROOT),
-        capture_output=True, text=True, timeout=600,
-    )
-    log.info(f"CLI exit code: {cli_result.returncode}")
-    if cli_result.stdout.strip():
-        log.info(f"CLI stdout: {cli_result.stdout[-2000:]}")
-    if cli_result.stderr.strip():
-        log.warning(f"CLI stderr: {cli_result.stderr[-2000:]}")
-
-    if cli_result.returncode != 0:
-        # Include last 5 lines of stdout for debugging context
-        stdout_lines = [ln for ln in cli_result.stdout.strip().splitlines() if ln.strip()]
-        tail = "\n".join(stdout_lines[-5:]) if stdout_lines else "(no stdout)"
-        stderr_tail = cli_result.stderr.strip()[-500:] if cli_result.stderr.strip() else ""
-        raise RuntimeError(
-            f"All 4 RVC inference strategies failed. CLI exit code: {cli_result.returncode}.\n"
-            f"Last stdout:\n{tail}"
-            + (f"\nStderr:\n{stderr_tail}" if stderr_tail else "")
+    # v71: _run_cli_infer 헬퍼로 위임 (hybrid 직접 진입로와 동일 코드 경로)
+    try:
+        _run_cli_infer(
+            f0_method=f0_method,
+            pitch_shift=pitch_shift,
+            index_rate=index_rate,
+            rms_mix_rate=rms_mix_rate,
+            protect=protect,
+            input_audio=input_audio,
+            output_path=output_path,
+            pth_path=pth_path,
+            index_str=index_str,
+            split_audio=split_audio,
+            clean_audio=clean_audio,
+            clean_strength=clean_strength,
+            export_format=export_format,
+            embedder_model=embedder_model,
+            f0_autotune=f0_autotune,
+            f0_autotune_strength=f0_autotune_strength,
         )
-    else:
-        log.info("Inference completed via CLI fallback")
-
-    # --- 출력 파일 탐색: CLI가 다른 경로에 저장했을 수 있음 (v68: _recover_applio_output 통일) ---
-    if not output_path.exists():
-        log.warning(f"CLI output not at expected path: {output_path}")
-        found_files = list(output_path.parent.glob("*"))
-        log.info(f"Files in work dir: {[f.name for f in found_files]}")
-        _recover_applio_output(output_path, export_format)
+    except RuntimeError as e:
+        raise RuntimeError(f"All 4 RVC inference strategies failed.\n{e}") from e
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
