@@ -4127,6 +4127,19 @@ def _recover_applio_output(output_path: Path, export_format: str) -> bool:
     return False
 
 
+def _is_audio_silent(path: Path, threshold: float = 0.001) -> bool:
+    """RVC 출력이 무음에 가까운지 확인. True=무음.
+    Applio가 내부 에러(NameError 등) 발생 시 무음 WAV를 저장하고 반환하는 케이스 방어."""
+    try:
+        import soundfile as _sf_sil
+        import numpy as _np_sil
+        _data, _ = _sf_sil.read(str(path), always_2d=False)
+        return float(_np_sil.abs(_data).max()) < threshold
+    except Exception as _e:
+        log.debug(f"Silent check failed for {path.name}: {_e}")
+        return False
+
+
 def _run_cli_infer(
     f0_method: str,
     pitch_shift: int,
@@ -4226,29 +4239,15 @@ def _rvc_infer(
     index_str = str(index_path) if index_path and index_path.exists() else ""
     original_cwd = os.getcwd()
 
-    # v71: hybrid f0 method는 Applio 고수준 API/Pipeline 내부에서 환경 문제로 실패하는 경우가 있음.
-    # CLI(Strategy 4) subprocess는 독립 프로세스라 가장 안정적으로 hybrid를 지원 → 직행.
+    # v72: Applio 3.x (2025-05-09 커밋 d9311caa)에서 hybrid f0 완전 삭제됨.
+    # pipeline.get_f0()에 hybrid 분기 없음 → NameError → Applio가 무음 WAV 반환.
+    # FCPE가 hybrid[rmvpe+fcpe]의 현대적 대체재 (팔세토/고음 동등 안정성, Applio 3.x 공식 지원).
     if f0_method.startswith("hybrid["):
-        log.info(f"Hybrid F0 ({f0_method}): skipping Strategies 1-3, using CLI directly")
-        _run_cli_infer(
-            f0_method=f0_method,
-            pitch_shift=pitch_shift,
-            index_rate=index_rate,
-            rms_mix_rate=rms_mix_rate,
-            protect=protect,
-            input_audio=input_audio,
-            output_path=output_path,
-            pth_path=pth_path,
-            index_str=index_str,
-            split_audio=split_audio,
-            clean_audio=clean_audio,
-            clean_strength=clean_strength,
-            export_format=export_format,
-            embedder_model=embedder_model,
-            f0_autotune=f0_autotune,
-            f0_autotune_strength=f0_autotune_strength,
+        log.warning(
+            f"hybrid f0 ({f0_method})는 Applio 3.x에서 지원 종료 (2025-05-09). "
+            "fcpe로 자동 업그레이드합니다."
         )
-        return
+        f0_method = "fcpe"
 
     # --- Strategy 1: Applio core API ---
     try:
@@ -4286,9 +4285,14 @@ def _rvc_infer(
         if not output_path.exists():
             _recover_applio_output(output_path, export_format)
         if output_path.exists():
-            log.info("Inference completed via core.run_infer_script")
-            return
-        log.warning("run_infer_script completed but output not found, falling through to next strategy")
+            # v72: 무음 감지 — Applio가 내부 에러 시 무음 파일을 저장하고 반환하는 케이스 방어
+            if _is_audio_silent(output_path):
+                log.warning("Strategy 1 output near-silent (Applio internal error?), falling through")
+                output_path.unlink(missing_ok=True)
+            else:
+                log.info("Inference completed via core.run_infer_script")
+                return
+        log.warning("run_infer_script completed but output not found/silent, falling through to next strategy")
     except ImportError as e:
         log.info(f"core.run_infer_script not available ({e}), trying alternative")
     except Exception as e:
@@ -4322,9 +4326,14 @@ def _rvc_infer(
         if not output_path.exists():
             _recover_applio_output(output_path, export_format)
         if output_path.exists():
-            log.info("Inference completed via VoiceConverter class")
-            return
-        log.warning("VoiceConverter completed but output not found, falling through to next strategy")
+            # v72: 무음 감지 — Strategy 1과 동일한 Applio 내부 에러 방어
+            if _is_audio_silent(output_path):
+                log.warning("Strategy 2 output near-silent, falling through to next strategy")
+                output_path.unlink(missing_ok=True)
+            else:
+                log.info("Inference completed via VoiceConverter class")
+                return
+        log.warning("VoiceConverter completed but output not found/silent, falling through to next strategy")
     except ImportError as e:
         log.info(f"rvc.infer.infer.VoiceConverter not available ({e}), trying CLI")
     except Exception as e:

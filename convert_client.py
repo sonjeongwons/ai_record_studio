@@ -75,7 +75,7 @@ _COMMON = {
     "clean_audio":         "false",
     "clean_strength":      0.7,
     "post_reverb":         0.0,
-    "harmonic_enhance":    "false",
+    "harmonic_enhance":    "true",   # AI 금속성 질감 제거 — UI 기본 권장값
     "high_note_mode":      "false",
     "harmony_filter":      0.0,
     "vocal_pitch_pre_shift": 0,
@@ -92,7 +92,7 @@ PRESETS = {
         "params": {
             **_COMMON,
             # ── 곡별 설정 ──
-            "f0_method":  "hybrid[rmvpe+fcpe]",  # 팔세토 구간 많음(520Hz대) → hybrid가 최안정
+            "f0_method":  "fcpe",  # 팔세토 구간 많음(520Hz대) → FCPE (Applio 3.x hybrid 대체)
             "language":   "ko",    # 한국어 EQ: HPF 80Hz + 800Hz -1.0 + 5kHz -0.7 + Air
                                    #            (영어 추가 커트 300/600/7.5kHz는 생략)
             "pitch_shift": -3,     # 원키보다 3반음 낮춤 — 고음 안정화 (기존 고음곡 프리셋)
@@ -135,7 +135,7 @@ PRESETS = {
         "file": ROOT / "01_Breaking Through (4824 Wave).wav",
         "params": {
             **_COMMON,
-            "f0_method":  "hybrid[rmvpe+fcpe]",  # 전반 기계음/가래 → 최대 안정성
+            "f0_method":  "fcpe",  # 전반 기계음/가래 → FCPE (Applio 3.x hybrid 대체)
             "language":   "en",
             "pitch_shift": 0,
             "harmony_bypass":  "true",
@@ -154,7 +154,7 @@ PRESETS = {
         "file": ROOT / "Monster.wav",  # 원본 없음 → MR만 분리 안 됨, 보컬 직접 변환
         "params": {
             **_COMMON,
-            "f0_method":  "hybrid[rmvpe+fcpe]",  # 15-17s / 90-118s 팔세토 구간 많음
+            "f0_method":  "fcpe",  # 15-17s / 90-118s 팔세토 구간 많음 → FCPE (Applio 3.x 권장)
             "language":   "en",
             "pitch_shift": 0,
             "falsetto_bypass": "true",  # 15-17s(370Hz→360Hz 임계 포착) / 90-92s(instab 1.475st>1.0) / 99-118s(instab 1.015st)
