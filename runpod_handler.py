@@ -3820,6 +3820,21 @@ def task_convert(job_input: dict, job: dict) -> dict:
                             _merged.append(tuple(_seg))
                     _bypass_regions = _merged
 
+                    # v70: bypass 커버리지 검사 — 80% 초과 시 bypass 무효화 (원곡수준 문제 방지)
+                    _total_bypass_sec = sum(e - s for s, e in _bypass_regions)
+                    _bypass_ratio = _total_bypass_sec / max(_rvc_duration, 0.1)
+                    log.info(
+                        f"Bypass coverage: {_bypass_ratio:.1%} "
+                        f"({_total_bypass_sec:.1f}s / {_rvc_duration:.1f}s total)"
+                    )
+                    if _bypass_ratio > 0.80:
+                        log.warning(
+                            f"⚠️ Bypass coverage {_bypass_ratio:.1%} > 80% — bypass 임계값 오감지 가능성. "
+                            "Bypass를 건너뜁니다 (변환 보컬 그대로 사용)."
+                        )
+                        _bypass_regions = []
+
+                if _bypass_regions:
                     # v62: 원본 소스는 full_vocal_path 우선 (리드+백킹 포함, 더 자연스러움)
                     _bypass_original = (full_vocal_path
                                         if ('full_vocal_path' in dir() and
@@ -4298,6 +4313,10 @@ def _rvc_infer(
             file_index = str(index_path)
 
         # Run pipeline — v67: Applio 신규 시그니처 (filter_radius/rms_mix_rate/hop_length 제거)
+        # v70: hybrid f0 method는 low-level Pipeline이 지원하지 않음 → rmvpe로 fallback
+        _pipeline_f0 = "rmvpe" if f0_method.startswith("hybrid[") else f0_method
+        if _pipeline_f0 != f0_method:
+            log.info(f"Strategy 3: hybrid f0 unsupported in Pipeline, using rmvpe instead of {f0_method}")
         sid = torch.tensor([0], dtype=torch.long, device=device)
         audio_opt = pipeline.pipeline(
             model=hubert_model,
@@ -4305,7 +4324,7 @@ def _rvc_infer(
             sid=sid,
             audio=audio_16k,
             pitch=pitch_shift,
-            f0_method=f0_method,
+            f0_method=_pipeline_f0,
             file_index=file_index,
             index_rate=index_rate,
             pitch_guidance=if_f0,
@@ -4317,6 +4336,14 @@ def _rvc_infer(
             proposed_pitch=False,
             proposed_pitch_threshold=155.0,
         )
+
+        # v70: 무음 출력 감지 — Pipeline이 silent zeros를 반환하면 Strategy 4로 fall-through
+        _audio_max = float(np.abs(audio_opt).max()) if len(audio_opt) > 0 else 0.0
+        if _audio_max < 0.001:
+            raise RuntimeError(
+                f"Strategy 3 produced near-silent output (max={_audio_max:.6f}). "
+                "Falling through to CLI strategy."
+            )
 
         # Save output — always write as WAV first, then convert to target format if needed
         # FLOAT subtype: RVC pipeline float32 출력을 손실 없이 보존
