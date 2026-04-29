@@ -7128,7 +7128,7 @@ function resetConversion() {
   document.getElementById('convert-file-input').value = '';
   // 오디오 재생 중지 + waveform 메모리 정리
   var resultAudio = document.getElementById('result-audio');
-  if (resultAudio) { resultAudio.pause(); resultAudio.src = ''; }
+  if (resultAudio) { resultAudio.onerror = null; resultAudio.pause(); resultAudio.src = ''; }
   // batch result waveform 키 정리
   Object.keys(apWaveData).forEach(function(k) {
     if (k.startsWith('br_') || k === 'result_player') delete apWaveData[k];
@@ -7171,7 +7171,7 @@ function reuseFileForConvert() {
   updateConvertBtn();
   updateNavBadges();
   var resultAudio = document.getElementById('result-audio');
-  if (resultAudio) { resultAudio.pause(); resultAudio.src = ''; }
+  if (resultAudio) { resultAudio.onerror = null; resultAudio.pause(); resultAudio.src = ''; }
 }
 
 async function cancelConversion() {
