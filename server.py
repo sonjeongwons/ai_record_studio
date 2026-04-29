@@ -2533,13 +2533,13 @@ async def reset_preprocess_selected(file_ids: str = Form("")):
 async def start_conversion(
     model_id: int = Form(...),
     pitch_shift: int = Form(0),
-    index_rate: float = Form(0.50),   # v55: 0.45→0.50 (CLAUDE.md v55 동기화)
+    index_rate: float = Form(0.75),   # v73: 0.50→0.75 (커뮤니티 0.75 권장, AI스러움 감소)
     f0_method: str = Form("rmvpe"),
     vocal_volume: float = Form(1.0),
     mr_volume: float = Form(1.0),
     clean_audio: str = Form("false"),
     clean_strength: float = Form(0.7),
-    protect: float = Form(0.40),        # v64: 0.50→0.40 (protect=0.5=보호완전비활성화 — AI Hub 공식; 0.4=자음보호 재활성화)
+    protect: float = Form(0.33),        # v73: 0.40→0.33 (커뮤니티 남성 노래 표준; 0.5=비활성)
     rms_mix_rate: float = Form(0.15),   # v55: 0.20→0.15 (CLAUDE.md v55 동기화)
     filter_radius: int = Form(3),       # v62: 2→3 (미디언 필터 재활성화, 팔세토 F0 스무딩)
     hop_length: int = Form(128),        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)

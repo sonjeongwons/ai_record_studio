@@ -3430,13 +3430,12 @@ def task_convert(job_input: dict, job: dict) -> dict:
         pitch_shift: int = int(job_input.get("pitch_shift", 0))
     except (ValueError, TypeError):
         pitch_shift = 0
-    # v57: 0.50 (CLAUDE.md v57 동기화)
+    # v73: 0.75 (커뮤니티 0.75 권장 — 0.50은 너무 낮아 AI 스러움 유발)
     try:
-        index_rate: float = float(job_input.get("index_rate", 0.50))
+        index_rate: float = float(job_input.get("index_rate", 0.75))
     except (ValueError, TypeError):
-        index_rate = 0.50
-    # rmvpe: stable, fast, accurate for singing — better default than crepe
-    # hybrid[rmvpe+fcpe]: Applio 3.x+ 지원, 팔세토 안정성 최고 (커뮤니티 권장)
+        index_rate = 0.75
+    # rmvpe: 안정적, 노래 표준 / fcpe: Applio 3.x 권장, 팔세토/고음 최적 (hybrid 완전 대체)
     _VALID_F0_CONVERT = {"rmvpe", "fcpe", "crepe", "crepe-tiny", "harvest", "pm"}
     f0_method: str = job_input.get("f0_method", "rmvpe")
     if f0_method not in _VALID_F0_CONVERT and not f0_method.startswith("hybrid["):
@@ -3452,11 +3451,11 @@ def task_convert(job_input: dict, job: dict) -> dict:
         rms_mix_rate: float = float(job_input.get("rms_mix_rate", 0.15))
     except (ValueError, TypeError):
         rms_mix_rate = 0.15
-    # v64: 0.40 (protect=0.5=자음보호 완전비활성화; 0.4=자음보호 재활성화 — AI Hub 공식 문서)
+    # v73: 0.33 (커뮤니티 노래 남성보컬 표준 — 0.33=강한 자음보호; 0.4=약함; 0.5=비활성)
     try:
-        protect: float = float(job_input.get("protect", 0.40))
+        protect: float = float(job_input.get("protect", 0.33))
     except (ValueError, TypeError):
-        protect = 0.40
+        protect = 0.33
     # v49: hop_length 128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     try:
         hop_length: int = int(job_input.get("hop_length", 128))
@@ -4210,6 +4209,14 @@ def _run_cli_infer(
         log.info(f"Files in work dir: {[f.name for f in found_files]}")
         _recover_applio_output(output_path, export_format)
 
+    # v73: Strategy 1-3과 동일한 무음 감지 — CLI가 exit 0이어도 무음 파일 반환 시 에러
+    if output_path.exists() and _is_audio_silent(output_path):
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"CLI infer (Strategy 4) produced near-silent output ({f0_method}). "
+            "FCPE 모델 파일 누락 또는 Applio 내부 오류일 수 있습니다."
+        )
+
 
 def _rvc_infer(
     pth_path: Path,
@@ -4218,8 +4225,8 @@ def _rvc_infer(
     output_path: Path,
     pitch_shift: int = 0,
     f0_method: str = "rmvpe",
-    index_rate: float = 0.50,     # v57: 0.50 (CLAUDE.md v57 동기화)
-    protect: float = 0.40,        # v64: 0.50→0.40 (protect=0.5=자음보호비활성화 — AI Hub 공식)
+    index_rate: float = 0.75,     # v73: 0.50→0.75 (커뮤니티 0.75 권장, AI스러움 감소)
+    protect: float = 0.33,        # v73: 0.40→0.33 (커뮤니티 남성 노래 표준; 0.5=비활성)
     hop_length: int = 128,        # v49: 64→128 (커뮤니티 표준, 64는 노이즈 추적→삑사리)
     clean_audio: bool = False,
     clean_strength: float = 0.7,

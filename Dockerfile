@@ -283,16 +283,23 @@ RUN mkdir -p /app/Applio/rvc/models/embedders/korean_hubert_base \
     && echo "Korean HuBERT:" \
     && ls -lh /app/Applio/rvc/models/embedders/korean_hubert_base/
 
-# -- RMVPE Model (~170 MB) --
+# -- RMVPE + FCPE Models --
+# RMVPE (~170 MB): 안정적, 노래 변환 표준
+# FCPE (~25 MB): 팔세토/고음 최적, Applio 3.x 공식 권장 (hybrid 대체)
+# 주의: Dockerfile 미다운로드 시 RunPod 컨테이너에서 실행 중 HuggingFace 다운로드 시도 → 무음 출력
 RUN mkdir -p /app/Applio/rvc/models/predictors \
     && wget -q -O /app/Applio/rvc/models/predictors/rmvpe.pt \
        "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/predictors/rmvpe.pt" \
-    && echo "RMVPE:" \
-    && ls -lh /app/Applio/rvc/models/predictors/rmvpe.pt \
-    # Symlink for legacy paths
+    && wget -q -O /app/Applio/rvc/models/predictors/fcpe.pt \
+       "https://huggingface.co/IAHispano/Applio/resolve/main/Resources/predictors/fcpe.pt" \
+    && echo "RMVPE + FCPE predictors:" \
+    && ls -lh /app/Applio/rvc/models/predictors/ \
+    # Symlinks for legacy paths
     && mkdir -p /app/Applio/rvc/models/rmvpe \
     && ln -sf /app/Applio/rvc/models/predictors/rmvpe.pt \
-              /app/Applio/rvc/models/rmvpe/rmvpe.pt
+              /app/Applio/rvc/models/rmvpe/rmvpe.pt \
+    # torchfcpe 번들 모델 사전 캐시 (런타임 다운로드 방지)
+    && python -c "import torchfcpe; m=torchfcpe.spawn_bundled_infer_model('cpu'); print('FCPE bundled model cached OK')"
 
 # -- Demucs Models (~1.8 GB total) --
 # htdemucs_6s: 6-stem model (drums/bass/other/vocals/guitar/piano)

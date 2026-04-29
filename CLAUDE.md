@@ -34,12 +34,20 @@
 | CI/CD | GitHub Actions (Docker 빌드 + pytest) |
 | 정적분석 | ruff (린터) + bandit (보안) |
 
-## 3. 현재 상태 (2026-04-26)
+## 3. 현재 상태 (2026-04-29)
 
 - ✅ 클라이언트 (server.py + index.html) 완성, API 테스트 **50/50 통과**
 - ✅ RunPod Serverless Handler 구현 완료
 - ✅ PC 간 클라우드 동기화 (Cloudflare R2 백업/복원, 중복 스킵)
 - ✅ 보안 감사 완료 (44건+ 수정)
+- ✅ **v73 FCPE 수정 + 파라미터 최적화 (2026-04-29)** ← 최신:
+  - **Dockerfile: `fcpe.pt` 다운로드 추가** (누락이 FCPE→MR only 버그 원인)
+  - **torchfcpe 번들 모델 사전 캐시** (런타임 HuggingFace 다운로드 방지)
+  - **index_rate: 0.50→0.75** (커뮤니티 0.75 권장 — 0.50은 AI스러움 유발)
+  - **protect: 0.40→0.33** (커뮤니티 남성 노래 표준; 강한 자음보호)
+  - Strategy 4 CLI 무음 체크 추가 (exit 0 + 무음 파일 케이스 방어)
+  - 프리셋 전면 업데이트: hybrid→fcpe, index 50→75, protect 40→33
+  - 테스트 50/50 통과
 - ✅ **v65 바이패스 감지 민감도 강화 (2026-04-26)**:
   - `_detect_falsetto_regions`: instability_thresh 1.8→**1.0st** (Monster 90-92s 1.475st, 99-118s 1.015st 포착)
   - `_detect_falsetto_regions`: unconditional_high_thresh 380→**360Hz** (Monster 15-17s 370Hz median 포착)
@@ -103,9 +111,9 @@
 | Epochs | **150** (기본값), Batch: **8**, SR: 40kHz | |
 | F0 | RMVPE / **hybrid[rmvpe+fcpe]** (팔세토 권장) + **f0_autotune=True, strength=0.2** | v63: hybrid 추가; v57: 0.4→0.2 |
 | **FAISS nprobe** | **min(32, n_ivf//10)** (학습 시 index 생성) | v63: 1→32 (recall 1.9%→9%, AI스러움 감소) |
-| **index_rate** | **0.50** (기본값, 서버/HTML 기준) | v55: 0.45→0.50 |
+| **index_rate** | **0.75** (기본값, 서버/HTML 기준) | v73: 0.50→0.75 (커뮤니티 0.75 권장) |
 | **rms_mix_rate** | **0.15** | v55: 0.20→0.15 |
-| **protect** | **0.40** | v64: 0.50→0.40 (protect=0.5=자음보호비활성화 — AI Hub 공식; 0.4=재활성화) |
+| **protect** | **0.33** | v73: 0.40→0.33 (커뮤니티 남성 노래 표준; 강한 자음보호) |
 | **filter_radius** | **3** | v62: 2→3 (미디언 F0 스무딩 재활성화, 팔세토 안정화) |
 | **hop_length** | **128** | v49: 64→128 |
 | **vocal_blend** | **0%** (비활성) | v45: 더블링 원인 제거 |

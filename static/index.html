@@ -3158,11 +3158,11 @@ input[type="range"]::-moz-range-track {
       </div>
       <div class="slider-group">
         <div class="slider-header">
-          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드:\n• 0.0~0.20 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.25~0.45 = 자연스러운 AI 목소리\n• 0.50~0.65 = 강한 AI 적용 (기본값 0.50, 한국어 발음 정확도↑)\n• 0.70~1.0 = 최대 AI (아티팩트 주의)\n\n💡 기본 0.50 권장. 화음/듀엣곡은 0.20~0.35로 낮추세요.">ⓘ</i></span>
-          <span class="slider-value" id="index-val">0.50</span>
+          <span class="slider-label">인덱스 비율 <i class="tip" data-tip="AI 목소리를 '얼마나 강하게' 적용할지 조절합니다.\n\n🔢 설정 가이드 (v73 커뮤니티 검증):\n• 0.0~0.30 = 원본 발성 최대 보존 (듀엣/화음곡)\n• 0.50~0.65 = 중간 (0.50은 AI스러움 발생 가능)\n• 0.70~0.80 = ✅ 권장 (AI스러움 최소화 — 커뮤니티 0.75 표준)\n• 0.85~1.0 = 최대 AI 모델 특성 (아티팩트 주의)\n\n💡 기본 0.75 권장. 화음/듀엣곡은 0.20~0.35로 낮추세요.">ⓘ</i></span>
+          <span class="slider-value" id="index-val">0.75</span>
         </div>
-        <input type="range" id="index-slider" min="0" max="100" value="50" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.30~0.50 권장)</div>
+        <input type="range" id="index-slider" min="0" max="100" value="75" class="has-fill" aria-label="인덱스 비율" oninput="document.getElementById('index-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">낮을수록 원본 발성 유지, 높을수록 AI 모델 목소리 강조 (0.70~0.80 권장 — 커뮤니티 검증)</div>
       </div>
       <!-- Advanced settings (collapsible) -->
       <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">
@@ -3253,10 +3253,10 @@ input[type="range"]::-moz-range-track {
           <div class="slider-group">
             <div class="slider-header">
               <span class="slider-label">자음·가성 보호 <i class="tip" data-tip="자음 발음(ㅅ·ㅊ 등)과 가성(고음)을 원본에 얼마나 가깝게 보존할지 정합니다.\n\n🔢 설정 가이드:\n• 0.50 = ⚠️ 자음보호 완전 비활성화 (기계음 발생 원인!)\n• 0.40 = v64 기본값 (자음·가성 보호 활성화 — 권장)\n• 0.33 = 강한 보호 (자음 뭉개짐 방지, 커뮤니티 기본값)\n• 0.25 = 팔세토/화음 구간 최대 보호\n\n⚠️ 0.50에서 자음이 가래끼거나 기계음 → 0.40으로 낮추기\n💡 AI Hub 공식: 0.5는 보호 완전 비활성화 (기계음 원인)">ⓘ</i></span>
-              <span class="slider-value" id="protect-val">0.40</span>
+              <span class="slider-value" id="protect-val">0.33</span>
             </div>
-            <input type="range" id="protect-slider" min="0" max="50" value="40" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
-            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (v64 기본 0.40 — 0.5=보호비활성화/기계음원인, 0.4=자음보호, 낮을수록 보호↑)</div>
+            <input type="range" id="protect-slider" min="0" max="50" value="33" class="has-fill" aria-label="자음·가성 보호" oninput="document.getElementById('protect-val').textContent=(this.value/100).toFixed(2); updateSliderFill(this)">
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">자음·가성 보호 (v73 기본 0.33 — 커뮤니티 남성 노래 표준; 0.5=비활성, 낮을수록 보호↑)</div>
           </div>
           <div class="slider-group">
             <div class="slider-header">
@@ -4799,7 +4799,7 @@ function estimateConversionCost() {
 
   var f0El = document.getElementById('convert-f0');
   var f0   = f0El ? f0El.value.toLowerCase() : 'crepe';
-  var f0Factor = (f0 === 'crepe') ? 1.10 : (f0 === 'crepe-tiny') ? 0.85 : (f0 === 'fcpe') ? 1.05 : 1.0; // fcpe=+5%, rmvpe=1.0 기본
+  var f0Factor = (f0 === 'crepe') ? 1.10 : (f0 === 'crepe-tiny') ? 0.85 : (f0 === 'fcpe') ? 1.05 : 1.0; // fcpe=+5%, rmvpe=1.0 기본 (hybrid 제거)
 
   // GPU 시간: Demucs 보컬 분리(~1x realtime) + RVC 추론(~0.3x) + 모델 로딩
   var overheadSecs  = 60 + (files.length - 1) * 10; // 첫 파일 60s(모델+Demucs 로딩), 이후 10s
@@ -4811,7 +4811,7 @@ function estimateConversionCost() {
   var minSec    = totalGpu * 0.65;
   var maxSec    = totalGpu * 1.50;
 
-  var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)', fcpe: 'FCPE', 'hybrid[rmvpe+fcpe]': 'Hybrid RMVPE+FCPE (+15%)' }[f0] || f0;
+  var f0Label = { rmvpe: 'RMVPE', crepe: 'Crepe', 'crepe-tiny': 'Crepe-tiny (빠름)', fcpe: 'FCPE' }[f0] || f0;
   var cleanLabel = (cleanCb && cleanCb.checked) ? 'ON (+15% 시간 추가)' : 'OFF (기본)';
 
   document.getElementById('cost-conv-files').textContent = files.length + '개';
@@ -4846,44 +4846,44 @@ function estimateConversionCost() {
   _showCostWarn('convert-cost-warn', warnLevel, warnMsg);
 }
 
-// ─── 변환 프리셋 v57 ───
+// ─── 변환 프리셋 v73 ───
 function applyConvertPreset(preset) {
   var presets = {
     default: {
-      pitch: 0, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
+      pitch: 0, lang: 'auto', index: 75,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: 'v64 기본 — protect 0.40 (자음보호 재활성화), filter 3, rms 0.15'
+      desc: 'v73 기본 — index 0.75 (커뮤니티 권장), protect 0.33 (강한 자음보호)'
     },
     korean: {
-      pitch: 0, lang: 'ko', index: 50,
-      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
+      pitch: 0, lang: 'ko', index: 75,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '한국어 노래 — 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호, protect 0.40, filter 3'
+      desc: '한국어 노래 — 비음(ㄴ/ㅁ/ㅇ) 포먼트 보호, index 0.75, protect 0.33'
     },
     ballad: {
-      pitch: 0, lang: 'auto', index: 45,
-      f0: 'rmvpe', protect: 40, rms: 10, filter: 3, hop: 2,
+      pitch: 0, lang: 'auto', index: 60,
+      f0: 'rmvpe', protect: 33, rms: 10, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '발라드/잔잔한 — index 낮춤, rms 0.10 (다이나믹 보존), protect 0.40'
+      desc: '발라드/잔잔한 — index 낮춤, rms 0.10 (다이나믹 보존), protect 0.33'
     },
     falsetto: {
-      pitch: 0, lang: 'auto', index: 50,
-      f0: 'hybrid[rmvpe+fcpe]', protect: 33, rms: 15, filter: 3, hop: 2,
+      pitch: 0, lang: 'auto', index: 75,
+      f0: 'fcpe', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: true, autotune: true,
-      desc: '가성·고음 — Hybrid F0, protect 0.33 (강한 자음보호), 팔세토 바이패스 권장'
+      desc: '가성·고음 — FCPE (팔세토 최적), protect 0.33 (강한 자음보호), 팔세토 바이패스 권장'
     },
     natural: {
-      pitch: 0, lang: 'auto', index: 40,
-      f0: 'rmvpe', protect: 40, rms: 10, filter: 3, hop: 2,
+      pitch: 0, lang: 'auto', index: 55,
+      f0: 'rmvpe', protect: 33, rms: 10, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '최대 자연스러움 — index 낮춤, rms 낮춤 (원곡 성질 최대 보존), protect 0.40'
+      desc: '최대 자연스러움 — index 낮춤, rms 낮춤 (원곡 성질 최대 보존), protect 0.33'
     },
     studio: {
-      pitch: 0, lang: 'auto', index: 50,
-      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
+      pitch: 0, lang: 'auto', index: 75,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '스튜디오 — protect 0.40, 깨끗한 원본 최적, filter 3'
+      desc: '스튜디오 — index 0.75, protect 0.33, 깨끗한 원본 최적'
     },
     harmony: {
       pitch: 0, lang: 'auto', index: 30,
@@ -4898,16 +4898,16 @@ function applyConvertPreset(preset) {
       desc: '화음 v2 (발음선명) — index 0.20 최소, protect 0.33 최강 보호'
     },
     duet: {
-      pitch: 0, lang: 'en', index: 50,
-      f0: 'rmvpe', protect: 40, rms: 15, filter: 3, hop: 2,
+      pitch: 0, lang: 'en', index: 75,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: false, autotune: true,
-      desc: '영어 듀엣/인디팝 — lang en, protect 0.40, 여성파트 바이패스 권장'
+      desc: '영어 듀엣/인디팝 — lang en, index 0.75, protect 0.33, 여성파트 바이패스 권장'
     },
     high_range: {
-      pitch: -3, lang: 'auto', index: 50,
-      f0: 'hybrid[rmvpe+fcpe]', protect: 33, rms: 15, filter: 3, hop: 2,
+      pitch: -3, lang: 'auto', index: 75,
+      f0: 'fcpe', protect: 33, rms: 15, filter: 3, hop: 2,
       highNote: true, autotune: true,
-      desc: '고음곡 전용 — pitch -3, Hybrid F0, protect 0.33, 팔세토+화음 바이패스 ON'
+      desc: '고음곡 전용 — pitch -3, FCPE (팔세토 최적), protect 0.33, 팔세토+화음 바이패스 ON'
     },
   };
   var p = presets[preset];
