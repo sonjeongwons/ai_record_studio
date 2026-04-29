@@ -4909,6 +4909,30 @@ function applyConvertPreset(preset) {
       highNote: true, autotune: true,
       desc: '고음곡 전용 — pitch -3, FCPE (팔세토 최적), protect 0.33, 팔세토+화음 바이패스 ON'
     },
+    english: {
+      pitch: 0, lang: 'en', index: 75,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
+      highNote: false, autotune: true,
+      desc: '영어/팝송 — lang en, index 0.75, protect 0.33, 치찰음 EQ 최적화'
+    },
+    indie: {
+      pitch: 0, lang: 'en', index: 60,
+      f0: 'rmvpe', protect: 33, rms: 10, filter: 3, hop: 2,
+      highNote: false, autotune: true,
+      desc: '인디/차분한 — index 낮춤, rms 0.10 (다이나믹 보존), lang en, 여성 바이패스 권장'
+    },
+    chorus: {
+      pitch: 0, lang: 'auto', index: 30,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
+      highNote: false, autotune: true,
+      desc: '화음/코러스 — index 0.30, protect 0.33 (강한 자음보호), filter 3'
+    },
+    chorus_v2: {
+      pitch: 0, lang: 'ko', index: 20,
+      f0: 'rmvpe', protect: 33, rms: 15, filter: 3, hop: 2,
+      highNote: false, autotune: true,
+      desc: '화음 v2 (발음선명) — index 0.20 최소, protect 0.33, 한국어 코러스곡 (기다릴게 최적화)'
+    },
   };
   var p = presets[preset];
   if (!p) return;
